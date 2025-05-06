@@ -1,0 +1,61 @@
+steps:
+  # 1. Install deps and build functions
+  - name: 'node:20'
+    dir: 'functions'
+    entrypoint: bash
+    args: ['-c', 'npm install -g pnpm && pnpm install --no-frozen-lockfile && pnpm run build'] # Build creates dist/ and copies package.json
+    id: Build
+
+  # 2. Deploy snapshot (Pub/Sub)
+  - name: gcr.io/cloud-builders/gcloud
+    dir: 'functions/dist-snapshot' # Deploy from snapshot dist
+    args:
+      - functions
+      - deploy
+      - snapshotTrigger
+      - --gen2
+      - --runtime=nodejs20
+      - --region=europe-west3
+      - '--source=.' # Source is this dir (contains index.js, package.json)
+      - --entry-point=snapshotTrigger
+      - --trigger-topic=snapshot-topic
+      - --clear-env-vars # Clear lingering env vars from previous attempts
+    waitFor: ['Build'] # Wait for build step
+
+  # 3. Deploy restore (HTTP)
+  - name: gcr.io/cloud-builders/gcloud
+    dir: 'functions/dist-restore' # Deploy from restore dist
+    args:
+      - functions
+      - deploy
+      - restoreTrigger
+      - --gen2
+      - --runtime=nodejs20
+      - --region=europe-west3
+      - '--source=.' # Source is this dir (contains index.js, package.json)
+      - --entry-point=restoreTrigger
+      - --trigger-http
+      - --no-allow-unauthenticated
+      - --clear-env-vars # Clear lingering env vars from previous attempts
+    waitFor: ['Build'] # Wait for build step
+
+  # 4. Deploy Stripe Webhook (HTTP)
+  - name: gcr.io/cloud-builders/gcloud
+    dir: 'functions/dist-stripe-webhook' # Deploy from webhook dist
+    args:
+      - functions
+      - deploy
+      - stripeWebhook # Function name
+      - --gen2
+      - --runtime=nodejs20
+      - --region=europe-west3
+      - '--source=.' # Source is this dir
+      - --entry-point=stripeWebhook # Matches exported function name
+      - --trigger-http
+      - --allow-unauthenticated # Stripe webhooks NEED to be publicly accessible
+      - --clear-env-vars 
+    waitFor: ['Build'] # Wait for build step
+
+# Optional: Specify logs bucket, timeout etc.
+# options:
+#   logging: CLOUD_LOGGING_ONLY 

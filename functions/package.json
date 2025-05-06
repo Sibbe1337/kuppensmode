@@ -1,0 +1,30 @@
+{
+  "name": "notion-lifeline-functions",
+  "version": "1.0.0",
+  "description": "Cloud Functions for Notion Lifeline",
+  "main": "dist/index.js",
+  "private": true,
+  "scripts": {
+    "build": "rm -rf dist-* && esbuild src/snapshot.ts src/restore.ts src/stripeWebhook.ts --bundle --platform=node --target=node20 --format=cjs --outdir=dist-temp --external:@google-cloud/* && mkdir -p dist-snapshot dist-restore dist-stripe-webhook && mv dist-temp/snapshot.js dist-snapshot/index.js && mv dist-temp/restore.js dist-restore/index.js && mv dist-temp/stripeWebhook.js dist-stripe-webhook/index.js && rmdir dist-temp && node build-copy.js"
+  },
+  "dependencies": {
+    "@google-cloud/functions-framework": "^4.0.0",
+    "@google-cloud/firestore": "^7.11.0",
+    "@google-cloud/pubsub": "^5.0.0",
+    "@google-cloud/secret-manager": "^6.0.1",
+    "@google-cloud/storage": "^7.16.0",
+    "@notionhq/client": "^2.3.0",
+    "p-queue": "^8.1.0",
+    "@clerk/backend": "^1.31.2",
+    "stripe": "^16.12.0",
+    "resend": "^3.5.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "esbuild": "^0.25.3",
+    "typescript": "^5.8.3"
+  },
+  "engines": {
+    "node": "20"
+  }
+} 

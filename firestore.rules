@@ -1,0 +1,46 @@
+    rules_version = '2';
+    service cloud.firestore {
+      match /databases/{database}/documents {
+        // Allow users to read and write their own data in the 'users' collection
+        // and its subcollections
+        match /users/{userId} {
+          allow read, write: if request.auth.uid == userId;
+
+          // Sub-collections automatically inherit that condition.
+          // No need to explicitly grant access if the parent rule is sufficient.
+          // However, if you want to be explicit or add different conditions for subcollections:
+          match /integrations/{integrationId} {
+            allow read, write: if request.auth.uid == userId;
+          }
+          match /snapshots/{snapshotId} {
+            allow read, write: if request.auth.uid == userId;
+          }
+          match /restores/{restoreId} {
+            allow read, write: if request.auth.uid == userId;
+            // Consider if restores should have more restrictive write access, 
+            // e.g., only allow create, or specific fields for update.
+          }
+          // Add other sub-collections here as needed, e.g., settings, quotas
+          match /settings/{docId} { // Assuming settings might be a single doc or a collection
+            allow read, write: if request.auth.uid == userId;
+          }
+          match /quota/{docId} { // Assuming quota might be a single doc or a collection
+            allow read, write: if request.auth.uid == userId;
+          }
+          // Generic rule for any other sub-collections under a user
+          match /{document=**} {
+            allow read, write: if request.auth.uid == userId;
+          }
+        }
+
+        // It's good practice to deny all other access by default if not explicitly allowed.
+        // However, be careful with this if you have other top-level collections 
+        // that need different access rules (e.g., public data, admin collections).
+
+        // Example: If you have a public collection for general app configuration:
+        // match /app-config/{configId} {
+        //   allow read: if true;
+        //   allow write: if false; // Or admin only
+        // }
+      }
+    }
