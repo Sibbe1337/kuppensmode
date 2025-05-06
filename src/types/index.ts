@@ -1,9 +1,20 @@
-export interface Snapshot {
-  id: string;
-  timestamp: string;
-  sizeKB: number;
-  status: string;
-  // Add any other relevant snapshot details here in the future
+// src/types/user.ts
+export interface UserSettings {
+  notionConnected: boolean;
+  notionWorkspaceName: string | null;
+  apiKey: string | null; // Represents the API key for display (e.g., masked)
+  // The actual stored value in Firestore for the API key might be a hash, e.g., apiKeyHash
+  notifications: {
+    emailOnSnapshotSuccess: boolean;
+    emailOnSnapshotFailure: boolean;
+    webhookUrl: string | null;
+  };
 }
 
-// You can add other shared types here as the project grows 
+export interface UserQuota { // <<<< THIS IS THE ADDED/CONFIRMED PART
+  planName: string;
+  planId: string;
+  snapshotsUsed: number;
+  snapshotsLimit: number;
+  // Consider adding storageUsedMB and storageLimitMB here if they become part of the quota object
+}

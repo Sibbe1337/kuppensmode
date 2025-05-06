@@ -2,21 +2,15 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server"; // ✅ Corrected import for server-side
 import { db } from "@/lib/firestore";
-import type { UserSettings } from '@/types/user'; // Assuming UserSettings type is defined elsewhere
+import type { UserSettings } from "@/types/user";
+import { DEFAULT_USER_SETTINGS } from "@/config/defaults";
+
+
 
 // -----------------------------------------------------------------------------
-// Types & defaults for User Settings
+// Types & defaults for User Settings - MOVED TO src/config/defaults.ts
 // -----------------------------------------------------------------------------
-const DEFAULT_USER_SETTINGS: UserSettings = {
-    notionConnected: false,
-    notionWorkspaceName: null,
-    apiKey: null, // This will be represented by apiKeyHash in the DB for security
-    notifications: {
-        emailOnSnapshotSuccess: true,
-        emailOnSnapshotFailure: true,
-        webhookUrl: null,
-    },
-};
+// const DEFAULT_USER_SETTINGS: UserSettings = { ... };
 
 // -----------------------------------------------------------------------------
 // GET /api/user/settings
@@ -25,10 +19,10 @@ export async function GET() {
   const authResult = await auth();
   const userId = authResult.userId;
 
-  if (!userId) {
-    return new NextResponse("Unauthorized", { status: 401 });
-  }
-  console.log(`Fetching settings for user: ${userId}`);
+    if (!userId) {
+      return new NextResponse("Unauthorized", { status: 401 });
+    }
+    console.log(`Fetching settings for user: ${userId}`);
   const userRef = db.collection("users").doc(userId);
 
   try {
@@ -103,9 +97,9 @@ export async function POST(request: Request) {
   const authResult = await auth();
   const userId = authResult.userId;
 
-  if (!userId) {
-    return new NextResponse("Unauthorized", { status: 401 });
-  }
+    if (!userId) {
+      return new NextResponse("Unauthorized", { status: 401 });
+    }
 
   let body: UpdateSettingsBody;
   try {
@@ -114,32 +108,32 @@ export async function POST(request: Request) {
     return new NextResponse("Invalid JSON body", { status: 400 });
   }
 
-  console.log(`Updating settings for user: ${userId}`, body);
+    console.log(`Updating settings for user: ${userId}`, body);
   const userRef = db.collection('users').doc(userId);
   const updatesForFirestore: { [key: string]: any } = {};
 
   // Construct the update object carefully to only include provided fields,
   // using dot notation for updating nested fields within the 'settings' map.
-  if (body.notifications) {
-    if (body.notifications.emailOnSnapshotSuccess !== undefined) {
+    if (body.notifications) {
+      if (body.notifications.emailOnSnapshotSuccess !== undefined) {
       updatesForFirestore['settings.notifications.emailOnSnapshotSuccess'] = body.notifications.emailOnSnapshotSuccess;
-    }
-    if (body.notifications.emailOnSnapshotFailure !== undefined) {
+      }
+      if (body.notifications.emailOnSnapshotFailure !== undefined) {
       updatesForFirestore['settings.notifications.emailOnSnapshotFailure'] = body.notifications.emailOnSnapshotFailure;
-    }
+      }
     // Allow setting webhookUrl to null or a string explicitly
-    if (Object.prototype.hasOwnProperty.call(body.notifications, 'webhookUrl')) {
+      if (Object.prototype.hasOwnProperty.call(body.notifications, 'webhookUrl')) {
       updatesForFirestore['settings.notifications.webhookUrl'] = body.notifications.webhookUrl;
+      }
     }
-  }
-
+    
   // Add other top-level fields of 'settings' here if they become part of UpdateSettingsBody
   // Example: if (body.someOtherSetting !== undefined) { updatesForFirestore['settings.someOtherSetting'] = body.someOtherSetting; }
 
   if (Object.keys(updatesForFirestore).length === 0) {
-    return NextResponse.json({ success: true, message: "No settings fields provided for update." });
-  }
-  
+        return NextResponse.json({ success: true, message: "No settings fields provided for update." });
+    }
+
   // Ensure createdAt is set if we are creating the document for the first time with settings
   updatesForFirestore['createdAt'] = Date.now(); // This will be set on create, and merged (overwritten with same value) on update
 
@@ -152,7 +146,7 @@ export async function POST(request: Request) {
     // It's unlikely to be a NOT_FOUND here if using set with merge:true,
     // but keeping a general error handler.
     return new NextResponse("Internal Server Error while updating settings", { status: 500 });
-  }
+    }
 }
 
 // TODO: Remember to apply the set(..., { merge: true }) logic to the POST handler as well if it exists and uses update().

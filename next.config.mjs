@@ -1,9 +1,22 @@
 import {withSentryConfig} from '@sentry/nextjs';
+import path from 'path';
+import { fileURLToPath } from 'url'; // Import fileURLToPath
+
+// Derive __dirname for ES Module scope
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // Add any Next.js specific configurations here if needed in the future.
   // For example:
   // reactStrictMode: true,
+  webpack: (config, { buildId, dev, isServer, defaultLoaders, webpack }) => {
+    // Add the alias for '@/' to point to the 'src' directory
+    config.resolve.alias['@'] = path.resolve(__dirname, 'src');
+    // Important: return the modified config
+    return config;
+  },
 };
 
 export default withSentryConfig(nextConfig, {
