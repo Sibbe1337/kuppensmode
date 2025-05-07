@@ -6,15 +6,23 @@ import { Button } from "@/components/ui/button";
 import UpgradeModal from '../billing/UpgradeModal';
 import Link from 'next/link';
 import { SettingsIcon, LayoutDashboardIcon, Loader2, AlertTriangle } from 'lucide-react';
-import { useQuota, UserQuota } from '@/hooks/useQuota';
+import { useQuota } from '@/hooks/useQuota';
+import type { UserQuota } from '@/types';
 
 const Sidebar = () => {
   const { quota, isLoading, isError } = useQuota();
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
 
   // Default values for display when loading or error
-  const displayQuota: Partial<UserQuota> = quota || { used: 0, limit: 0, planName: 'Loading...' };
-  const snapshotUsagePercent = displayQuota.limit && displayQuota.limit > 0 ? (displayQuota.used! / displayQuota.limit!) * 100 : 0;
+  const displayQuota: Partial<UserQuota> = quota || { 
+    snapshotsUsed: 0, 
+    snapshotsLimit: 0, 
+    planName: 'Loading...',
+    // planId: 'loading' // Add a placeholder planId if your UserQuota strictly requires it and it's used elsewhere
+  };
+  const snapshotUsagePercent = displayQuota.snapshotsLimit && displayQuota.snapshotsLimit > 0 
+    ? (displayQuota.snapshotsUsed! / displayQuota.snapshotsLimit!) * 100 
+    : 0;
 
   return (
     <>
@@ -62,7 +70,7 @@ const Sidebar = () => {
                 <div>
                   <div className="flex justify-between text-xs text-muted-foreground mb-0.5">
                     <span>Snapshots</span>
-                    <span>{displayQuota.used} / {displayQuota.limit}</span>
+                    <span>{displayQuota.snapshotsUsed} / {displayQuota.snapshotsLimit}</span>
                   </div>
                   <Progress value={snapshotUsagePercent} className="h-2" />
                 </div>

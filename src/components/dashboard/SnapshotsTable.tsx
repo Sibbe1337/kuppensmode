@@ -121,6 +121,7 @@ const SnapshotsTable = () => {
             snapshot={selectedSnapshot}
             open={isWizardOpen}
             onOpenChange={setIsWizardOpen}
+            onClose={() => setIsWizardOpen(false)}
           />
         </div>
       );

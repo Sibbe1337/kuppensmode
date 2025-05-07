@@ -4,9 +4,10 @@ import { NextRequest, NextResponse } from "next/server";
 
 // Define routes that should be publicly accessible
 const isPublicRoute = createRouteMatcher([
+  '/', // <-- Make the landing page public
   '/sign-in(.*)', 
   '/sign-up(.*)',
-  '/api/stripe/webhook(.*)', // Allow Stripe webhook route
+  '/api/stripe/webhook(.*)', // Ensure Stripe webhook route is public
   '/api/clerk/webhook(.*)', // <--- ADD THIS LINE to make Clerk webhook public
   // Add other public routes like landing page ('/') if needed
 ]);

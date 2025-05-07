@@ -11,10 +11,14 @@ import { ExternalLink, KeyRound, Bell, LogOut, HelpCircle, ShieldCheck, Loader2,
 import { useToast } from "@/hooks/use-toast"; // Import useToast
 import { useUserSettings } from '@/hooks/useUserSettings'; // Corrected hook import
 import type { UserSettings } from '@/types/user'; // Corrected type import
+import { useSearchParams } from 'next/navigation'; // Import useSearchParams
 
 const SettingsPage = () => {
   const { settings, isLoading, isError, mutateSettings } = useUserSettings();
   const { toast } = useToast();
+  const searchParams = useSearchParams();
+
+  console.log("SettingsPage: Rendering with settings:", settings, "isLoading:", isLoading, "isError:", isError);
 
   const [isDisconnectingNotion, setIsDisconnectingNotion] = React.useState(false);
   const [isRegeneratingKey, setIsRegeneratingKey] = React.useState(false);
@@ -24,6 +28,38 @@ const SettingsPage = () => {
     webhookUrl: "",
   });
   const [isSavingNotifications, setIsSavingNotifications] = React.useState(false);
+
+  // Effect to check for post-Notion-connection redirect
+  React.useEffect(() => {
+    const notionQueryParam = searchParams.get('notion');
+    const errorQueryParam = searchParams.get('error');
+
+    console.log("SettingsPage: useEffect for query params fired. notionQueryParam:", notionQueryParam, "errorQueryParam:", errorQueryParam);
+
+    if (notionQueryParam === 'connected') {
+      console.log("SettingsPage: Detected notion=connected. Will call mutateSettings() after short delay.");
+      toast({ title: "Success", description: "Notion workspace connected successfully!" });
+      
+      // Add a small delay before revalidating
+      const timer = setTimeout(() => {
+        console.log("SettingsPage: Calling mutateSettings() after delay.");
+        mutateSettings(); 
+      }, 250); // Delay of 250ms - adjust if needed
+
+      // Clean the URL immediately
+      window.history.replaceState(null, '', '/dashboard/settings');
+
+      // Cleanup the timer if the component unmounts before it fires
+      return () => clearTimeout(timer);
+
+    } else if (errorQueryParam) {
+      console.log("SettingsPage: Detected error query param:", errorQueryParam);
+      // ... (error handling toast logic) ...
+       window.history.replaceState(null, '', '/dashboard/settings');
+    }
+  // Restore dependencies
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, mutateSettings, toast]);
 
   React.useEffect(() => {
     if (settings?.notifications) {
@@ -120,6 +156,7 @@ const SettingsPage = () => {
   }, [settings?.notifications, editedNotifications]);
 
   if (isLoading) {
+    console.log("SettingsPage: Rendering LOADING state.");
     return (
       <div className="flex justify-center items-center h-screen">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
@@ -129,6 +166,7 @@ const SettingsPage = () => {
   }
 
   if (isError || !settings) {
+    console.log("SettingsPage: Rendering ERROR or NO SETTINGS state.");
     return (
       <div className="flex flex-col justify-center items-center h-screen text-center px-4">
         <AlertTriangle className="h-12 w-12 text-destructive mb-4" />
@@ -150,6 +188,12 @@ const SettingsPage = () => {
         )}
       </div>
     );
+  }
+
+  if (settings.notionConnected) {
+    console.log("SettingsPage: Rendering CONNECTED Notion state.");
+  } else {
+    console.log("SettingsPage: Rendering DISCONNECTED Notion state.");
   }
 
   return (

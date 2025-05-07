@@ -1,8 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import Navbar from "@/components/layout/Navbar";
-import Sidebar from "@/components/layout/Sidebar";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/toaster";
 import { ClerkProvider } from '@clerk/nextjs';
@@ -15,8 +13,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Notion Lifeline",
-  description: "Your lifeline for Notion data.",
+  title: "Notion Lifeline | Automatic Backups & 1-Click Restore for Notion",
+  description: "Never lose a Notion doc again. Automatic hourly snapshots, AI change-diff emails, and 1-click restore to protect your valuable Notion workspace.",
 };
 
 export default function RootLayout({
@@ -36,15 +34,7 @@ export default function RootLayout({
               disableTransitionOnChange
             >
               <ErrorBoundary>
-                <div className="flex h-full">
-                  <Sidebar />
-                  <div className="flex-1 flex flex-col overflow-y-auto">
-                    <Navbar />
-                    <main className="flex-1 p-6">
-                      {children}
-                    </main>
-                  </div>
-                </div>
+                {children} 
                 <Toaster />
               </ErrorBoundary>
             </ThemeProvider>

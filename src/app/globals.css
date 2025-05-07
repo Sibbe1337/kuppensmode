@@ -1,0 +1,26 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /* ... your base styles ... */
+}
+
+@layer components {
+  /* ... other component styles ... */
+
+  /* Ensure this rule is at the top level within the layer, */
+  /* NOT nested inside another rule's closing brace */
+  [data-radix-progress-indicator] {
+    @apply transition-transform duration-300 ease-out;
+    /* Or use transition-width if width is used for progress: */
+    /* @apply transition-width duration-300 ease-out; */
+  }
+
+  /* ... potentially more component styles ... */
+
+} /* <--- Closing brace for @layer components */
+
+@layer utilities {
+ /* ... your utility styles ... */
+}

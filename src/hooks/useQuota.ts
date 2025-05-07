@@ -1,11 +1,5 @@
 import useSWR from 'swr';
-
-export interface UserQuota {
-  used: number;
-  limit: number;
-  planName: string;
-  // Potentially add more fields here later, e.g., percentageUsed
-}
+import type { UserQuota } from '@/types/user';
 
 // Define a fetcher function for SWR (can be the same as in useUserSettings or a shared one)
 const fetcher = async (url: string) => {

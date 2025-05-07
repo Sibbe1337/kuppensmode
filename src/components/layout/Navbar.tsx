@@ -11,8 +11,6 @@ const Navbar = () => {
         <div className="flex items-center gap-4">
           <SignedIn>
             {/* Navigation links can go here when signed in */}
-            <span className="mr-4 hover:text-accent cursor-pointer">Dashboard</span>
-            <span className="hover:text-accent cursor-pointer">Settings</span>
             <UserButton afterSignOutUrl="/" />
           </SignedIn>
           <SignedOut>

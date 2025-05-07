@@ -63,7 +63,7 @@ const RestoreWizard: React.FC<RestoreWizardProps> = ({ snapshot, open, onOpenCha
   const [selectAllTargets, setSelectAllTargets] = useState(true);
   
   const [progressValue, setProgressValue] = useState(0);
-  const [statusMessage, setStatusMessage] = useState("Awaiting initiation...");
+  const [statusMessage, setStatusMessage] = useState("Awaiting connection to restore service...");
   const [isRestoreInProgress, setIsRestoreInProgress] = useState(false);
   const { toast } = useToast();
   const restoreStartTimeRef = useRef<number | null>(null);
@@ -77,7 +77,7 @@ const RestoreWizard: React.FC<RestoreWizardProps> = ({ snapshot, open, onOpenCha
       setCurrentStep(1);
       setIsRestoreInProgress(false);
       setProgressValue(0);
-      setStatusMessage("Awaiting initiation...");
+      setStatusMessage("Awaiting connection to restore service...");
       setCurrentRestoreId(null);
       restoreStartTimeRef.current = null;
 
@@ -103,21 +103,25 @@ const RestoreWizard: React.FC<RestoreWizardProps> = ({ snapshot, open, onOpenCha
 
   useEffect(() => {
     if (!lastEvent) {
-      if (currentRestoreId && isConnected) {
-        setStatusMessage("Restore stream connected, waiting for progress...");
-      } else if (currentRestoreId && !isConnected && !isRestoreInProgress) {
+      if (currentRestoreId && !isConnected && isRestoreInProgress) {
+        setStatusMessage("Connecting to restore stream...");
+      } else if (!currentRestoreId && !isRestoreInProgress) {
+        setStatusMessage("Awaiting initiation...");
       }
       return;
     }
 
-    if (lastEvent.type === 'progress') {
+    if (lastEvent.type === 'connected') {
+      setStatusMessage(lastEvent.message);
+    } else if (lastEvent.type === 'progress') {
+      console.log("RestoreWizard: Received progress event in useEffect", lastEvent);
       setProgressValue(lastEvent.percent);
       setStatusMessage(lastEvent.message);
       setIsRestoreInProgress(true);
     } else if (lastEvent.type === 'complete') {
       setProgressValue(100);
-      setStatusMessage("Restore completed successfully!");
-      toast({ title: "Restore Complete", description: "Your workspace has been successfully restored." });
+      setStatusMessage(lastEvent.message || "Restore completed successfully!");
+      toast({ title: "Restore Complete", description: lastEvent.message || "Your workspace has been successfully restored." });
       mutate('/api/snapshots');
       setIsRestoreInProgress(false);
       if (restoreStartTimeRef.current) {
@@ -137,7 +141,7 @@ const RestoreWizard: React.FC<RestoreWizardProps> = ({ snapshot, open, onOpenCha
       }
       setCurrentRestoreId(null);
     }
-  }, [lastEvent, isConnected, currentRestoreId, toast, mutate]);
+  }, [lastEvent, isConnected, currentRestoreId, toast, mutate, isRestoreInProgress]);
 
   useEffect(() => {
     if (restorableItems.length > 0) {
@@ -297,18 +301,11 @@ const RestoreWizard: React.FC<RestoreWizardProps> = ({ snapshot, open, onOpenCha
           </div>
         );
       case 3:
-        let step3StatusText = statusMessage;
-        if (currentRestoreId && !isConnected && !lastEvent && isRestoreInProgress) {
-            step3StatusText = "Connecting to restore stream...";
-        } else if (currentRestoreId && isConnected && !lastEvent && isRestoreInProgress) {
-            step3StatusText = "Restore stream connected, waiting for progress...";
-        }
-
         return (
           <div>
             <DialogDescription className="text-sm text-muted-foreground">Step 3: Restore Progress</DialogDescription>
             <div className="my-4 space-y-3">
-              <p className="text-sm">Status: <span className={`font-semibold ${lastEvent?.type === 'error' ? 'text-destructive' : ''}`}>{step3StatusText}</span></p>
+              <p className="text-sm">Status: <span className={`font-semibold ${lastEvent?.type === 'error' ? 'text-destructive' : ''}`}>{statusMessage}</span></p>
               <Progress value={progressValue} className="w-full" />
               {progressValue === 100 && lastEvent?.type === 'complete' && (
                 <p className="text-green-600 font-semibold text-sm">Restore completed successfully!</p>
@@ -333,6 +330,8 @@ const RestoreWizard: React.FC<RestoreWizardProps> = ({ snapshot, open, onOpenCha
   };
 
   const isDone = progressValue === 100 && !isRestoreInProgress;
+
+  console.log("RestoreWizard: Rendering with progressValue =", progressValue);
 
   return (
     <AnimatePresence>

@@ -97,15 +97,15 @@ export async function GET(request: Request) {
 
       // Update the parent user document
       await userDocRef.update({
-        notionConnected: true,
-        notionWorkspaceId: workspaceId,
-        notionWorkspaceName: workspaceName,
-        notionWorkspaceIcon: tokenData.workspace_icon, // if available
+        'settings.notionConnected': true,
+        'settings.notionWorkspaceId': workspaceId,
+        'settings.notionWorkspaceName': workspaceName,
+        'settings.notionWorkspaceIcon': tokenData.workspace_icon, // if available
         // Clear any previous error state related to Notion connection if you have one
-        // notionConnectionError: FieldValue.delete(), 
+        // 'settings.notionConnectionError': FieldValue.delete(), 
       });
 
-      console.log(`Notion token details stored for user ${userId}`);
+      console.log(`Notion token details stored for user ${userId} within settings field`);
 
       // 5. Redirect user back to the settings page (or a success page)
       return NextResponse.redirect(new URL('/dashboard/settings?notion=connected', request.url));
