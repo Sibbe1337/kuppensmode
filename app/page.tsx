@@ -9,6 +9,18 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Switch } from "@/components/ui/switch";
 import Marquee from "react-fast-marquee";
+import { Badge } from "@/components/ui/badge";
+import { loadStripe } from '@stripe/stripe-js';
+
+// Initialize Stripe.js outside component to avoid recreating on every render
+// Make sure NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY is set in your environment!
+const stripePromise = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY 
+    ? loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY)
+    : null;
+
+if (!stripePromise) {
+    console.warn('Stripe Publishable Key is not set. Stripe Checkout will not work.');
+}
 
 interface DemoModalProps {
   isOpen: boolean;
@@ -47,7 +59,11 @@ interface PricingCardProps {
   ctaVariant: "default" | "outline" | "secondary" | "ghost" | "link";
   isPrimary?: boolean;
   highlightText?: string;
-  ctaHref: string;
+  badgeText?: string;
+  ribbonText?: string;
+  ctaHref?: string;
+  onCtaClick?: () => void;
+  seatSelectorElement?: React.ReactNode;
 }
 
 const PricingCard: React.FC<PricingCardProps> = ({
@@ -59,17 +75,28 @@ const PricingCard: React.FC<PricingCardProps> = ({
   ctaVariant,
   isPrimary,
   highlightText,
+  badgeText,
+  ribbonText,
   ctaHref,
+  onCtaClick,
+  seatSelectorElement,
 }) => {
   return (
-    <div className={`p-6 md:p-8 rounded-lg flex flex-col ${isPrimary ? 'bg-gradient-to-br from-blue-600 to-indigo-700 text-white' : 'bg-zinc-800 text-zinc-100'} border ${isPrimary ? 'border-blue-500' : 'border-zinc-700'}`}>
+    <div className={`relative p-6 md:p-8 rounded-lg flex flex-col ${isPrimary ? 'bg-gradient-to-br from-blue-600 to-indigo-700 text-white' : 'bg-zinc-800 text-zinc-100'} border ${isPrimary ? 'border-blue-500' : 'border-zinc-700'}`}>
       {highlightText && (
-        <div className={`text-xs font-semibold mb-2 px-3 py-1 rounded-full self-start ${isPrimary ? 'bg-white/20 text-white' : 'bg-blue-500 text-white'}`}>
+        <div className={`absolute -top-3 left-3 text-xs font-semibold mb-2 px-3 py-1 rounded-full self-start ${isPrimary ? 'bg-white/90 text-blue-700' : 'bg-blue-500 text-white'}`}>
           {highlightText}
         </div>
       )}
-      <h3 className={`text-2xl font-semibold ${isPrimary ? 'text-white' : 'text-zinc-50'}`}>{planName}</h3>
-      <div className="my-4">
+      {badgeText && (
+         <div className="flex justify-center mb-3"> 
+            <Badge variant={isPrimary ? "secondary" : "default"} className={isPrimary ? "bg-white/90 text-blue-700" : ""}> 
+                {badgeText}
+            </Badge>
+         </div>
+      )}
+      <h3 className={`text-2xl font-semibold text-center ${isPrimary ? 'text-white' : 'text-zinc-50'}`}>{planName}</h3>
+      <div className="my-4 text-center">
         <span className={`text-4xl font-bold ${isPrimary ? 'text-white' : 'text-zinc-50'}`}>{price}</span>
         { price !== "Free" && <span className={`${isPrimary ? 'text-blue-100' : 'text-zinc-400'}`}>{priceFrequency}</span>}
       </div>
@@ -81,9 +108,19 @@ const PricingCard: React.FC<PricingCardProps> = ({
           </li>
         ))}
       </ul>
-      <Button asChild variant={ctaVariant} size="lg" className={`w-full ${isPrimary ? 'bg-white text-blue-600 hover:bg-blue-50' : ctaVariant === 'default' ? 'bg-blue-600 hover:bg-blue-700 text-white' : ctaVariant === 'secondary' ? 'bg-zinc-700 text-zinc-100 hover:bg-zinc-600' : 'border-zinc-500 hover:bg-zinc-700' }`}>
-        <Link href={ctaHref}>{ctaText}</Link>
-      </Button>
+      {seatSelectorElement}
+      {onCtaClick ? (
+          <Button variant={ctaVariant} size="lg" onClick={onCtaClick} className={`w-full mt-4 ${isPrimary ? 'bg-white text-blue-600 hover:bg-blue-50' : ctaVariant === 'default' ? 'bg-blue-600 hover:bg-blue-700 text-white' : ctaVariant === 'secondary' ? 'bg-zinc-700 text-zinc-100 hover:bg-zinc-600' : 'border-zinc-500 hover:bg-zinc-700' }`}>
+              {ctaText}
+          </Button>
+      ) : (
+          <Button asChild variant={ctaVariant} size="lg" className={`w-full mt-4 ${isPrimary ? 'bg-white text-blue-600 hover:bg-blue-50' : ctaVariant === 'default' ? 'bg-blue-600 hover:bg-blue-700 text-white' : ctaVariant === 'secondary' ? 'bg-zinc-700 text-zinc-100 hover:bg-zinc-600' : 'border-zinc-500 hover:bg-zinc-700' }`}>
+              <Link href={ctaHref || '#'}>{ctaText}</Link>
+          </Button>
+      )}
+      {ribbonText && (
+          <p className={`mt-3 text-xs text-center ${isPrimary ? 'text-blue-100' : 'text-zinc-500'}`}>{ribbonText}</p>
+      )}
     </div>
   );
 };
@@ -109,12 +146,17 @@ const HomePage: NextPage = () => {
   const [isDemoModalOpen, setIsDemoModalOpen] = useState(false);
   const [isAnnualPricing, setIsAnnualPricing] = useState(false);
   const [showStickyCta, setShowStickyCta] = useState(false);
+  const [teamSeatCount, setTeamSeatCount] = useState(1);
+  const [isCheckingOut, setIsCheckingOut] = useState(false);
 
-  const loomDemoUrl = "https://www.loom.com/embed/e5b8c04b393042f29a67901541137331"; // Replace with your actual Loom embed ID
+  const loomDemoUrl = "https://www.loom.com/embed/e5b8c04b393042f29a67901541137331";
+  const teamsMonthlyPricePerSeat = 2900;
+  const teamsAnnualPricePerSeat = 2400;
+  const teamsMonthlyPriceId = process.env.NEXT_PUBLIC_PRICE_TEAMS_MONTHLY;
+  const teamsAnnualPriceId = process.env.NEXT_PUBLIC_PRICE_TEAMS_ANNUAL;
 
   useEffect(() => {
     const handleScroll = () => {
-      // Show sticky CTA after scrolling down a bit (e.g., 300px)
       if (window.scrollY > 300) {
         setShowStickyCta(true);
       } else {
@@ -126,6 +168,73 @@ const HomePage: NextPage = () => {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
+  const handleTeamSeatChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    let count = parseInt(event.target.value, 10);
+    if (isNaN(count)) count = 1;
+    if (count < 1) count = 1;
+    if (count > 50) count = 50;
+    setTeamSeatCount(count);
+  };
+
+  const handleTeamCheckout = async () => {
+    if (isCheckingOut) return;
+    setIsCheckingOut(true);
+    console.log(`Initiating Teams checkout for ${teamSeatCount} seats, annual: ${isAnnualPricing}`);
+
+    const priceId = isAnnualPricing ? teamsAnnualPriceId : teamsMonthlyPriceId;
+    if (!priceId) {
+        console.error("Stripe Price ID for Teams plan is not configured in environment variables.");
+        alert("Configuration error: Price ID missing.");
+        setIsCheckingOut(false);
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/billing/checkout-session', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                priceId: priceId,
+                seats: teamSeatCount,
+                billingInterval: isAnnualPricing ? 'year' : 'month',
+            }),
+        });
+
+        const { sessionId, error } = await response.json();
+
+        if (!response.ok || error || !sessionId) {
+            throw new Error(error || 'Failed to create checkout session.');
+        }
+
+        console.log('Redirecting to Stripe Checkout with session ID:', sessionId);
+        
+        if (!stripePromise) {
+            throw new Error('Stripe.js is not configured. Publishable key missing.');
+        }
+
+        const stripe = await stripePromise;
+        if (!stripe) {
+            // This should ideally not happen if stripePromise was initialized
+            throw new Error('Stripe.js failed to load.');
+        }
+
+        const { error: stripeError } = await stripe.redirectToCheckout({ sessionId });
+
+        if (stripeError) {
+            // Handle error from redirectToCheckout (e.g., network issue, invalid session)
+            console.error("Stripe redirectToCheckout error:", stripeError);
+            throw new Error(`Failed to redirect to Stripe: ${stripeError.message}`);
+        }
+        // If redirectToCheckout is successful, the user is navigated away, 
+        // so code execution effectively stops here in the success case.
+
+    } catch (err: any) {
+        console.error("Checkout initiation failed:", err);
+        alert(`Checkout failed: ${err.message}`);
+    } finally {
+        setIsCheckingOut(false);
+    }
+  };
 
   return (
     <div className="bg-zinc-950 text-zinc-50 min-h-screen">
@@ -252,11 +361,11 @@ const HomePage: NextPage = () => {
                 highlightText="Ideal for Power Users"
                 ctaHref="/dashboard?plan=pro"
               />
-              {/* Teams Plan - New */}
+              {/* Teams Plan - Updated with state and seat selector */}
               <PricingCard
                 planName="Teams"
-                price={isAnnualPricing ? "$24" : "$29"}
-                priceFrequency={isAnnualPricing ? "/user/mo, billed annually" : "/user/mo"}
+                price={`$${((isAnnualPricing ? teamsAnnualPricePerSeat : teamsMonthlyPricePerSeat) * teamSeatCount / 100).toFixed(2)}`}
+                priceFrequency={isAnnualPricing ? "/total/mo, billed annually" : "/total/mo"}
                 features={[
                   "Increased Snapshot Quota (500/ws)",
                   "Unlimited Shared Workspaces",
@@ -267,11 +376,29 @@ const HomePage: NextPage = () => {
                   "Priority Chat Support (≤2h response)",
                   "Early Access to AI Features",
                 ]}
-                ctaText="Start 14-day Teams Trial"
+                ctaText={isCheckingOut ? "Processing..." : "Start 14-day Teams Trial"}
                 ctaVariant="default"
                 isPrimary={true}
                 highlightText="Most popular for companies"
-                ctaHref="/dashboard?plan=teams"
+                badgeText="Most popular for companies"
+                ribbonText="14-day free trial"
+                onCtaClick={handleTeamCheckout}
+                seatSelectorElement={(
+                  <div className="my-4 flex items-center justify-center gap-3">
+                    <label htmlFor="team-seats" className={`text-sm font-medium text-zinc-400`}>Seats:</label>
+                    <input 
+                      type="number"
+                      id="team-seats"
+                      name="team-seats"
+                      min="1"
+                      max="50"
+                      value={teamSeatCount}
+                      onChange={handleTeamSeatChange}
+                      className="w-16 p-1.5 border rounded bg-zinc-700/50 border-zinc-600 text-center text-zinc-100 focus:ring-blue-500 focus:border-blue-500"
+                      disabled={isCheckingOut}
+                    />
+                  </div>
+                )}
               />
             </div>
           </div>

@@ -16,6 +16,8 @@ const stripe = new Stripe(stripeSecretKey, {
 // Define expected request body structure
 interface CheckoutRequestBody {
   priceId: string; // Stripe Price ID (price_...)
+  seats?: number; // Number of seats (optional, defaults to 1)
+  billingInterval?: 'month' | 'year'; // Optional context from frontend
 }
 
 export async function POST(request: Request) {
@@ -32,12 +34,26 @@ export async function POST(request: Request) {
       return new NextResponse("Invalid JSON body", { status: 400 });
     }
 
-    const { priceId } = body;
+    const { priceId, seats = 1, billingInterval } = body;
     if (!priceId || !priceId.startsWith('price_')) {
       return new NextResponse("Invalid or missing Price ID", { status: 400 });
     }
+    if (typeof seats !== 'number' || !Number.isInteger(seats) || seats < 1) {
+        return new NextResponse("Invalid number of seats", { status: 400 });
+    }
 
-    console.log(`Creating checkout session for user: ${userId}, price: ${priceId}`);
+    console.log(`Creating checkout session for user: ${userId}, price: ${priceId}, seats: ${seats}, interval: ${billingInterval ?? 'N/A'}`);
+
+    // --- Fetch Price object to get metadata (e.g., trialDays) ---
+    let price: Stripe.Price | null = null;
+    try {
+        price = await stripe.prices.retrieve(priceId);
+        console.log("Retrieved Price object:", price.id, "Metadata:", price.metadata);
+    } catch (priceError: any) {
+        console.error(`Error retrieving Stripe Price ${priceId}:`, priceError);
+        return new NextResponse(`Invalid Price ID: ${priceError.message}`, { status: 404 });
+    }
+    // --- End Fetch Price ---
 
     // --- Get User Data (for Stripe Customer ID) ---
     let stripeCustomerId: string | undefined;
@@ -63,24 +79,36 @@ export async function POST(request: Request) {
     const successUrl = `${baseUrl}/dashboard?checkout=success&session_id={CHECKOUT_SESSION_ID}`;
     const cancelUrl = `${baseUrl}/dashboard?checkout=cancel`;
 
+    // Determine trial days from Price metadata
+    const trialDays = price.metadata?.trialDays ? parseInt(price.metadata.trialDays, 10) : undefined;
+    if (trialDays !== undefined && isNaN(trialDays)) {
+        console.warn(`Invalid non-numeric trialDays ('${price.metadata.trialDays}') found in metadata for price ${priceId}. Ignoring trial.`);
+    }
+    const effectiveTrialDays = (trialDays !== undefined && !isNaN(trialDays)) ? trialDays : undefined;
+
     // Create the Stripe Checkout Session
     const sessionParams: Stripe.Checkout.SessionCreateParams = {
       payment_method_types: ['card'],
       line_items: [
         {
           price: priceId,
-          quantity: 1,
+          quantity: seats,
         },
       ],
-      mode: 'subscription', // Use 'payment' for one-time purchases
+      mode: 'subscription',
       success_url: successUrl,
       cancel_url: cancelUrl,
-      client_reference_id: userId, // IMPORTANT: Link session to your user ID
-      // Add customer details
+      client_reference_id: userId,
       ...(stripeCustomerId ? { customer: stripeCustomerId } : {}),
-       // If no customer ID, Stripe might create one. Consider adding:
-       // customer_creation: stripeCustomerId ? undefined : 'always', // Create if not found
-       // Alternatively, pass customer_email if you fetch it from Clerk user
+      // Add subscription data: trial period and metadata for webhooks
+      subscription_data: {
+        ...(effectiveTrialDays && effectiveTrialDays > 0 && {
+            trial_period_days: effectiveTrialDays,
+        }),
+        metadata: {
+          userId: userId,
+        },
+      },
     };
 
     const checkoutSession = await stripe.checkout.sessions.create(sessionParams);

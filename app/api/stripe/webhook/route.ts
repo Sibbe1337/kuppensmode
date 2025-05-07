@@ -235,7 +235,46 @@ export async function POST(request: Request) {
       }
       break;
     
-    // ... handle other event types as needed (e.g., invoice.payment_failed)
+    // --- ADDED: Handle Payment Failure ---
+    case 'invoice.payment_failed':
+      const invoice = event.data.object as Stripe.Invoice;
+      console.log('Handling invoice.payment_failed', invoice.id);
+      const subscriptionIdFailed = typeof invoice.subscription === 'string' ? invoice.subscription : invoice.subscription?.id;
+
+      if (typeof subscriptionIdFailed === 'string') {
+        const subId: string = subscriptionIdFailed;
+        try {
+          // Retrieve the subscription to get metadata (userId)
+          const subscription = await stripe.subscriptions.retrieve(subId);
+          
+          const userIdFailed = subscription.metadata.userId;
+          if (!userIdFailed) {
+            console.warn(`Webhook Error: userId missing in metadata for failed subscription ${subId}`);
+            break; // Cannot identify user to downgrade
+          }
+
+          console.log(`Payment failed for subscription ${subId}, user ${userIdFailed}. Downgrading to Free plan.`);
+
+          // Revert user to the free plan
+          const userRefFailed = db.collection('users').doc(userIdFailed);
+          await userRefFailed.set({
+            quota: FREE_PLAN_QUOTA, // Set quota to free tier object
+            planId: FREE_PLAN_ID,
+            planName: FREE_PLAN_QUOTA.planName,
+            stripeSubscriptionStatus: 'past_due', // Or subscription.status based on what's relevant
+          }, { merge: true }); // Use merge:true to avoid overwriting other user data
+
+          console.log(`User ${userIdFailed} downgraded to Free plan due to payment failure.`);
+
+        } catch (error) {
+          console.error(`Error handling invoice.payment_failed for subscription ${subId}:`, error);
+          // Decide if error is critical enough to return 500 for retry
+        }
+      } else {
+        console.log(`Ignoring invoice.payment_failed for non-subscription invoice ${invoice.id}`);
+      }
+      break;
+      // --- END: Handle Payment Failure ---
 
     default:
       console.log(`Unhandled event type ${event.type}`);
