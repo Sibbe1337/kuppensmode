@@ -323,6 +323,7 @@ const RestoreWizard: React.FC<RestoreWizardProps> = ({ snapshot, open, onOpenCha
 
   const isDone = progressValue === 100 && !isRestoreInProgress;
 
+  console.log("RestoreWizard: Last Event on Render:", lastEvent);
   console.log("RestoreWizard: Rendering with progressValue =", progressValue);
 
   return (
