@@ -190,6 +190,9 @@ const SettingsPage = () => {
     );
   }
 
+  // Add console log here to check the value during render
+  console.log("Rendering Settings UI. notionConnected:", settings?.notionConnected);
+
   if (settings.notionConnected) {
     console.log("SettingsPage: Rendering CONNECTED Notion state.");
   } else {
