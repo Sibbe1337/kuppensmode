@@ -59,6 +59,16 @@ const modalVariants = {
   }
 };
 
+// Helper to extract the base snapshot ID (e.g., snap_...) from a full path/filename
+const getCleanSnapshotId = (fullId: string | undefined | null): string | null => {
+    if (!fullId) return null;
+    // Assumes format like "userId/snap_timestamp.json.gz" or just "snap_timestamp.json.gz"
+    const parts = fullId.split('/');
+    const filename = parts[parts.length - 1];
+    // Remove extension
+    return filename?.replace('.json.gz', '') ?? null;
+};
+
 const RestoreWizard: React.FC<RestoreWizardProps> = ({ snapshot, open, onOpenChange, onClose }) => {
   const [currentStep, setCurrentStep] = useState(1);
   const [selectAllTargets, setSelectAllTargets] = useState(true);
@@ -75,7 +85,9 @@ const RestoreWizard: React.FC<RestoreWizardProps> = ({ snapshot, open, onOpenCha
   const { mutate } = useSWRConfig();
   const { lastEvent, isConnected } = useRestoreProgress(currentRestoreId ?? undefined);
 
-  const snapshotContentUrl = snapshot ? `/api/snapshots/${snapshot.id}/content` : null;
+  // Use the helper function to clean the ID for the URL
+  const cleanSnapshotId = snapshot ? getCleanSnapshotId(snapshot.id) : null;
+  const snapshotContentUrl = cleanSnapshotId ? `/api/snapshots/${cleanSnapshotId}/content` : null;
   const { data: fetchedItems, error: fetchItemsError, isLoading: isLoadingItems } = useSWR<
     { id: string; name: string; type: 'database' | 'page' | string }[]
   >(
