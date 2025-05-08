@@ -44,15 +44,21 @@ const CreateSnapshotFAB = () => {
         timestamp: new Date().toISOString(),
     };
 
+    // --- Scroll table into view --- 
+    const tableElement = document.querySelector('.snapshots-table'); // Find table by class
+    if (tableElement) {
+        tableElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    // --- End Scroll ---
+
+    // Optimistic update
     mutate('/api/snapshots', 
-        (currentData: Snapshot[] | undefined) => [
-            tempSnapshot,
-            ...(currentData || [])
-        ],
-        false
+      (currentData: Snapshot[] | undefined) => [tempSnapshot, ...(currentData || [])], 
+      false
     );
 
-    toast({ title: "Snapshot Started", description: "We'll notify you when it's ready.", duration: 5000 });
+    // Updated Toast
+    toast({ title: "Snapshot Started", description: "Backup added to queue. It will appear as 'Completed' shortly.", duration: 5000 });
 
     try {
       const response = await fetch('/api/snapshots/create', { method: 'POST' });
@@ -60,9 +66,9 @@ const CreateSnapshotFAB = () => {
         const errorData = await response.json().catch(() => ({ message: 'Failed to trigger snapshot creation.' }));
         throw new Error(errorData.message || 'Failed to trigger snapshot creation.');
       }
-      toast({ title: "Snapshot Initiated", description: "Processing...", duration: 3000 }); 
-      mutate('/api/snapshots');
-      mutate('/api/user/quota');
+      // Don't show another success toast here, rely on revalidation
+      mutate('/api/snapshots'); 
+      mutate('/api/user/quota'); 
       posthog.capture('snapshot_initiated');
     } catch (error: any) {
       console.error("Error creating snapshot:", error);
