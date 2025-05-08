@@ -1,10 +1,34 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server'; 
-import { PubSub } from '@google-cloud/pubsub'; // Uncommented
+import { PubSub } from '@google-cloud/pubsub';
 
-// Initialize PubSub client (outside handler for potential reuse)
-const pubsub = new PubSub();
-const topicName = process.env.PUBSUB_SNAPSHOT_TOPIC || 'notion-lifeline-snapshot-requests'; // Use env var or default
+// --- GCP Client Initialization ---
+const projectId = process.env.GOOGLE_CLOUD_PROJECT;
+const keyJsonString = process.env.GCP_SERVICE_ACCOUNT_KEY_JSON;
+const topicName = process.env.PUBSUB_SNAPSHOT_TOPIC || 'notion-lifeline-snapshot-requests';
+
+let pubSubClientConfig: any = {
+  ...(projectId && { projectId }),
+};
+
+if (keyJsonString) {
+  try {
+    console.log('Attempting to use PubSub credentials from GCP_SERVICE_ACCOUNT_KEY_JSON env var.');
+    const credentials = JSON.parse(keyJsonString);
+    pubSubClientConfig = { ...pubSubClientConfig, credentials };
+  } catch (e) {
+    console.error("FATAL: Failed to parse GCP_SERVICE_ACCOUNT_KEY_JSON for PubSub.", e);
+    throw new Error("Invalid GCP Service Account Key JSON provided for PubSub.");
+  }
+} else if (process.env.NODE_ENV !== 'production') {
+  console.warn("GCP_SERVICE_ACCOUNT_KEY_JSON not set. Attempting Application Default Credentials for PubSub (may fail).");
+} else {
+  console.error('FATAL: GCP_SERVICE_ACCOUNT_KEY_JSON is not set in production. PubSub cannot authenticate.');
+  throw new Error("Missing GCP Service Account Key JSON for PubSub authentication.");
+}
+
+const pubsub = new PubSub(pubSubClientConfig);
+// --- End GCP Client Initialization ---
 
 export async function POST(request: Request) {
   try {
