@@ -36,6 +36,8 @@
   "exclude": [
     "node_modules",
     "functions",
-    "snapshot-worker"
+    "snapshot-worker",
+    "restore-worker",
+    "email-worker"
   ]
 }
