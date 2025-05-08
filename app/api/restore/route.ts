@@ -37,6 +37,7 @@ const pubsub = new PubSub(pubSubClientConfig);
 interface RestoreRequestBody {
   snapshotId: string;
   targets?: string[]; // Optional: specific databases/pages to restore
+  targetParentPageId?: string; // Optional: ID of the page to restore content into
 }
 
 export async function POST(request: Request) {
@@ -52,7 +53,7 @@ export async function POST(request: Request) {
     return new NextResponse("Invalid JSON body", { status: 400 });
   }
 
-  const { snapshotId, targets } = body;
+  const { snapshotId, targets, targetParentPageId } = body;
 
   if (!snapshotId) {
     return new NextResponse("Missing snapshotId", { status: 400 });
@@ -60,7 +61,7 @@ export async function POST(request: Request) {
 
   const restoreId = uuid(); // Generate unique job ID
 
-  console.log(`Queueing restore job: ${restoreId} for user: ${userId}, snapshot: ${snapshotId}`);
+  console.log(`Queueing restore job: ${restoreId} for user: ${userId}, snapshot: ${snapshotId}, targetParent: ${targetParentPageId ?? 'Default'}`);
 
   // Construct the job payload
   const job = {
@@ -68,6 +69,7 @@ export async function POST(request: Request) {
     userId,
     snapshotId,
     targets: targets ?? null, // Use null if targets are not provided
+    targetParentPageId: targetParentPageId ?? null, // Include targetParentPageId
     requestedAt: Date.now(),
   };
 
