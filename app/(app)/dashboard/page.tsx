@@ -5,17 +5,19 @@ import { SignedIn, SignedOut, SignInButton } from "@clerk/nextjs";
 import { Button } from "@/components/ui/button";
 import SnapshotsTable from "@/components/dashboard/SnapshotsTable"; 
 import { useToast } from "@/hooks/use-toast"; 
-import { mutate } from 'swr';
+import { mutate, useSWRConfig } from 'swr';
 import { Loader2, Plus } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import OnboardingTour from "@/components/OnboardingTour";
 import posthog from 'posthog-js';
 import { useQuota } from '@/hooks/useQuota';
+import type { Snapshot } from "@/types";
 
 const CreateSnapshotFAB = () => {
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
   const { quota, isLoading: isQuotaLoading, isError: isQuotaError } = useQuota();
+  const { mutate } = useSWRConfig();
 
   const isOverSnapshotLimit = !isQuotaLoading && !isQuotaError && quota ? quota.snapshotsUsed >= quota.snapshotsLimit : false;
   const snapshotsLimit = !isQuotaLoading && !isQuotaError && quota ? quota.snapshotsLimit : '...';
@@ -31,21 +33,43 @@ const CreateSnapshotFAB = () => {
       return;
     }
     setIsLoading(true);
+
+    const tempId = `temp-${Date.now()}`;
+    const tempSnapshot: Snapshot = {
+        id: tempId,
+        status: 'Pending',
+        sizeKB: 0,
+        timestamp: new Date().toISOString(),
+    };
+
+    mutate('/api/snapshots', 
+        (currentData: Snapshot[] | undefined) => [
+            tempSnapshot,
+            ...(currentData || [])
+        ],
+        false
+    );
+
+    toast({ title: "Snapshot Started", description: "We'll notify you when it's ready.", duration: 5000 });
+
     try {
       const response = await fetch('/api/snapshots/create', { method: 'POST' });
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ message: 'Failed to trigger snapshot creation.' }));
         throw new Error(errorData.message || 'Failed to trigger snapshot creation.');
       }
-      toast({ title: "Snapshot Initiated", description: "Your Notion workspace backup has started." });
-      
-      posthog.capture('snapshot_initiated');
-      
+      toast({ title: "Snapshot Initiated", description: "Processing...", duration: 3000 }); 
       mutate('/api/snapshots');
       mutate('/api/user/quota');
+      posthog.capture('snapshot_initiated');
     } catch (error: any) {
       console.error("Error creating snapshot:", error);
-      toast({ title: "Error", description: error.message || "Could not initiate snapshot creation.", variant: "destructive", });
+      toast({ title: "Snapshot Error", description: error.message || "Could not initiate creation.", variant: "destructive", });
+      mutate('/api/snapshots', 
+          (currentData: Snapshot[] | undefined) => (currentData || []).filter(snap => snap.id !== tempId),
+          false
+      );
+      mutate('/api/user/quota');
     } finally {
       setIsLoading(false);
     }

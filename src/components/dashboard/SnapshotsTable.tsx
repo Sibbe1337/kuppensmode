@@ -86,9 +86,9 @@ const SnapshotsTable = () => {
             <TableHeader>
               <TableRow>
                 <TableHead>Date & Time</TableHead>
-                <TableHead>Size</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
+                <TableHead>Size</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -97,9 +97,8 @@ const SnapshotsTable = () => {
                   <TableCell className="font-medium">
                     {new Date(snapshot.timestamp).toLocaleString()}
                   </TableCell>
-                  <TableCell>{(snapshot.sizeKB / 1024).toFixed(2)} MB</TableCell>
                   <TableCell>
-                    <Badge variant={snapshot.status === "Completed" ? "default" : "secondary"}>
+                    <Badge variant={snapshot.status === "Completed" ? "success" : "secondary"}>
                       {snapshot.status}
                     </Badge>
                   </TableCell>
@@ -113,6 +112,7 @@ const SnapshotsTable = () => {
                       Restore
                     </Button>
                   </TableCell>
+                  <TableCell>{(snapshot.sizeKB / 1024).toFixed(2)} MB</TableCell>
                 </TableRow>
               ))}
             </TableBody>
