@@ -1,0 +1,26 @@
+{
+  "name": "snapshot-worker",
+  "version": "0.0.1",
+  "private": true,
+  "main": "lib/index.js",
+  "scripts": {
+    "build": "tsc",
+    "gcp-build": "npm run build", 
+    "start": "functions-framework --target=snapshotWorker --port=8080"
+  },
+  "dependencies": {
+    "@google-cloud/functions-framework": "^3.4.0",
+    "@google-cloud/firestore": "^7.11.0",
+    "@google-cloud/storage": "^7.16.0",
+    "@notionhq/client": "^2.3.0",
+    "@google-cloud/secret-manager": "^5.5.0",
+    "jszip": "^3.10.1",
+    "zlib": "^1.0.5",
+    "p-queue": "^7.4.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/jszip": "^3.4.1",
+    "typescript": "^5"
+  }
+} 
