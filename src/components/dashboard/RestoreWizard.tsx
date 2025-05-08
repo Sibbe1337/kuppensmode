@@ -22,6 +22,8 @@ import posthog from 'posthog-js';
 import { Loader2 } from 'lucide-react';
 import { useSWRConfig } from 'swr';
 import { useRestoreProgress, RestoreEvent } from '@/hooks/useRestoreProgress';
+import { fetcher } from "@/lib/fetcher";
+import useSWR from 'swr';
 
 interface RestoreWizardProps {
   snapshot: Snapshot | null;
@@ -33,7 +35,7 @@ interface RestoreWizardProps {
 interface RestorableItem {
   id: string;
   name: string;
-  type: 'database' | 'page';
+  type: 'database' | 'page' | string;
   selected: boolean;
 }
 
@@ -59,9 +61,10 @@ const modalVariants = {
 
 const RestoreWizard: React.FC<RestoreWizardProps> = ({ snapshot, open, onOpenChange, onClose }) => {
   const [currentStep, setCurrentStep] = useState(1);
-  const [restorableItems, setRestorableItems] = useState<RestorableItem[]>([]);
   const [selectAllTargets, setSelectAllTargets] = useState(true);
   
+  const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
+
   const [progressValue, setProgressValue] = useState(0);
   const [statusMessage, setStatusMessage] = useState("Awaiting connection to restore service...");
   const [isRestoreInProgress, setIsRestoreInProgress] = useState(false);
@@ -72,6 +75,27 @@ const RestoreWizard: React.FC<RestoreWizardProps> = ({ snapshot, open, onOpenCha
   const { mutate } = useSWRConfig();
   const { lastEvent, isConnected } = useRestoreProgress(currentRestoreId ?? undefined);
 
+  const snapshotContentUrl = snapshot ? `/api/snapshots/${snapshot.id}/content` : null;
+  const { data: fetchedItems, error: fetchItemsError, isLoading: isLoadingItems } = useSWR<
+    { id: string; name: string; type: 'database' | 'page' | string }[]
+  >(
+    open && currentStep === 2 && snapshotContentUrl ? snapshotContentUrl : null,
+    fetcher,
+    { 
+        revalidateOnFocus: false, 
+        shouldRetryOnError: false,
+        onError: (err) => console.error("Error fetching snapshot content:", err)
+    }
+  );
+  
+  const restorableItems: RestorableItem[] = React.useMemo(() => {
+    if (!fetchedItems) return [];
+    return fetchedItems.map(item => ({
+        ...item,
+        selected: selectedItemIds.has(item.id)
+    }));
+  }, [fetchedItems, selectedItemIds]);
+
   useEffect(() => {
     if (open) {
       setCurrentStep(1);
@@ -81,25 +105,22 @@ const RestoreWizard: React.FC<RestoreWizardProps> = ({ snapshot, open, onOpenCha
       setCurrentRestoreId(null);
       restoreStartTimeRef.current = null;
 
-      if (snapshot) {
-        const itemsFromSnapshot: Omit<RestorableItem, 'selected'>[] = [
-          { id: 'db_tasks_123', name: 'Company Tasks Q3', type: 'database' },
-          { id: 'db_projects_456', name: 'Project Phoenix Docs', type: 'database' },
-          { id: 'page_roadmap_789', name: 'Product Roadmap 2024', type: 'page' },
-          { id: 'page_onboarding_abc', name: 'New Hire Onboarding Guide', type: 'page' },
-          { id: 'db_fin_xyz', name: 'Financials Q3', type: 'database' },
-          { id: 'page_mkt_def', name: 'Marketing Campaign Plan', type: 'page' },
-        ];
-        setRestorableItems(itemsFromSnapshot.map(item => ({ ...item, selected: true })));
-        setSelectAllTargets(true);
-      } else {
-        setRestorableItems([]);
-      }
+      if (fetchedItems && selectedItemIds.size === 0) {
+          const initialIds = new Set(fetchedItems.map(item => item.id));
+          setSelectedItemIds(initialIds);
+          setSelectAllTargets(true);
+      } 
+       else if (snapshot && !fetchedItems) {
+            setSelectedItemIds(new Set());
+            setSelectAllTargets(true);
+       }
     } else {
       setIsRestoreInProgress(false);
       setCurrentRestoreId(null);
+      setSelectedItemIds(new Set());
+      setSelectAllTargets(true);
     }
-  }, [open, snapshot]);
+  }, [open, snapshot, fetchedItems]);
 
   useEffect(() => {
     if (!lastEvent) {
@@ -144,15 +165,15 @@ const RestoreWizard: React.FC<RestoreWizardProps> = ({ snapshot, open, onOpenCha
   }, [lastEvent, isConnected, currentRestoreId, toast, mutate, isRestoreInProgress]);
 
   useEffect(() => {
-    if (restorableItems.length > 0) {
-      const allSelected = restorableItems.every(item => item.selected);
-      if (allSelected !== selectAllTargets) {
-        setSelectAllTargets(allSelected);
+      if (restorableItems.length > 0) {
+          const allSelected = restorableItems.length === selectedItemIds.size && restorableItems.every(item => selectedItemIds.has(item.id));
+          if (allSelected !== selectAllTargets) {
+              setSelectAllTargets(allSelected);
+          }
+      } else if (selectAllTargets) {
+          setSelectAllTargets(false);
       }
-    } else if (selectAllTargets) {
-        setSelectAllTargets(false);
-    }
-  }, [restorableItems, selectAllTargets]);
+  }, [selectedItemIds, restorableItems, selectAllTargets]);
 
   if (!snapshot) {
     return null;
@@ -161,17 +182,16 @@ const RestoreWizard: React.FC<RestoreWizardProps> = ({ snapshot, open, onOpenCha
   const handleBeginRestore = async () => {
     if (!snapshot || currentRestoreId) return;
 
-    const selectedTargetIds = restorableItems
-      .filter(item => item.selected)
-      .map(i => i.id);
+    const selectedIdsArray = Array.from(selectedItemIds);
 
-    console.log("Attempting to initiate restore for snapshot:", snapshot.id, "with targets:", selectedTargetIds);
+    console.log("Attempting to initiate restore for snapshot:", snapshot.id, "with targets:", selectedIdsArray);
     
+    setCurrentStep(3);
     setProgressValue(0);
     setStatusMessage("Initiating restore..."); 
     setIsRestoreInProgress(true);
     restoreStartTimeRef.current = Date.now();
-    posthog.capture('restore_started', { snapshot_id: snapshot.id, target_count: selectedTargetIds.length });
+    posthog.capture('restore_started', { snapshot_id: snapshot.id, target_count: selectedIdsArray.length });
 
     try {
       const response = await fetch('/api/restore', {
@@ -179,7 +199,7 @@ const RestoreWizard: React.FC<RestoreWizardProps> = ({ snapshot, open, onOpenCha
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           snapshotId: snapshot.id, 
-          targets: selectedTargetIds 
+          targets: selectedIdsArray 
         }),
       });
 
@@ -221,17 +241,25 @@ const RestoreWizard: React.FC<RestoreWizardProps> = ({ snapshot, open, onOpenCha
   const goToPreviousStep = () => setCurrentStep((prev) => Math.max(prev - 1, 1));
 
   const handleItemToggle = (itemId: string) => {
-    setRestorableItems(prevItems =>
-      prevItems.map(item =>
-        item.id === itemId ? { ...item, selected: !item.selected } : item
-      )
-    );
+    setSelectedItemIds(prevIds => {
+        const newIds = new Set(prevIds);
+        if (newIds.has(itemId)) {
+            newIds.delete(itemId);
+        } else {
+            newIds.add(itemId);
+        }
+        return newIds;
+    });
   };
 
   const handleSelectAllToggle = () => {
     const newSelectAllState = !selectAllTargets;
     setSelectAllTargets(newSelectAllState);
-    setRestorableItems(items => items.map(item => ({ ...item, selected: newSelectAllState })));
+    if (newSelectAllState) {
+        setSelectedItemIds(new Set(fetchedItems?.map(item => item.id) ?? []));
+    } else {
+        setSelectedItemIds(new Set());
+    }
   };
 
   const effectiveOnClose = () => {
@@ -259,45 +287,60 @@ const RestoreWizard: React.FC<RestoreWizardProps> = ({ snapshot, open, onOpenCha
         return (
           <div>
             <DialogDescription className="text-sm text-muted-foreground">Step 2: Select Items to Restore</DialogDescription>
-            <div className="flex items-center space-x-2 my-4 p-2 border-b">
-              <Checkbox 
-                id="select-all-targets"
-                checked={selectAllTargets}
-                onCheckedChange={handleSelectAllToggle}
-                disabled={isRestoreInProgress}
-              />
-              <label
-                htmlFor="select-all-targets"
-                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-              >
-                Select All / Deselect All
-              </label>
-            </div>
-            <ScrollArea className="h-[200px] w-full rounded-md border p-2">
-              {restorableItems.length > 0 ? (
-                restorableItems.map((item) => (
-                  <div key={item.id} className="flex items-center space-x-2 mb-1 p-1.5 hover:bg-muted/50 rounded-md">
-                    <Checkbox 
-                      id={`item-${item.id}`}
-                      checked={item.selected}
-                      onCheckedChange={() => handleItemToggle(item.id)}
-                      disabled={isRestoreInProgress}
-                    />
-                    <label 
-                      htmlFor={`item-${item.id}`}
-                      className="flex-1 text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                    >
-                      {item.name} <span className="text-xs text-muted-foreground">({item.type})</span>
-                    </label>
-                  </div>
-                ))
-              ) : (
-                <p className="text-sm text-muted-foreground text-center py-4">No restorable items found in this snapshot's metadata.</p>
-              )}
-            </ScrollArea>
-            <p className="text-xs text-muted-foreground mt-2">
-              Selected {restorableItems.filter(item => item.selected).length} of {restorableItems.length} items to restore.
-            </p>
+            {isLoadingItems && (
+                <div className="flex justify-center items-center h-[200px]">
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                </div>
+            )}
+            {fetchItemsError && (
+                <div className="text-destructive text-sm text-center my-4 p-4 border border-destructive/50 rounded-md bg-destructive/10">
+                    <p>Error loading snapshot items:</p>
+                    <p className="text-xs">{fetchItemsError.message || "Could not fetch item list."}</p>
+                </div>
+            )}
+            {!isLoadingItems && !fetchItemsError && fetchedItems && (
+              <>
+                <div className="flex items-center space-x-2 my-4 p-2 border-b">
+                  <Checkbox 
+                    id="select-all-targets"
+                    checked={selectAllTargets}
+                    onCheckedChange={handleSelectAllToggle}
+                    disabled={isRestoreInProgress}
+                  />
+                  <label
+                    htmlFor="select-all-targets"
+                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                  >
+                    Select All / Deselect All
+                  </label>
+                </div>
+                <ScrollArea className="h-[200px] w-full rounded-md border p-2">
+                  {restorableItems.length > 0 ? (
+                    restorableItems.map((item) => (
+                      <div key={item.id} className="flex items-center space-x-2 mb-1 p-1.5 hover:bg-muted/50 rounded-md">
+                        <Checkbox 
+                          id={`item-${item.id}`}
+                          checked={item.selected}
+                          onCheckedChange={() => handleItemToggle(item.id)}
+                          disabled={isRestoreInProgress}
+                        />
+                        <label 
+                          htmlFor={`item-${item.id}`}
+                          className="flex-1 text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                        >
+                          {item.name} <span className="text-xs text-muted-foreground">({item.type})</span>
+                        </label>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-sm text-muted-foreground text-center py-4">No restorable items found in this snapshot.</p>
+                  )}
+                </ScrollArea>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Selected {selectedItemIds.size} of {fetchedItems.length} items to restore.
+                </p>
+              </>
+            )}
           </div>
         );
       case 3:
@@ -316,8 +359,8 @@ const RestoreWizard: React.FC<RestoreWizardProps> = ({ snapshot, open, onOpenCha
             </div>
             <p className="text-sm text-muted-foreground mb-2">Selected targets for restore:</p>
             <ScrollArea className="h-[80px] w-full rounded-md border p-2 text-xs bg-muted/50">
-              {restorableItems.filter(item => item.selected).length > 0 ? (
-                restorableItems.filter(item => item.selected).map(item => item.name).join(", ")
+              {selectedItemIds.size > 0 ? (
+                 restorableItems.filter(item => selectedItemIds.has(item.id)).map(item => item.name).join(", ")
               ) : (
                 "Full snapshot restore (no specific targets selected)."
               )}
@@ -370,7 +413,10 @@ const RestoreWizard: React.FC<RestoreWizardProps> = ({ snapshot, open, onOpenCha
                   {currentStep < 3 && (
                     <Button 
                       onClick={goToNextStep}
-                      disabled={isRestoreInProgress || (currentStep === 2 && restorableItems.filter(item => item.selected).length === 0)}
+                      disabled={
+                        isRestoreInProgress || 
+                        (currentStep === 2 && (isLoadingItems || fetchItemsError || selectedItemIds.size === 0))
+                      }
                     >
                       Next
                     </Button>
@@ -379,7 +425,7 @@ const RestoreWizard: React.FC<RestoreWizardProps> = ({ snapshot, open, onOpenCha
                   {currentStep === 3 && !isDone && (
                     <Button 
                       onClick={handleBeginRestore}
-                      disabled={isRestoreInProgress || (restorableItems.filter(item => item.selected).length === 0) || !!currentRestoreId}
+                      disabled={isRestoreInProgress || selectedItemIds.size === 0 || !!currentRestoreId}
                     >
                       {isRestoreInProgress && !currentRestoreId && <Loader2 className="mr-2 h-4 w-4 animate-spin" /> }
                       {isRestoreInProgress ? (currentRestoreId ? "Restoring..." : "Initiating...") : "Begin Restore"}
