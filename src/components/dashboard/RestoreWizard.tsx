@@ -249,8 +249,22 @@ const RestoreWizard: React.FC<RestoreWizardProps> = ({ snapshot, open, onOpenCha
     }
   };
 
-  const goToNextStep = () => setCurrentStep((prev) => Math.min(prev + 1, 3));
-  const goToPreviousStep = () => setCurrentStep((prev) => Math.max(prev - 1, 1));
+  const goToNextStep = () => {
+    console.log('goToNextStep called! Current step:', currentStep);
+    setCurrentStep((prev) => {
+        const nextStep = Math.min(prev + 1, 3);
+        console.log('Setting currentStep to:', nextStep);
+        return nextStep;
+    });
+  };
+  const goToPreviousStep = () => {
+     console.log('goToPreviousStep called! Current step:', currentStep);
+      setCurrentStep((prev) => {
+          const prevStep = Math.max(prev - 1, 1);
+          console.log('Setting currentStep to:', prevStep);
+          return prevStep;
+      });
+  }
 
   const handleItemToggle = (itemId: string) => {
     setSelectedItemIds(prevIds => {
