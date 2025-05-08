@@ -7,16 +7,19 @@ import type { UserSettings, UserQuota } from '@/types/user'; // Assuming these a
 import { DEFAULT_USER_SETTINGS, DEFAULT_USER_QUOTA } from '@/config/defaults'; // Assuming these are correctly aliased
 
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
-const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+const webhookSecretEnv = process.env.STRIPE_WEBHOOK_SECRET;
 
 if (!stripeSecretKey) {
   console.error("STRIPE_SECRET_KEY environment variable not set.");
   throw new Error("Stripe configuration error");
 }
-if (!webhookSecret) {
+if (!webhookSecretEnv) {
   console.error("STRIPE_WEBHOOK_SECRET environment variable not set.");
   throw new Error("Stripe webhook configuration error");
 }
+
+// Assign to a new constant after the check, ensuring it's a string
+const verifiedWebhookSecret: string = webhookSecretEnv;
 
 const stripe = new Stripe(stripeSecretKey, {
   apiVersion: '2024-06-20',
@@ -75,7 +78,7 @@ export async function POST(request: Request) {
   let event: Stripe.Event;
 
   try {
-    event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
+    event = stripe.webhooks.constructEvent(body, signature, verifiedWebhookSecret);
   } catch (err: any) {
     console.error(`Webhook signature verification failed: ${err.message}`);
     return new NextResponse(`Webhook Error: ${err.message}`, { status: 400 });
