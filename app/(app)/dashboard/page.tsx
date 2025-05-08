@@ -4,26 +4,26 @@ import React, { useState } from 'react';
 import { SignedIn, SignedOut, SignInButton } from "@clerk/nextjs";
 import { Button } from "@/components/ui/button";
 import SnapshotsTable from "@/components/dashboard/SnapshotsTable"; 
+import UsageMeter from "@/components/dashboard/UsageMeter"; 
+import ActivationChecklist from "@/components/dashboard/ActivationChecklist"; 
 import { useToast } from "@/hooks/use-toast"; 
-import { mutate, useSWRConfig } from 'swr';
+import { useSWRConfig } from 'swr';
 import { Loader2, Plus } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import OnboardingTour from "@/components/OnboardingTour";
 import posthog from 'posthog-js';
 import { useQuota } from '@/hooks/useQuota';
 import type { Snapshot } from "@/types";
-import UsageMeter from "@/components/dashboard/UsageMeter";
-import ActivationChecklist from "@/components/dashboard/ActivationChecklist";
 
-const CreateSnapshotFAB = () => {
-  const [isLoading, setIsLoading] = useState(false);
+export default function DashboardPage() {
   const { toast } = useToast();
-  const { quota, isLoading: isQuotaLoading, isError: isQuotaError } = useQuota();
   const { mutate } = useSWRConfig();
+  const [isCreatingSnapshot, setIsCreatingSnapshot] = useState(false);
+  const { quota, isLoading: isQuotaLoading, isError: isQuotaError } = useQuota(); // Fetch quota here for button logic
 
   const isOverSnapshotLimit = !isQuotaLoading && !isQuotaError && quota ? quota.snapshotsUsed >= quota.snapshotsLimit : false;
-  const snapshotsLimit = !isQuotaLoading && !isQuotaError && quota ? quota.snapshotsLimit : '...';
 
+  // Moved handleCreateSnapshot logic here
   const handleCreateSnapshot = async () => {
     if (isOverSnapshotLimit || isQuotaLoading || isQuotaError) {
         if (isOverSnapshotLimit) {
@@ -34,31 +34,29 @@ const CreateSnapshotFAB = () => {
         }
       return;
     }
-    setIsLoading(true);
+    setIsCreatingSnapshot(true);
 
     const tempId = `temp-${Date.now()}`;
-    const tempSnapshot: Snapshot = {
+    const tempSnapshot: Partial<Snapshot> = { // Use Partial<Snapshot>
         id: tempId,
         status: 'Pending',
         sizeKB: 0,
         timestamp: new Date().toISOString(),
     };
 
-    // --- Scroll table into view --- 
-    const tableElement = document.querySelector('.snapshots-table'); // Find table by class
+    // Scroll table into view (keep this)
+    const tableElement = document.querySelector('.snapshots-table'); 
     if (tableElement) {
         tableElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
-    // --- End Scroll ---
 
-    // Optimistic update
     mutate('/api/snapshots', 
-      (currentData: Snapshot[] | undefined) => [tempSnapshot, ...(currentData || [])], 
+      (currentData: Snapshot[] | undefined) => [tempSnapshot as Snapshot, ...(currentData || [])], 
       false
     );
 
     // Updated Toast
-    toast({ title: "Snapshot Started", description: "Backup added to queue. It will appear as 'Completed' shortly.", duration: 5000 });
+    toast({ title: "Backup Started", description: "Your backup is in progress. You can continue working.", duration: 5000 });
 
     try {
       const response = await fetch('/api/snapshots/create', { method: 'POST' });
@@ -66,7 +64,6 @@ const CreateSnapshotFAB = () => {
         const errorData = await response.json().catch(() => ({ message: 'Failed to trigger snapshot creation.' }));
         throw new Error(errorData.message || 'Failed to trigger snapshot creation.');
       }
-      // Don't show another success toast here, rely on revalidation
       mutate('/api/snapshots'); 
       mutate('/api/user/quota'); 
       posthog.capture('snapshot_initiated');
@@ -79,44 +76,38 @@ const CreateSnapshotFAB = () => {
       );
       mutate('/api/user/quota');
     } finally {
-      setIsLoading(false);
+      setIsCreatingSnapshot(false);
     }
   };
 
-  const fabButton = (
-    <Button 
-      className="create-snapshot-fab fixed bottom-8 right-8 rounded-full w-16 h-16 shadow-lg text-2xl z-50"
-      aria-label={isOverSnapshotLimit ? `Snapshot limit reached (${snapshotsLimit})` : isQuotaLoading ? "Loading quota..." : "Create new snapshot"}
-      onClick={handleCreateSnapshot}
-      disabled={isLoading || isQuotaLoading || isOverSnapshotLimit || isQuotaError}
-    >
-      {isLoading || isQuotaLoading ? <Loader2 className="h-8 w-8 animate-spin" /> : <Plus className="h-8 w-8" /> }
-    </Button>
-  );
-
-  if (isOverSnapshotLimit) {
-    return (
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger asChild><span tabIndex={0}>{fabButton}</span></TooltipTrigger>
-          <TooltipContent><p>Snapshot limit ({snapshotsLimit}) reached. Upgrade plan for more.</p></TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-    );
-  }
-  return fabButton;
-};
-
-export default function DashboardPage() {
   return (
     <>
       <SignedIn>
         <div className="relative space-y-6">
-          <h1 className="text-2xl font-semibold">My Notion Snapshots</h1>
-          <ActivationChecklist />
-          <UsageMeter />
+          {/* Header Row */}
+          <div className="flex justify-between items-center gap-4">
+            <div>
+              <h1 className="text-2xl font-semibold">Latest Back-ups</h1> {/* Updated Title */} 
+              <div className="mt-1">
+                  <UsageMeter /> {/* Inline Usage Meter */} 
+              </div>
+            </div>
+            <Button 
+              onClick={handleCreateSnapshot} 
+              disabled={isCreatingSnapshot || isQuotaLoading || isOverSnapshotLimit || isQuotaError}
+            >
+              {isCreatingSnapshot ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
+              New Snapshot
+            </Button>
+          </div>
+
+          {/* Checklist (Moved below table for less prominence initially) */}
+          <ActivationChecklist /> 
+
+          {/* Snapshots Table */}
           <SnapshotsTable />
-          <CreateSnapshotFAB />
+
+          {/* Onboarding Tour (keep) */}
           <OnboardingTour /> 
         </div>
       </SignedIn>

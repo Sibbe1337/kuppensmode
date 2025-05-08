@@ -17,10 +17,16 @@ import RestoreWizard from './RestoreWizard';
 import type { Snapshot } from "@/types";
 import { fetcher } from "@/lib/fetcher";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AlertCircle, Inbox, Zap } from 'lucide-react';
+import { AlertCircle, Inbox, Zap, MoreHorizontal } from 'lucide-react';
 import { EmptyState } from "@/components/ui/EmptyState";
 import { timeAgo } from "@/lib/utils";
 import { useQuota } from '@/hooks/useQuota';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 const SnapshotsTable = () => {
   // console.log("!!! SnapshotsTable function invoked !!!"); 
@@ -108,58 +114,63 @@ const SnapshotsTable = () => {
               </p>
             )}
             <Table>
-            <TableCaption>A list of your recent Notion snapshots.</TableCaption>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Date & Time</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-                <TableHead>Size</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
+              <TableCaption>Your recent Notion workspace backups.</TableCaption>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Date & Time</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Size</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
               {snapshots.map((snapshot, index) => (
-                <TableRow key={snapshot.id}>
+                <TableRow key={snapshot.id} className="hover:bg-muted/50">
                   <TableCell className="font-medium">
                     {new Date(snapshot.timestamp).toLocaleString()}
                   </TableCell>
                   <TableCell>
-                    <Badge variant={snapshot.status === "Completed" ? "success" : "secondary"}>
-                      {snapshot.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right space-x-2">
-                    {isStarterPlan && (
-                      <Button 
-                        variant="outline"
-                        size="sm"
-                        className="border-yellow-500 text-yellow-600 hover:bg-yellow-50 hover:text-yellow-700 py-1 px-2 h-auto text-xs"
-                        onClick={handleUpgradeClick}
-                        title="Upgrade for priority restore"
-                      >
-                        <Zap className="h-3 w-3 mr-1"/> Priority
-                      </Button>
+                    {snapshot.status !== "Completed" ? (
+                       <Badge variant={snapshot.status === "Failed" ? "destructive" : "secondary"}>
+                         {snapshot.status}
+                       </Badge>
+                    ) : (
+                       <span className="text-sm text-muted-foreground">Completed</span>
                     )}
-                    <Button 
-                      className={index === 0 ? "restore-button" : ""} 
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleRestoreClick(snapshot)}
-                    >
-                      Restore
-                    </Button>
                   </TableCell>
-                  <TableCell>{(snapshot.sizeKB / 1024).toFixed(2)} MB</TableCell>
+                   <TableCell className="text-xs text-muted-foreground">
+                       {(snapshot.sizeKB / 1024).toFixed(2)} MB
+                   </TableCell>
+                  <TableCell className="text-right">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" className="h-8 w-8 p-0">
+                          <span className="sr-only">Open menu</span>
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => handleRestoreClick(snapshot)}>
+                          Restore Snapshot
+                        </DropdownMenuItem>
+                        {isStarterPlan && (
+                           <DropdownMenuItem onClick={handleUpgradeClick} className="text-yellow-600 focus:text-yellow-700 focus:bg-yellow-50">
+                             <Zap className="h-4 w-4 mr-2"/> Priority Restore (Upgrade)
+                           </DropdownMenuItem>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
-          </Table>
-          <RestoreWizard 
-            snapshot={selectedSnapshot}
-            open={isWizardOpen}
-            onOpenChange={setIsWizardOpen}
-            onClose={() => setIsWizardOpen(false)}
-          />
+            </Table>
+            <RestoreWizard 
+              snapshot={selectedSnapshot}
+              open={isWizardOpen}
+              onOpenChange={setIsWizardOpen}
+              onClose={() => setIsWizardOpen(false)}
+            />
         </div>
       );
   } 

@@ -2,7 +2,6 @@
 
 import React, { useState } from 'react';
 import { useQuota } from '@/hooks/useQuota';
-import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AlertCircle, Zap, Loader2 } from 'lucide-react';
@@ -97,43 +96,38 @@ const UsageMeter: React.FC = () => {
   };
 
   if (isQuotaLoading) {
-    return <Skeleton className="h-10 w-full max-w-sm" />;
+    return <Skeleton className="h-4 w-32" />;
   }
 
   if (isQuotaError || !quota) {
     return (
-      <div className="text-xs text-destructive flex items-center gap-1">
+      <span className="text-xs text-destructive flex items-center gap-1">
         <AlertCircle className="h-3 w-3" />
-        <span>Error loading usage data.</span>
-      </div>
+        <span>Usage Error</span>
+      </span>
     );
   }
 
   const { planName, snapshotsUsed, snapshotsLimit } = quota;
-  const usagePercent = snapshotsLimit > 0 ? Math.min(100, (snapshotsUsed / snapshotsLimit) * 100) : 0;
+  const isStarter = planName.toLowerCase() === 'starter';
 
   return (
-    <div className="p-3 border rounded-lg bg-card text-card-foreground shadow-sm max-w-sm text-sm space-y-2">
-      <div className="flex justify-between items-center">
-        <span className="font-medium">{planName} Plan</span>
-        {planName.toLowerCase() === 'starter' && (
+    <span className="text-sm text-muted-foreground flex items-center gap-2">
+      <span>Back-ups: {snapshotsUsed} / {snapshotsLimit}</span>
+      <span className="text-xs bg-secondary text-secondary-foreground px-1.5 py-0.5 rounded-full">{planName}</span>
+      {isStarter && (
           <Button 
-            variant="outline"
-            size="sm"
+            variant="link"
+            size="sm" 
             onClick={handleUpgradeClick}
             disabled={isRedirecting || plansLoading}
-            className="py-1 px-2 h-auto"
+            className="text-xs h-auto p-0 text-primary hover:underline"
           >
-            {isRedirecting || plansLoading ? <Loader2 className="h-3 w-3 mr-1 animate-spin"/> : <Zap className="h-3 w-3 mr-1" />}
-            Upgrade
+            {isRedirecting || plansLoading ? <Loader2 className="h-3 w-3 mr-1 animate-spin"/> : null}
+            (Upgrade)
           </Button>
         )}
-      </div>
-      <Progress value={usagePercent} className="h-2" />
-      <div className="text-xs text-muted-foreground">
-        Snapshots used: {snapshotsUsed} / {snapshotsLimit}
-      </div>
-    </div>
+    </span>
   );
 };
 
