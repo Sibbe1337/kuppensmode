@@ -1,12 +1,34 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { Storage } from '@google-cloud/storage'; // Uncommented
+import { Storage } from '@google-cloud/storage';
 import type { Snapshot } from '@/types';
 
 // Initialize GCS Storage client
-// Ensure your GCP credentials are configured correctly (e.g., GOOGLE_APPLICATION_CREDENTIALS)
-const storage = new Storage();
+const projectId = process.env.GOOGLE_CLOUD_PROJECT;
+const keyJsonString = process.env.GCP_SERVICE_ACCOUNT_KEY_JSON;
 const bucketName = process.env.GCS_BUCKET_NAME;
+
+let storageClientConfig: any = {
+  ...(projectId && { projectId }),
+};
+
+if (keyJsonString) {
+  try {
+    console.log('Attempting to use Storage credentials from GCP_SERVICE_ACCOUNT_KEY_JSON env var.');
+    const credentials = JSON.parse(keyJsonString);
+    storageClientConfig = { ...storageClientConfig, credentials };
+  } catch (e) {
+    console.error("FATAL: Failed to parse GCP_SERVICE_ACCOUNT_KEY_JSON for Storage.", e);
+    throw new Error("Invalid GCP Service Account Key JSON provided for Storage.");
+  }
+} else if (process.env.NODE_ENV !== 'production') {
+  console.warn("GCP_SERVICE_ACCOUNT_KEY_JSON not set. Attempting Application Default Credentials for Storage (may fail).");
+} else {
+  console.error('FATAL: GCP_SERVICE_ACCOUNT_KEY_JSON is not set in production. Storage cannot authenticate.');
+  throw new Error("Missing GCP Service Account Key JSON for Storage authentication.");
+}
+
+const storage = new Storage(storageClientConfig);
 
 export async function GET(request: Request) {
   if (!bucketName) {
