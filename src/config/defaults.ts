@@ -1,4 +1,4 @@
-import type { UserSettings, UserQuota } from '../../../src/types/user';
+import type { UserSettings, UserQuota } from '@/types/user';
 
 export const DEFAULT_USER_SETTINGS: UserSettings = {
   notionConnected: false,
