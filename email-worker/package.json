@@ -1,0 +1,25 @@
+{
+  "name": "email-worker",
+  "version": "0.0.1",
+  "private": true,
+  "main": "lib/index.js",
+  "scripts": {
+    "build": "tsc",
+    "gcp-build": "npm run build",
+    "start": "functions-framework --target=weeklyHealthEmailTrigger --port=8080"
+  },
+  "dependencies": {
+    "@clerk/backend": "^1.31.4",
+    "@google-cloud/firestore": "^7.11.0",
+    "@google-cloud/functions-framework": "^3.4.0",
+    "p-queue": "6.3.0",
+    "resend": "^3.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "typescript": "^5"
+  },
+  "engines": {
+    "node": "20"
+  }
+}
