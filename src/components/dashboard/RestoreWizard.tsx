@@ -19,11 +19,13 @@ import { Progress } from "@/components/ui/progress";
 import type { Snapshot } from "@/types";
 import { useToast } from "@/hooks/use-toast";
 import posthog from 'posthog-js';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Plus, Copy, Check, AlertTriangle } from 'lucide-react';
 import { useSWRConfig } from 'swr';
 import { useRestoreProgress, RestoreEvent } from '@/hooks/useRestoreProgress';
 import { fetcher } from "@/lib/fetcher";
 import useSWR from 'swr';
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Label } from "@/components/ui/label";
 
 interface RestoreWizardProps {
   snapshot: Snapshot | null;
@@ -59,6 +61,14 @@ const modalVariants = {
   }
 };
 
+// Helper to truncate text
+const truncateText = (text: string, maxLength: number = 20): string => {
+  if (text.length <= maxLength) return text;
+  const start = text.substring(0, maxLength / 2);
+  const end = text.substring(text.length - maxLength / 2);
+  return `${start}...${end}`;
+};
+
 // Helper to extract the base snapshot ID (e.g., snap_...) from a full path/filename
 const getCleanSnapshotId = (fullId: string | undefined | null): string | null => {
     if (!fullId) return null;
@@ -75,7 +85,7 @@ const RestoreWizard: React.FC<RestoreWizardProps> = ({ snapshot, open, onOpenCha
   // const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set()); // Temporarily unused
 
   const [progressValue, setProgressValue] = useState(0);
-  const [statusMessage, setStatusMessage] = useState("Awaiting connection to restore service...");
+  const [statusMessage, setStatusMessage] = useState("Preparing restore process...");
   const [isRestoreInProgress, setIsRestoreInProgress] = useState(false);
   const { toast } = useToast();
   const restoreStartTimeRef = useRef<number | null>(null);
@@ -83,6 +93,10 @@ const RestoreWizard: React.FC<RestoreWizardProps> = ({ snapshot, open, onOpenCha
   const [currentRestoreId, setCurrentRestoreId] = useState<string | null>(null);
   const { mutate } = useSWRConfig(); // Need mutate for SSE complete handler
   const { lastEvent, isConnected } = useRestoreProgress(currentRestoreId ?? undefined); // *** UNCOMMENTED THIS HOOK ***
+
+  const [copiedId, setCopiedId] = useState(false);
+  const [restoreTargetType, setRestoreTargetType] = useState<'new_page' | 'specific_page' | 'in_place'>('new_page'); // Default to safe option
+  const [targetParentPageId, setTargetParentPageId] = useState<string | null>(null); // For specific page selection later
 
   // Use the helper function to clean the ID for the URL
   const cleanSnapshotId = snapshot ? getCleanSnapshotId(snapshot.id) : null;
@@ -147,9 +161,11 @@ const RestoreWizard: React.FC<RestoreWizardProps> = ({ snapshot, open, onOpenCha
       setCurrentStep(1);
       setIsRestoreInProgress(false);
       setProgressValue(0);
-      setStatusMessage("Awaiting connection to restore service...");
+      setStatusMessage("Preparing restore process...");
       setCurrentRestoreId(null);
       restoreStartTimeRef.current = null;
+      setRestoreTargetType('new_page'); // Reset to default on open
+      setTargetParentPageId(null);
     } else {
       // Reset when dialog closes
       setIsRestoreInProgress(false);
@@ -161,11 +177,40 @@ const RestoreWizard: React.FC<RestoreWizardProps> = ({ snapshot, open, onOpenCha
   // --- useEffect for useRestoreProgress events (KEEP THIS) --- 
   useEffect(() => {
        if (!lastEvent) {
-         // ... Handle initial connection states ...
+         if (currentRestoreId && !isConnected && isRestoreInProgress) {
+           setStatusMessage("Connecting to restore monitor...");
+         } else if (!currentRestoreId && !isRestoreInProgress) {
+           setStatusMessage("Ready to begin restore.");
+         }
          return;
        }
-       // ... Handle progress, complete, error events from lastEvent ...
-       // (This part uses `mutate`, so uncommented useSWRConfig above)
+
+       if (lastEvent.type === 'connected') {
+         setStatusMessage("Connected. Restore starting soon...");
+       } else if (lastEvent.type === 'progress') {
+         let simpleMessage = `Restoring... (${lastEvent.percent}%)`;
+         if (lastEvent.message.includes("download")) {
+            simpleMessage = "Downloading backup data...";
+         } else if (lastEvent.message.includes("Decompressing")) {
+             simpleMessage = "Preparing backup files...";
+         } else if (lastEvent.message.includes("parsing")) {
+             simpleMessage = "Reading backup structure...";
+         } else if (lastEvent.message.includes("queueing") || lastEvent.message.includes("restoring")) {
+             simpleMessage = `Restoring your items... (${lastEvent.percent}%)`;
+         }
+         
+         console.log("RestoreWizard: Received progress event in useEffect", lastEvent);
+         setProgressValue(lastEvent.percent);
+         setStatusMessage(simpleMessage);
+         setIsRestoreInProgress(true);
+       } else if (lastEvent.type === 'complete') {
+         setProgressValue(100);
+         setStatusMessage("Restore completed successfully!");
+         setIsRestoreInProgress(false);
+       } else if (lastEvent.type === 'error') {
+         setStatusMessage(`Restore failed: ${lastEvent.error}`);
+         setIsRestoreInProgress(false);
+       }
   }, [lastEvent, isConnected, currentRestoreId, toast, mutate, isRestoreInProgress]);
 
   // --- Temporarily Commented Out Effect for selectAll checkbox ---
@@ -198,7 +243,23 @@ const RestoreWizard: React.FC<RestoreWizardProps> = ({ snapshot, open, onOpenCha
     setStatusMessage("Initiating restore..."); 
     setIsRestoreInProgress(true);
     restoreStartTimeRef.current = Date.now();
-    posthog.capture('restore_started', { snapshot_id: snapshot.id, target_count: selectedIdsArray.length });
+    posthog.capture('restore_started', { snapshot_id: snapshot.id, target_count: selectedIdsArray.length, restore_target_type: restoreTargetType });
+
+    let effectiveTargetParentPageId: string | null = null;
+    if (restoreTargetType === 'specific_page') {
+        // TODO: Get ID from page picker UI once implemented
+        // effectiveTargetParentPageId = targetParentPageId; 
+        console.warn("Restore to specific page selected, but page picker not implemented. Defaulting to null parent.");
+         effectiveTargetParentPageId = null; // Fallback for now
+    } else if (restoreTargetType === 'new_page') {
+        // Backend logic will need to handle creating a new wrapper page if this option is chosen
+        // For now, sending null might behave like 'in_place' depending on worker logic
+         console.log("Restore target type: new_page (passing null parent for now)");
+         effectiveTargetParentPageId = null; 
+    } else { // 'in_place'
+         console.log("Restore target type: in_place (passing null parent)");
+         effectiveTargetParentPageId = null; 
+    }
 
     try {
       const response = await fetch('/api/restore', {
@@ -206,7 +267,8 @@ const RestoreWizard: React.FC<RestoreWizardProps> = ({ snapshot, open, onOpenCha
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           snapshotId: snapshot.id, 
-          targets: null // Send null targets for now
+          targets: selectedIdsArray, // Use derived selected IDs
+          targetParentPageId: effectiveTargetParentPageId // Pass the determined parent ID
         }),
       });
 
@@ -215,32 +277,18 @@ const RestoreWizard: React.FC<RestoreWizardProps> = ({ snapshot, open, onOpenCha
         throw new Error(errorData.message || 'Failed to start restore process.');
       }
       
-      const responseData = await response.json();
-      if (responseData.restoreId) {
-        setCurrentRestoreId(responseData.restoreId);
-        toast({
-          title: "Restore Process Sent",
-          description: `Restoring snapshot ${snapshot.id}. Monitoring progress...`,
-        });
-      } else {
-        throw new Error("Restore initiated, but a restore ID was not received from the server.");
-      }
-
-    } catch (error: any) {
-      console.error("Failed to initiate restore:", error);
-      setStatusMessage(`Error: ${error.message || "Could not connect to the restore service."}`);
+      const result = await response.json();
+      setCurrentRestoreId(result.restoreId);
+      setIsRestoreInProgress(true);
+      setCurrentStep(3);
+      setStatusMessage("Awaiting initiation...");
+    } catch (err: any) {
+      console.error("Failed to initiate restore:", err);
       toast({
-        title: "Error Starting Restore",
-        description: error.message || "Could not connect to the restore service.",
+        title: "Restore Error",
+        description: "Failed to start restore process.",
         variant: "destructive",
       });
-      setIsRestoreInProgress(false);
-      setProgressValue(0);
-      if (restoreStartTimeRef.current) {
-        const durationMs = Date.now() - restoreStartTimeRef.current;
-        posthog.capture('restore_failed_to_initiate', { duration_ms: durationMs, error: error.message });
-        restoreStartTimeRef.current = null;
-      }
     }
   };
 
@@ -277,33 +325,90 @@ const RestoreWizard: React.FC<RestoreWizardProps> = ({ snapshot, open, onOpenCha
     if (onClose) onClose(); 
   };
 
+  const handleCopyId = () => {
+    if (snapshot?.id) {
+      navigator.clipboard.writeText(snapshot.id)
+        .then(() => {
+          setCopiedId(true);
+          toast({ title: 'Snapshot ID Copied!' });
+          setTimeout(() => setCopiedId(false), 2000); // Reset icon after 2 seconds
+        })
+        .catch(err => {
+          console.error('Failed to copy ID: ', err);
+          toast({ title: 'Copy Failed', description: 'Could not copy ID to clipboard.', variant: 'destructive' });
+        });
+    }
+  };
+
   const renderStepContent = () => {
     switch (currentStep) {
       case 1:
         return (
           <div>
-            <DialogDescription className="text-sm text-muted-foreground">Step 1: Confirm Snapshot Details</DialogDescription>
-            <p className="my-2 text-sm">You are about to restore the following snapshot:</p>
-            <ul className="list-disc list-inside my-4 p-4 bg-muted rounded-md text-sm">
-              <li><strong>ID:</strong> {snapshot.id}</li>
+            <DialogDescription className="text-sm text-muted-foreground">Step 1: Confirm Backup Details</DialogDescription>
+            <p className="my-2 text-sm">Make sure this is the backup you want to use before you continue.</p>
+            <ul className="list-disc list-inside my-4 p-4 bg-muted rounded-md text-sm space-y-1">
+              <li className="flex items-center">
+                <strong>ID:</strong> 
+                <span className='ml-2 font-mono text-xs'>{truncateText(snapshot.id)}</span>
+                <Button variant="ghost" size="icon" className="ml-1 h-5 w-5" onClick={handleCopyId} title="Copy full ID">
+                  {copiedId ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+                </Button>
+              </li>
               <li><strong>Date:</strong> {new Date(snapshot.timestamp).toLocaleString()}</li>
               <li><strong>Size:</strong> {(snapshot.sizeKB / 1024).toFixed(2)} MB</li>
               <li><strong>Status:</strong> {snapshot.status}</li>
             </ul>
-            <p className="text-sm">Please ensure this is the correct snapshot before proceeding.</p>
           </div>
         );
-      case 2: // --- Simplified Step 2 --- 
+      case 2: 
         return (
           <div>
-            <DialogDescription className="text-sm text-muted-foreground">Step 2: Select Items to Restore</DialogDescription>
-            <p className="my-10 text-center text-muted-foreground">Item selection temporarily disabled for debugging.</p>
+            <DialogDescription className="text-sm text-muted-foreground">Step 2: Choose What & Where to Restore</DialogDescription>
+            
+            {/* --- Restore Location --- */}
+            <div className='my-4'>
+              <Label className='text-sm font-medium'>Restore Location:</Label>
+              <RadioGroup 
+                value={restoreTargetType}
+                onValueChange={(value) => setRestoreTargetType(value as any)} 
+                className="mt-2 space-y-2"
+              >
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="new_page" id="target-new" />
+                  <Label htmlFor="target-new" className="text-sm font-normal cursor-pointer">
+                    Restore into a new page (Safe Default)
+                    <p className='text-xs text-muted-foreground'>Creates a new page in your Notion root containing the restored items.</p>
+                  </Label>
+                </div>
+                 {/* TODO: Implement Page Picker UI */}
+                 <div className="flex items-center space-x-2 opacity-50 cursor-not-allowed"> 
+                   <RadioGroupItem value="specific_page" id="target-specific" disabled />
+                   <Label htmlFor="target-specific" className="text-sm font-normal">
+                     Restore into a specific existing page...
+                     <p className='text-xs text-muted-foreground'>Select a page... (Coming Soon)</p>
+                   </Label>
+                 </div>
+                 <div className="flex items-center space-x-2 opacity-50 cursor-not-allowed"> 
+                   <RadioGroupItem value="in_place" id="target-inplace" disabled />
+                   <Label htmlFor="target-inplace" className="text-sm font-normal">
+                     Restore in place (Overwrite - Use with caution!)
+                     <p className='text-xs text-muted-foreground'>Attempts to overwrite original items. (Experimental)</p>
+                   </Label>
+                 </div>
+              </RadioGroup>
+            </div>
+            
+             {/* --- Item Selection (Temporarily disabled) --- */}
+             <Label className='text-sm font-medium mt-4 block'>Items to Restore:</Label>
+            <p className="my-4 text-center text-muted-foreground border rounded-md p-6 bg-muted/50">Item selection temporarily disabled for debugging.</p>
+            
           </div>
         );
-      case 3: // --- Simplified Step 3 Display (No target list) ---
+      case 3: 
         return (
           <div>
-            <DialogDescription className="text-sm text-muted-foreground">Step 3: Restore Progress</DialogDescription>
+            <DialogDescription className="text-sm text-muted-foreground">Step 3: Restore in Progress</DialogDescription>
             <div className="my-4 space-y-3">
               <p className="text-sm">Status: <span className={`font-semibold ${lastEvent?.type === 'error' ? 'text-destructive' : ''}`}>{statusMessage}</span></p>
               <Progress value={progressValue} className="w-full" />
@@ -311,7 +416,7 @@ const RestoreWizard: React.FC<RestoreWizardProps> = ({ snapshot, open, onOpenCha
                 <p className="text-green-600 font-semibold text-sm">Restore completed successfully!</p>
               )}
               {isRestoreInProgress && progressValue < 100 && (
-                 <p className="text-xs text-muted-foreground">Restoring snapshot <strong>{snapshot.id}</strong>...</p>
+                 <p className="text-xs text-muted-foreground">Restoring backup from <strong>{new Date(snapshot.timestamp).toLocaleDateString()}</strong>...</p>
               )}
             </div>
           </div>
