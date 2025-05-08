@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server'; 
 import { PubSub } from '@google-cloud/pubsub';
+import { db } from '@/lib/firestore';
+import { FieldValue } from '@google-cloud/firestore';
 
 // --- GCP Client Initialization ---
 const projectId = process.env.GOOGLE_CLOUD_PROJECT;
@@ -40,6 +42,27 @@ export async function POST(request: Request) {
 
     console.log(`Initiating snapshot creation request for user: ${userId}`);
 
+    // --- Check if first backup --- 
+    let isFirstBackup = false;
+    const userDocRef = db.collection('users').doc(userId);
+    try {
+      const userDoc = await userDocRef.get();
+      if (userDoc.exists) {
+        const activationData = userDoc.data()?.activation;
+        if (!activationData || !activationData.createdFirstBackup) {
+          isFirstBackup = true;
+        }
+      } else {
+        // User doc doesn't exist, this will definitely be the first backup
+        isFirstBackup = true; 
+      }
+    } catch (err) {
+      console.warn(`[Snapshot Create] Error checking user doc for activation status for ${userId}:`, err);
+      // Proceed assuming it might be the first backup if check fails
+      isFirstBackup = true; 
+    }
+    // --- End Check ---
+
     // 2. Publish a job message to Pub/Sub
     const jobData = {
       userId: userId,
@@ -51,6 +74,21 @@ export async function POST(request: Request) {
     try {
         const messageId = await pubsub.topic(topicName).publishMessage({ data: dataBuffer });
         console.log(`Snapshot request message ${messageId} published to topic ${topicName} for user ${userId}.`);
+
+        // --- Update activation status if it was the first --- 
+        if (isFirstBackup) {
+          try {
+            await userDocRef.set({ 
+              activation: { createdFirstBackup: true }
+            }, { merge: true });
+            console.log(`[Snapshot Create] Marked createdFirstBackup for user ${userId}`);
+          } catch (updateError) {
+             console.error(`[Snapshot Create] Failed to mark createdFirstBackup for user ${userId}:`, updateError);
+             // Don't fail the main request for this secondary update
+          }
+        }
+        // --- End Update ---
+
     } catch (pubsubError) {
         console.error(`Failed to publish snapshot request for user ${userId} to topic ${topicName}:`, pubsubError);
         throw new Error('Failed to queue snapshot request.'); // Throw error to be caught below

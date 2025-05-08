@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { PubSub } from '@google-cloud/pubsub';
 import { v4 as uuid } from 'uuid';
+import { db } from '@/lib/firestore';
+import { FieldValue } from '@google-cloud/firestore';
 
 // --- GCP Client Initialization ---
 const projectId = process.env.GOOGLE_CLOUD_PROJECT;
@@ -49,7 +51,7 @@ export async function POST(request: Request) {
   let body: RestoreRequestBody;
   try {
     body = await request.json();
-  } catch (error) {
+  } catch (e) {
     return new NextResponse("Invalid JSON body", { status: 400 });
   }
 
@@ -59,7 +61,27 @@ export async function POST(request: Request) {
     return new NextResponse("Missing snapshotId", { status: 400 });
   }
 
-  const restoreId = uuid(); // Generate unique job ID
+  // --- Check if first restore --- 
+  let isFirstRestore = false;
+  const userDocRef = db.collection('users').doc(userId);
+  try {
+    const userDoc = await userDocRef.get();
+    if (userDoc.exists) {
+      const activationData = userDoc.data()?.activation;
+      if (!activationData || !activationData.initiatedFirstRestore) {
+        isFirstRestore = true;
+      }
+    } else {
+      // User doc doesn't exist, implies not activated yet
+      isFirstRestore = true; 
+    }
+  } catch (err) {
+    console.warn(`[Restore] Error checking user doc for activation status for ${userId}:`, err);
+    isFirstRestore = true; // Proceed assuming first restore if check fails
+  }
+  // --- End Check ---
+
+  const restoreId = uuid();
 
   console.log(`Queueing restore job: ${restoreId} for user: ${userId}, snapshot: ${snapshotId}, targetParent: ${targetParentPageId ?? 'Default'}`);
 
@@ -73,19 +95,28 @@ export async function POST(request: Request) {
     requestedAt: Date.now(),
   };
 
-  // Publish the job message to Pub/Sub
   try {
-    const messageId = await pubsub.topic(TOPIC).publishMessage({
-      json: job, // Publishes the job object as JSON
-    });
-    console.log(`Message ${messageId} published to topic ${TOPIC}.`);
-    
-    // Immediately return the restoreId to the client
-    return NextResponse.json({ success: true, restoreId: restoreId });
-    
-  } catch (error) {
-    console.error(`Failed to publish restore job ${restoreId} to Pub/Sub:`, error);
-    // Return a server error response
-    return new NextResponse("Failed to queue restore job", { status: 500 });
+    const dataBuffer = Buffer.from(JSON.stringify(job));
+    const messageId = await pubsub.topic(TOPIC).publishMessage({ data: dataBuffer });
+    console.log(`Restore request ${messageId} published for user: ${userId}.`);
+
+    // --- Update activation status if it was the first --- 
+    if (isFirstRestore) {
+      try {
+        await userDocRef.set({ 
+          activation: { initiatedFirstRestore: true }
+        }, { merge: true });
+        console.log(`[Restore] Marked initiatedFirstRestore for user ${userId}`);
+      } catch (updateError) {
+         console.error(`[Restore] Failed to mark initiatedFirstRestore for user ${userId}:`, updateError);
+      }
+    }
+    // --- End Update ---
+
+    // Immediate ACK to client
+    return NextResponse.json({ success: true, restoreId });
+  } catch (err) {
+    console.error('Failed to enqueue restore job', err);
+    return new NextResponse('Failed to queue job', { status: 500 });
   }
 } 

@@ -13,6 +13,7 @@ import posthog from 'posthog-js';
 import { useQuota } from '@/hooks/useQuota';
 import type { Snapshot } from "@/types";
 import UsageMeter from "@/components/dashboard/UsageMeter";
+import ActivationChecklist from "@/components/dashboard/ActivationChecklist";
 
 const CreateSnapshotFAB = () => {
   const [isLoading, setIsLoading] = useState(false);
@@ -104,11 +105,10 @@ export default function DashboardPage() {
   return (
     <>
       <SignedIn>
-        <div className="relative">
-          <h1 className="text-2xl font-semibold mb-4">My Notion Snapshots</h1>
-          <div className="mb-6">
-             <UsageMeter />
-          </div>
+        <div className="relative space-y-6">
+          <h1 className="text-2xl font-semibold">My Notion Snapshots</h1>
+          <ActivationChecklist />
+          <UsageMeter />
           <SnapshotsTable />
           <CreateSnapshotFAB />
           <OnboardingTour /> 
