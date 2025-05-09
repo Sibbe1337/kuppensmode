@@ -16,6 +16,8 @@ import { Loader2, Zap, CheckCircle } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { loadStripe } from '@stripe/stripe-js';
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 
 interface PlanFromApi {
   id: string; 
@@ -23,6 +25,8 @@ interface PlanFromApi {
   price: string;
   priceDescription: string;
   features: string[];
+  interval: string;
+  nickname?: string;
 }
 
 interface UpgradeModalProps {
@@ -45,6 +49,7 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onOpenChange, trigg
   );
   const { toast } = useToast();
   const [isRedirecting, setIsRedirecting] = useState<string | null>(null);
+  const [billingCycle, setBillingCycle] = useState<'month' | 'year'>('month');
 
   useEffect(() => {
     console.log("UpgradeModal: isOpen prop changed to:", isOpen);
@@ -112,42 +117,38 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onOpenChange, trigg
     description = `Unlock ${triggerFeature} and more by upgrading your plan.`
   }
 
-  const filteredPlans = plans
-    ? plans.filter(p => {
-        const planNameLower = p.name.toLowerCase();
-        const currentPlanNameLower = currentPlanName?.toLowerCase();
-        
-        // Don't show the "Starter" plan from Stripe if it's literally named "Starter"
-        if (planNameLower === 'starter') {
-          return false;
-        }
-        // Don't show the plan if its name matches the user's current plan name
-        if (planNameLower === currentPlanNameLower) {
-          return false;
-        }
-        return true;
-      })
-    : [];
-  
+  const getProductPlans = (productName: string) => {
+    return plans?.filter(p => p.name === productName) || [];
+  };
+
+  const allProductNames = plans ? [...new Set(plans.map(p => p.name))] : [];
+  const displayableProductNames = allProductNames.filter(name => 
+    name.toLowerCase() !== 'starter' && name.toLowerCase() !== currentPlanName?.toLowerCase()
+  );
+
   if (isOpen) {
-    console.log("UpgradeModal (isOpen=true): Filtered Plans:", filteredPlans);
+    console.log("UpgradeModal (isOpen=true): Displayable Product Names:", displayableProductNames);
   }
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
 
-        {/* Plain HTML Button for testing */}
-        <button 
-          onClick={() => alert('PLAIN HTML BUTTON CLICKED!')} 
-          style={{padding: '10px', margin: '10px', border: '1px solid red'}}
-        >
-          Test Plain HTML Button
-        </button>
+        <div className="flex items-center justify-center space-x-2 my-4">
+          <Label htmlFor="billing-cycle-toggle" className={billingCycle === 'month' ? 'font-semibold' : 'text-muted-foreground'}>Monthly</Label>
+          <Switch 
+            id="billing-cycle-toggle"
+            checked={billingCycle === 'year'}
+            onCheckedChange={(checked) => setBillingCycle(checked ? 'year' : 'month')}
+          />
+          <Label htmlFor="billing-cycle-toggle" className={billingCycle === 'year' ? 'font-semibold' : 'text-muted-foreground'}>
+            Annual <Badge variant="outline" className="ml-1 border-green-500 text-green-600">Save 20%</Badge>
+          </Label>
+        </div>
         
         {isOpen && plansLoading && (
           <div className="py-8 flex justify-center">
@@ -162,17 +163,21 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onOpenChange, trigg
         )}
 
         {isOpen && !plansLoading && !plansError && plans && (
-          <div className="grid gap-4 py-4 sm:grid-cols-2">
-            {filteredPlans.map((plan) => (
-              <div 
-                key={`wrapper-${plan.id}`} 
-                onClick={() => console.log(`--- PLAN CARD (Wrapper Div) CLICKED for ${plan.name} ---`)}
-              >
-                <div key={plan.id} className="p-4 border rounded-lg flex flex-col h-full">
-                  <h3 className="text-lg font-semibold mb-1">{plan.name}</h3>
-                  <p className="text-2xl font-bold">{plan.price}<span className="text-sm font-normal text-muted-foreground">{plan.priceDescription}</span></p>
+          <div className={`grid gap-4 py-4 sm:grid-cols-${displayableProductNames.length > 1 ? 2 : 1}`}>
+            {displayableProductNames.map(productName => {
+              const productPlans = getProductPlans(productName);
+              const currentCyclePlan = productPlans.find(p => p.interval === billingCycle);
+              if (!currentCyclePlan) return null;
+
+              return (
+                <div key={currentCyclePlan.id} className="p-4 border rounded-lg flex flex-col h-full">
+                  <h3 className="text-lg font-semibold mb-1">{currentCyclePlan.name}</h3>
+                  <p className="text-2xl font-bold">
+                    {currentCyclePlan.price}
+                    <span className="text-sm font-normal text-muted-foreground">{currentCyclePlan.priceDescription}</span>
+                  </p>
                   <ul className="mt-3 mb-4 space-y-1 text-sm text-muted-foreground flex-grow">
-                    {plan.features.slice(0, 3).map(feature => (
+                    {currentCyclePlan.features.slice(0, 3).map(feature => (
                        <li key={feature} className="flex items-center">
                          <CheckCircle className="h-4 w-4 mr-2 text-green-500 flex-shrink-0" />
                          {feature}
@@ -181,29 +186,18 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onOpenChange, trigg
                   </ul>
                   <Button 
                     className="mt-auto w-full"
-                    onClick={(e) => {
-                      // e.stopPropagation(); // Keep this commented for now
-                      alert(`--- ALERT: BUTTON CLICKED FOR ${plan.name} ---`); // Changed to alert
-                      console.log(`--- BUTTON itself CLICKED FOR ${plan.name} (after alert) ---`); 
-                    }}
-                    disabled={isRedirecting === plan.id}
+                    onClick={() => handleUpgrade(currentCyclePlan.id, currentCyclePlan.nickname || currentCyclePlan.name)}
+                    disabled={isRedirecting === currentCyclePlan.id}
                   >
-                    {isRedirecting === plan.id ? <Loader2 className="h-4 w-4 mr-2 animate-spin"/> : <Zap className="h-4 w-4 mr-2" />}
-                    Upgrade to {plan.name}
+                    {isRedirecting === currentCyclePlan.id ? <Loader2 className="h-4 w-4 mr-2 animate-spin"/> : <Zap className="h-4 w-4 mr-2" />}
+                    Choose {currentCyclePlan.name} {billingCycle === 'year' ? 'Annual' : 'Monthly'}
                   </Button>
-                  {/* Test Click Div */}
-                  <div 
-                    onClick={() => alert("--- ALERT: Test Click Div in Plan Card CLICKED ---")}
-                    style={{ padding: '10px', background: 'rgba(255,0,0,0.2)', marginTop: '5px', cursor: 'pointer' }}
-                  >
-                    Test Click Area In Card
-                  </div>
                 </div>
-              </div>
-            ))}
-            {filteredPlans.length === 0 && plans.length > 0 && (
+              );
+            })}
+            {displayableProductNames.length === 0 && plans.length > 0 && (
               <p className="text-sm text-muted-foreground col-span-full text-center py-4">
-                No other upgrade plans available at this time.
+                No other upgrade plans available for the selected billing cycle.
               </p>
             )}
             {plans.length === 0 && (
@@ -211,13 +205,6 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onOpenChange, trigg
                 No upgrade plans found.
               </p>
             )}
-            {/* Test Click Div Outside Map */}
-            <div 
-                onClick={() => alert("--- ALERT: Test Click Div Outside Map CLICKED ---")}
-                style={{ padding: '10px', background: 'rgba(0,255,0,0.2)', cursor: 'pointer' }}
-            >
-                Test Click Area Outside Map
-            </div>
           </div>
         )}
 

@@ -17,12 +17,15 @@ const stripe = new Stripe(stripeSecretKey, {
 // Define a type for the plan structure you want to return to the frontend
 // Matches the structure used in the UpgradeModal component
 interface PlanData {
-  id: string; // Stripe Price ID (price_...)
-  name: string; // Stripe Product Name
-  price: string; // Formatted price string (e.g., "$10")
-  priceDescription: string; // e.g., "/mo"
-  features: string[]; // Features (consider fetching from Product metadata)
-  // Add isCurrent logic source if needed (e.g. from user data)
+  id: string; // Stripe Price ID
+  productId?: string;
+  name: string; // Product Name 
+  nickname: string | null; // Price Nickname (e.g., "Pro Monthly", "Pro Annual")
+  price: string; 
+  priceDescription: string; // e.g., "/ month" or "/ year"
+  interval: Stripe.Price.Recurring.Interval | null;
+  features: string[]; 
+  productMetadata: Stripe.Metadata;
 }
 
 export async function GET(request: Request) {
@@ -34,63 +37,70 @@ export async function GET(request: Request) {
     //   return new NextResponse("Unauthorized", { status: 401 });
     // }
 
-    console.log("Fetching active plans from Stripe...");
+    console.log("Fetching active products from Stripe...");
+    const products = await stripe.products.list({ active: true });
 
-    // 1. Fetch active Products from Stripe
-    // You might filter products based on metadata if you have different types
-    const products = await stripe.products.list({
-      active: true,
-      // Add expand: ['data.default_price'] to fetch default price with product
-      expand: ['data.default_price'],
-    });
+    const plans: PlanData[] = [];
 
-    // 2. Map products and their prices to your PlanData structure
-    const plans: PlanData[] = products.data
-      .filter(product => product.default_price) // Ensure product has a default price
-      .map(product => {
-        const price = product.default_price as Stripe.Price;
-        
-        // Format price (handle different currencies/types as needed)
-        const formattedPrice = price.unit_amount !== null 
-          ? `$${(price.unit_amount / 100).toFixed(2)}` 
-          : 'Contact Us'; // Or handle missing price
-        
-        const priceDescription = price.recurring?.interval 
-          ? `/ ${price.recurring.interval}` 
-          : '';
-          
-        // Fetch features from product metadata (example)
-        const features = product.metadata.features 
-          ? product.metadata.features.split(';').map(f => f.trim()) 
-          : ['Feature 1', 'Feature 2']; // Default features if none in metadata
-
-        return {
-          id: price.id, // Use the Price ID
-          name: product.name,
-          price: formattedPrice,
-          priceDescription: priceDescription,
-          features: features,
-        };
+    for (const product of products.data) {
+      console.log(`Fetching prices for product: ${product.id} (${product.name})`);
+      const prices = await stripe.prices.list({
+        product: product.id,
+        active: true,
+        expand: ['data.product'], // Optional: if you need product details again here, though we have it
       });
-      
-    // Add sorting if necessary, e.g., by price or a metadata field
-    // plans.sort((a, b) => /* your sorting logic */);
 
-    console.log(`Returning ${plans.length} plans.`);
+      for (const price of prices.data) {
+        if (price.unit_amount !== null) { // Ensure price has an amount
+          const formattedPrice = `$${(price.unit_amount / 100).toFixed(2)}`;
+          const priceDescription = price.recurring?.interval 
+            ? `/ ${price.recurring.interval}` 
+            : '';
+          
+          // Ensure product is a Product object if expanded, or use the outer product
+          const currentProduct = typeof price.product === 'string' ? product : price.product as Stripe.Product;
+
+          const features = currentProduct.metadata.features 
+            ? currentProduct.metadata.features.split(';').map((f: string) => f.trim()) 
+            : (price.metadata.features ? price.metadata.features.split(';').map((f: string) => f.trim()) : []);
+
+          plans.push({
+            id: price.id,
+            productId: currentProduct.id,
+            name: currentProduct.name,
+            nickname: price.nickname,
+            price: formattedPrice,
+            priceDescription: priceDescription,
+            interval: price.recurring?.interval || null,
+            features: features,
+            productMetadata: currentProduct.metadata,
+          });
+        }
+      }
+    }
+      
+    console.log(`Returning ${plans.length} individual price plans.`);
     return NextResponse.json(plans, {
       headers: {
         'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
         'Pragma': 'no-cache',
         'Expires': '0',
-        'Surrogate-Control': 'no-store', // For Vercel Edge Cache
+        'Surrogate-Control': 'no-store',
       }
     });
 
   } catch (error) {
     console.error("Error fetching plans from Stripe:", error);
-    if (error instanceof Stripe.errors.StripeError) {
-        return new NextResponse(`Stripe Error: ${error.message}`, { status: error.statusCode || 500 });
-    }
-    return new NextResponse("Internal Server Error", { status: 500 });
+    const status = error instanceof Stripe.errors.StripeError ? error.statusCode || 500 : 500;
+    const message = error instanceof Stripe.errors.StripeError ? `Stripe Error: ${error.message}` : "Internal Server Error";
+    return new NextResponse(message, { 
+      status, 
+      headers: { 
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+        'Surrogate-Control': 'no-store',
+      }
+    });
   }
 } 
