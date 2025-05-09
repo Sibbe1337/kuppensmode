@@ -18,7 +18,7 @@ if (keyJsonString) {
 }
 const storage = new Storage(storageClientConfig);
 
-export async function GET(request: NextRequest, { params }: { params: { snapshotId: string }}) {
+export async function GET(request: NextRequest, { params }: { params: { snapshotPath: string[] }}) {
   const { userId } = await auth();
   if (!userId) {
     return new NextResponse("Unauthorized", { status: 401 });
@@ -29,9 +29,13 @@ export async function GET(request: NextRequest, { params }: { params: { snapshot
     return new NextResponse("Server configuration error", { status: 500 });
   }
   
-  // Assuming params.snapshotId is the FULL path within the bucket (e.g., userId/filename.json.gz)
-  const filePath = params.snapshotId;
-  console.log(`[Snapshot Download API] Attempting to get signed URL for file: ${filePath} in bucket ${bucketName}`);
+  const filePath = params.snapshotPath.join('/');
+  console.log(`[Snapshot Download API] Catch-all. Attempting to get signed URL for file: ${filePath} in bucket ${bucketName}`);
+
+  if (!filePath.startsWith(`${userId}/`)) {
+    console.warn(`[Snapshot Download API] Unauthorized access attempt by ${userId} for path ${filePath}`);
+    return new NextResponse("Forbidden: Path does not match user", { status: 403 });
+  }
 
   const file = storage.bucket(bucketName).file(filePath);
 
@@ -45,8 +49,7 @@ export async function GET(request: NextRequest, { params }: { params: { snapshot
     const [url] = await file.getSignedUrl({
       action: "read",
       expires: Date.now() + 10 * 60 * 1000, // 10 minutes
-      // To force download with original filename:
-      // responseDisposition: `attachment; filename="${filePath.split('/').pop()}"`,
+      responseDisposition: `attachment; filename="${filePath.split('/').pop()}"`,
     });
     console.log(`[Snapshot Download API] Generated signed URL: ${url}`);
     return NextResponse.redirect(url);

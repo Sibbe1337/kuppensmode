@@ -26,7 +26,7 @@ interface SnapshotItemPreview {
     type: string; 
 }
 
-export async function GET(request: NextRequest, { params }: { params: { snapshotId: string }}) {
+export async function GET(request: NextRequest, { params }: { params: { snapshotPath: string[] }}) {
   const { userId } = await auth();
   if (!userId) {
     return new NextResponse("Unauthorized", { status: 401 });
@@ -37,11 +37,13 @@ export async function GET(request: NextRequest, { params }: { params: { snapshot
     return new NextResponse("Server configuration error", { status: 500 });
   }
   
-  // Construct the full path to the file, assuming params.snapshotId might be just the filename part
-  // and needs the userId prefix if your files are stored in user-specific folders.
-  // For now, assuming params.snapshotId is the FULL path within the bucket (e.g., userId/filename.json.gz)
-  const filePath = params.snapshotId; 
-  console.log(`[Snapshot Preview API] Attempting to preview file: ${filePath} in bucket ${bucketName}`);
+  const filePath = params.snapshotPath.join('/');
+  console.log(`[Snapshot Preview API] Catch-all. Attempting to preview file: ${filePath} in bucket ${bucketName}`);
+
+  if (!filePath.startsWith(`${userId}/`)) {
+    console.warn(`[Snapshot Preview API] Unauthorized access attempt by ${userId} for path ${filePath}`);
+    return new NextResponse("Forbidden: Path does not match user", { status: 403 });
+  }
 
   const file = storage.bucket(bucketName).file(filePath);
 
@@ -56,16 +58,13 @@ export async function GET(request: NextRequest, { params }: { params: { snapshot
     const jsonData = JSON.parse(jsonString);
     console.log("[Snapshot Preview API] JSON parsed.");
 
-    // Ensure jsonData.items exists and is an array before mapping
     const itemsArray = jsonData?.items && Array.isArray(jsonData.items) ? jsonData.items : [];
-
     const firstLevel: SnapshotItemPreview[] = itemsArray.map(
       (x: any) => ({
          id: x.id || "unknown-id", 
-         // Safely access title, assuming it could be an array of rich text objects or a simple string
          title: x.title && Array.isArray(x.title) && x.title.length > 0 
                 ? x.title[0]?.plain_text || "(untitled)" 
-                : (typeof x.title === 'string' ? x.title : (x.name || "(untitled)")), // Fallback to x.name if title is weird
+                : (typeof x.title === 'string' ? x.title : (x.name || "(untitled)")),
          type: x.object || "unknown-type"
         })
     );
