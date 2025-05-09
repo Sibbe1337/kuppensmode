@@ -1,6 +1,6 @@
 "use client";
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input"; // For API key input
@@ -18,7 +18,10 @@ const SettingsPage = () => {
   const { toast } = useToast();
   const searchParams = useSearchParams();
 
-  console.log("SettingsPage: Rendering with settings:", settings, "isLoading:", isLoading, "isError:", isError);
+  // Derived state for notionConnected status
+  const [isNotionCurrentlyConnected, setIsNotionCurrentlyConnected] = useState(settings?.notionConnected ?? false);
+
+  console.log("SettingsPage: Top level render. Initial settings?.notionConnected:", settings?.notionConnected, "isNotionCurrentlyConnected:", isNotionCurrentlyConnected);
 
   const [isDisconnectingNotion, setIsDisconnectingNotion] = React.useState(false);
   const [isRegeneratingKey, setIsRegeneratingKey] = React.useState(false);
@@ -28,6 +31,14 @@ const SettingsPage = () => {
     webhookUrl: "",
   });
   const [isSavingNotifications, setIsSavingNotifications] = React.useState(false);
+
+  // Effect to update local isNotionCurrentlyConnected when settings change from SWR
+  useEffect(() => {
+    console.log("SettingsPage: useEffect for settings update. New settings?.notionConnected:", settings?.notionConnected);
+    if (settings) {
+      setIsNotionCurrentlyConnected(settings.notionConnected);
+    }
+  }, [settings]); // Depend on the settings object from SWR
 
   // Effect to check for post-Notion-connection redirect
   React.useEffect(() => {
@@ -88,7 +99,10 @@ const SettingsPage = () => {
         throw new Error(errorData.message || 'Failed to disconnect Notion.');
       }
       toast({ title: "Success", description: "Notion workspace disconnected." });
-      mutateSettings(); // Revalidate user settings
+      // Mutate will trigger a re-fetch, which should update the `settings` prop,
+      // then the useEffect above should update isNotionCurrentlyConnected
+      await mutateSettings(); 
+      console.log("SettingsPage: mutateSettings called after disconnect.");
     } catch (error: any) {
       console.error("Error disconnecting Notion:", error);
       toast({ title: "Error", description: error.message || "Could not disconnect Notion.", variant: "destructive" });
@@ -191,13 +205,7 @@ const SettingsPage = () => {
   }
 
   // Add console log here to check the value during render
-  console.log("Rendering Settings UI. notionConnected:", settings?.notionConnected);
-
-  if (settings.notionConnected) {
-    console.log("SettingsPage: Rendering CONNECTED Notion state.");
-  } else {
-    console.log("SettingsPage: Rendering DISCONNECTED Notion state.");
-  }
+  console.log("Rendering Settings UI. Derived isNotionCurrentlyConnected:", isNotionCurrentlyConnected);
 
   return (
     <div className="space-y-8 max-w-3xl mx-auto py-8 px-4">
@@ -220,11 +228,11 @@ const SettingsPage = () => {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                {settings.notionConnected ? (
+                {isNotionCurrentlyConnected ? (
                   <div className="flex items-center justify-between p-3 bg-green-50 dark:bg-green-900/30 rounded-md border border-green-200 dark:border-green-700">
                     <div>
                         <p className="font-medium text-green-700 dark:text-green-300">Successfully connected!</p>
-                        <p className="text-sm text-muted-foreground">Workspace: {settings.notionWorkspaceName || 'Not specified'}</p>
+                        <p className="text-sm text-muted-foreground">Workspace: {settings?.notionWorkspaceName || 'Not specified'}</p>
                     </div>
                     <Button variant="destructive" size="sm" onClick={handleNotionDisconnect} disabled={isDisconnectingNotion}>
                       {isDisconnectingNotion ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
