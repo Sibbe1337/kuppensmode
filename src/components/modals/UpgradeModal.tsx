@@ -156,11 +156,14 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onOpenChange, trigg
         {isOpen && !plansLoading && !plansError && plans && (
           <div className="grid gap-4 py-4 sm:grid-cols-2">
             {filteredPlans.map((plan) => (
-                <div key={plan.id} className="p-4 border rounded-lg flex flex-col">
+              <div 
+                key={`wrapper-${plan.id}`} 
+                onClick={() => console.log(`--- PLAN CARD (Wrapper Div) CLICKED for ${plan.name} ---`)}
+              >
+                <div key={plan.id} className="p-4 border rounded-lg flex flex-col h-full">
                   <h3 className="text-lg font-semibold mb-1">{plan.name}</h3>
                   <p className="text-2xl font-bold">{plan.price}<span className="text-sm font-normal text-muted-foreground">{plan.priceDescription}</span></p>
-                  {/* TODO: Add annual/monthly toggle if applicable */}
-                  <ul className="mt-3 mb-4 space-y-1 text-sm text-muted-foreground">
+                  <ul className="mt-3 mb-4 space-y-1 text-sm text-muted-foreground flex-grow">
                     {plan.features.slice(0, 3).map(feature => (
                        <li key={feature} className="flex items-center">
                          <CheckCircle className="h-4 w-4 mr-2 text-green-500 flex-shrink-0" />
@@ -170,8 +173,9 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onOpenChange, trigg
                   </ul>
                   <Button 
                     className="mt-auto w-full"
-                    onClick={() => {
-                      console.log(`--- BUTTON CLICKED FOR ${plan.name} ---`);
+                    onClick={(e) => {
+                      // e.stopPropagation(); // Temporarily add, then remove if it works, to test theory
+                      console.log(`--- BUTTON itself CLICKED FOR ${plan.name} ---`); 
                     }}
                     disabled={isRedirecting === plan.id}
                   >
@@ -179,6 +183,7 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onOpenChange, trigg
                     Upgrade to {plan.name}
                   </Button>
                 </div>
+              </div>
             ))}
             {filteredPlans.length === 0 && plans.length > 0 && (
               <p className="text-sm text-muted-foreground col-span-full text-center py-4">
