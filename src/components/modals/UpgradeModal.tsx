@@ -73,12 +73,20 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onOpenChange, trigg
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ priceId }),
       });
+
+      console.log("UpgradeModal: checkout-session API response status:", response.status);
+      const responseData = await response.json();
+      console.log("UpgradeModal: checkout-session API responseData:", responseData);
+
       if (!response.ok) {
-        const errData = await response.json().catch(() => ({ message: 'Failed to create checkout session.' }));
-        throw new Error(errData.message);
+        throw new Error(responseData.error || responseData.message || 'Failed to create checkout session.');
       }
-      const { sessionId } = await response.json();
-      if (!sessionId) throw new Error('Checkout session ID not received.');
+      
+      const { sessionId } = responseData;
+      if (!sessionId) {
+        console.error("UpgradeModal: Checkout session ID missing in responseData:", responseData);
+        throw new Error('Checkout session ID not received.');
+      }
       
       const stripe = await stripePromise;
       if (!stripe) throw new Error('Stripe.js failed to load.');
