@@ -54,13 +54,19 @@ export async function GET() {
     const currentSettings = data.settings as Partial<UserSettings> | undefined;
     const responseSettings: UserSettings = {
         notionConnected: currentSettings?.notionConnected ?? DEFAULT_USER_SETTINGS.notionConnected,
+        notionWorkspaceId: currentSettings?.notionWorkspaceId ?? DEFAULT_USER_SETTINGS.notionWorkspaceId,
         notionWorkspaceName: currentSettings?.notionWorkspaceName ?? DEFAULT_USER_SETTINGS.notionWorkspaceName,
+        notionWorkspaceIcon: currentSettings?.notionWorkspaceIcon ?? DEFAULT_USER_SETTINGS.notionWorkspaceIcon,
         apiKey: data.apiKeyHash ? `nl_sk_••••••••${userId.substring(5,10)}` : null,
         notifications: {
             emailOnSnapshotSuccess: currentSettings?.notifications?.emailOnSnapshotSuccess ?? DEFAULT_USER_SETTINGS.notifications.emailOnSnapshotSuccess,
             emailOnSnapshotFailure: currentSettings?.notifications?.emailOnSnapshotFailure ?? DEFAULT_USER_SETTINGS.notifications.emailOnSnapshotFailure,
             webhookUrl: currentSettings?.notifications?.webhookUrl ?? DEFAULT_USER_SETTINGS.notifications.webhookUrl,
         },
+        autoSnapshot: {
+            enabled: currentSettings?.autoSnapshot?.enabled ?? DEFAULT_USER_SETTINGS.autoSnapshot.enabled,
+            frequency: currentSettings?.autoSnapshot?.frequency ?? DEFAULT_USER_SETTINGS.autoSnapshot.frequency,
+        }
     };
     return NextResponse.json(responseSettings);
 
