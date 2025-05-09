@@ -29,39 +29,47 @@ export default function DashboardPage() {
   useEffect(() => {
     const checkoutStatus = searchParams.get('checkout');
     const sessionId = searchParams.get('session_id');
+    console.log(`DashboardPage Effect: checkoutStatus=${checkoutStatus}, sessionId=${sessionId}`);
 
     if (checkoutStatus === 'success' && sessionId) {
-      console.log(`DashboardPage: Attempting to verify session: ${sessionId}`);
+      console.log(`DashboardPage: Success params found. Attempting to verify session: ${sessionId}`);
       toast({ title: "Payment Successful!", description: "Finalizing your subscription..." });
       
       fetch(`/api/billing/verify-checkout-session?session_id=${sessionId}`)
         .then(res => {
+          console.log("DashboardPage: Verify fetch response status:", res.status);
           if (!res.ok) {
-            return res.json().then(err => { throw new Error(err.error || 'Verification failed') });
+            return res.json().then(err => {
+              console.error("DashboardPage: Verify API error response:", err);
+              throw new Error(err.error || 'Verification failed (API error)'); 
+            });
           }
           return res.json();
         })
         .then(data => {
+          console.log("DashboardPage: Verify API success data:", data);
           if (data.success) {
             toast({ title: "Subscription Activated!", description: `You are now on the ${data.planName} plan.` });
-            mutateQuota();
-            mutate('/api/user/settings');
+            mutateQuota(); 
+            mutate('/api/user/settings'); 
           } else {
-            throw new Error(data.error || 'Verification step failed after payment.');
+            throw new Error(data.error || 'Verification step failed (data.success false).');
           }
         })
         .catch(err => {
-          console.error("Error verifying checkout session:", err);
+          console.error("DashboardPage: Error in verify fetch chain:", err);
           toast({ title: "Error Finalizing Subscription", description: err.message, variant: "destructive" });
         })
         .finally(() => {
+          console.log("DashboardPage: Verify fetch chain finally block. Cleaning URL.");
           router.replace('/dashboard', { scroll: false });
         });
     } else if (checkoutStatus === 'cancel') {
+      console.log("DashboardPage: Checkout canceled. Cleaning URL.");
       toast({ title: "Checkout Canceled", description: "Your upgrade process was canceled." });
       router.replace('/dashboard', { scroll: false });
     }
-  }, [searchParams, router, toast, mutateQuota, mutate]);
+  }, [searchParams, router, toast, mutateQuota]);
 
   const isOverSnapshotLimit = !isQuotaLoading && !isQuotaError && quota ? quota.snapshotsUsed >= quota.snapshotsLimit : false;
 
