@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Dialog, 
   DialogContent, 
@@ -10,7 +10,7 @@ import {
   DialogFooter 
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import useSWR from 'swr';
+import useSWR, { useSWRConfig } from 'swr';
 import { fetcher } from '@/lib/fetcher';
 import { Loader2, Zap, CheckCircle } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
@@ -38,14 +38,23 @@ const stripePromise = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
     : null;
 
 const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onOpenChange, triggerFeature, currentPlanName }) => {
-  const { data: plans, error: plansError, isLoading: plansLoading } = useSWR<PlanFromApi[]>(
-    isOpen ? '/api/billing/plans' : null, // Only fetch if modal is open
+  const swrKey = isOpen ? '/api/billing/plans' : null;
+  const { data: plans, error: plansError, isLoading: plansLoading, mutate } = useSWR<PlanFromApi[]>(
+    swrKey, 
     fetcher
   );
   const { toast } = useToast();
-  const [isRedirecting, setIsRedirecting] = useState<string | null>(null); // Store priceId being redirected to
+  const [isRedirecting, setIsRedirecting] = useState<string | null>(null);
 
-  console.log("UpgradeModal: SWR Data:", { plans, plansError, plansLoading, isOpen, currentPlanName }); // Log SWR state
+  // Effect to manually revalidate when the modal opens and SWR key is set
+  useEffect(() => {
+    if (isOpen && swrKey) {
+      console.log("UpgradeModal: isOpen is true, manually revalidating /api/billing/plans");
+      mutate(); // Call mutate to trigger revalidation of the current key
+    }
+  }, [isOpen, swrKey, mutate]); // Add mutate to dependency array
+
+  console.log("UpgradeModal: SWR Data:", { plans, plansError, plansLoading, isOpen, currentPlanName, swrKey });
 
   const handleUpgrade = async (priceId: string, planName: string) => {
     setIsRedirecting(priceId);
@@ -91,7 +100,7 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onOpenChange, trigg
     ? plans.filter(p => p.name.toLowerCase() !== 'starter' && p.name.toLowerCase() !== currentPlanName?.toLowerCase())
     : [];
   
-  console.log("UpgradeModal: Filtered Plans:", filteredPlans); // Log filtered plans
+  console.log("UpgradeModal: Filtered Plans:", filteredPlans);
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
