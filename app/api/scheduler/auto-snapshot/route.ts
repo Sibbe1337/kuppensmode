@@ -3,8 +3,32 @@ import { auth } from '@clerk/nextjs/server';
 import { CloudSchedulerClient } from '@google-cloud/scheduler';
 import { db } from '@/lib/firestore'; // For fetching user-specific details if needed
 
-const schedulerClient = new CloudSchedulerClient();
+// Simplified Initialization & Logging
+let schedulerClient: CloudSchedulerClient;
+const keyJsonString = process.env.GCP_SERVICE_ACCOUNT_KEY_JSON;
 const projectId = process.env.GOOGLE_CLOUD_PROJECT;
+
+console.log("[Scheduler API] Initializing. GCP_PROJECT_ID:", projectId);
+if (keyJsonString && keyJsonString.length > 100) { // Basic check if string seems like a key
+    console.log("[Scheduler API] GCP_SERVICE_ACCOUNT_KEY_JSON IS SET and seems populated (length > 100).");
+    try {
+        const credentials = JSON.parse(keyJsonString);
+        schedulerClient = new CloudSchedulerClient({ credentials, projectId });
+        console.log("[Scheduler API] CloudSchedulerClient initialized WITH EXPLICIT credentials.");
+    } catch (e: any) {
+        console.error("[Scheduler API] FATAL: Failed to parse GCP_SERVICE_ACCOUNT_KEY_JSON. Error:", e.message);
+        // Fallback to default for safety, though it will likely fail in Vercel
+        console.warn("[Scheduler API] Falling back to CloudSchedulerClient without explicit credentials due to parse error.");
+        schedulerClient = new CloudSchedulerClient({ projectId }); 
+    }
+} else if (process.env.NODE_ENV === 'production') {
+    console.error("[Scheduler API] FATAL: GCP_SERVICE_ACCOUNT_KEY_JSON is NOT SET or is too short in production. Client will likely fail.");
+    schedulerClient = new CloudSchedulerClient({ projectId }); // Will try default ADC
+} else {
+    console.warn("[Scheduler API] GCP_SERVICE_ACCOUNT_KEY_JSON not set. Attempting Application Default Credentials (for local dev or GCP-hosted). Client config:", { projectId });
+    schedulerClient = new CloudSchedulerClient({ projectId }); // For local dev with gcloud auth login
+}
+
 const locationId = process.env.AUTO_SNAPSHOT_SCHEDULER_LOCATION || 'us-central1'; // e.g., us-central1
 // The Pub/Sub topic that the snapshot-worker listens to
 const pubsubTopicName = process.env.PUBSUB_SNAPSHOT_TOPIC || 'notion-lifeline-snapshot-requests';
@@ -19,6 +43,11 @@ export async function POST(request: Request) {
   const { userId } = await auth();
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  if (!schedulerClient) {
+      console.error("[Scheduler API] POST Request: schedulerClient was not successfully initialized.");
+      return NextResponse.json({ error: 'Scheduler client initialization failed. Check server logs.' }, { status: 500 });
   }
 
   let body: AutoSnapshotSchedulerBody;
