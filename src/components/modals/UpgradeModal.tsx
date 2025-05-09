@@ -45,6 +45,8 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onOpenChange, trigg
   const { toast } = useToast();
   const [isRedirecting, setIsRedirecting] = useState<string | null>(null); // Store priceId being redirected to
 
+  console.log("UpgradeModal: SWR Data:", { plans, plansError, plansLoading, isOpen, currentPlanName }); // Log SWR state
+
   const handleUpgrade = async (priceId: string, planName: string) => {
     setIsRedirecting(priceId);
     if (!stripePromise) {
@@ -85,6 +87,12 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onOpenChange, trigg
     description = `Unlock ${triggerFeature} and more by upgrading your plan.`
   }
 
+  const filteredPlans = plans
+    ? plans.filter(p => p.name.toLowerCase() !== 'starter' && p.name.toLowerCase() !== currentPlanName?.toLowerCase())
+    : [];
+  
+  console.log("UpgradeModal: Filtered Plans:", filteredPlans); // Log filtered plans
+
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
@@ -106,10 +114,8 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onOpenChange, trigg
         )}
 
         {!plansLoading && !plansError && plans && (
-          <div className="grid gap-4 py-4 sm:grid-cols-2"> {/* Adjust grid for more plans */}
-            {plans
-              .filter(p => p.name.toLowerCase() !== 'starter' && p.name.toLowerCase() !== currentPlanName?.toLowerCase()) // Don't show starter or current plan
-              .map((plan) => (
+          <div className="grid gap-4 py-4 sm:grid-cols-2">
+            {filteredPlans.map((plan) => (
                 <div key={plan.id} className="p-4 border rounded-lg flex flex-col">
                   <h3 className="text-lg font-semibold mb-1">{plan.name}</h3>
                   <p className="text-2xl font-bold">{plan.price}<span className="text-sm font-normal text-muted-foreground">{plan.priceDescription}</span></p>
@@ -132,6 +138,16 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onOpenChange, trigg
                   </Button>
                 </div>
             ))}
+            {filteredPlans.length === 0 && plans.length > 0 && (
+              <p className="text-sm text-muted-foreground col-span-full text-center py-4">
+                No other upgrade plans available at this time.
+              </p>
+            )}
+            {plans.length === 0 && (
+              <p className="text-sm text-muted-foreground col-span-full text-center py-4">
+                No upgrade plans found.
+              </p>
+            )}
           </div>
         )}
 
