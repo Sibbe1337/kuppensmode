@@ -171,13 +171,7 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onOpenChange, trigg
                   <Button 
                     className="mt-auto w-full"
                     onClick={() => {
-                      console.log(`UpgradeModal: Button clicked for plan: ${plan.name}, ID: ${plan.id}`);
-                      if (!plan.id || !plan.name) {
-                        console.error("UpgradeModal: Clicked plan has missing id or name!", plan);
-                        toast({title: "Error", description: "Selected plan data is invalid.", variant: "destructive"});
-                        return;
-                      }
-                      handleUpgrade(plan.id, plan.name);
+                      console.log(`--- BUTTON CLICKED FOR ${plan.name} ---`);
                     }}
                     disabled={isRedirecting === plan.id}
                   >
