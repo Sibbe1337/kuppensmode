@@ -31,6 +31,7 @@ export default function DashboardPage() {
     const sessionId = searchParams.get('session_id');
 
     if (checkoutStatus === 'success' && sessionId) {
+      console.log(`DashboardPage: Attempting to verify session: ${sessionId}`);
       toast({ title: "Payment Successful!", description: "Finalizing your subscription..." });
       
       fetch(`/api/billing/verify-checkout-session?session_id=${sessionId}`)
