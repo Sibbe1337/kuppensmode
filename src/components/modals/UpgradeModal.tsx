@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Dialog, 
   DialogContent, 
@@ -21,12 +21,14 @@ import { Label } from "@/components/ui/label";
 
 interface PlanFromApi {
   id: string; 
-  name: string;
-  price: string;
-  priceDescription: string;
-  features: string[];
-  interval: string;
-  nickname?: string;
+  productId?: string; // Keep productId for grouping
+  name: string; 
+  nickname: string | null; 
+  price: string; 
+  priceDescription: string; 
+  interval: string | null;
+  features: string[]; 
+  productMetadata: any;
 }
 
 interface UpgradeModalProps {
@@ -117,22 +119,23 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onOpenChange, trigg
     description = `Unlock ${triggerFeature} and more by upgrading your plan.`
   }
 
-  const getProductPlans = (productName: string) => {
-    return plans?.filter(p => p.name === productName) || [];
-  };
-
-  const allProductNames = plans ? [...new Set(plans.map(p => p.name))] : [];
-  const displayableProductNames = allProductNames.filter(name => 
-    name.toLowerCase() !== 'starter' && name.toLowerCase() !== currentPlanName?.toLowerCase()
-  );
+  // Get unique product names (e.g., ["Pro", "Teams"]) excluding Starter and current plan
+  const productNamesToShow = useMemo(() => {
+    if (!plans) return [];
+    const uniqueNames = [...new Set(plans.map(p => p.name))];
+    return uniqueNames.filter(name => 
+      name.toLowerCase() !== 'starter' && 
+      name.toLowerCase() !== currentPlanName?.toLowerCase()
+    );
+  }, [plans, currentPlanName]);
 
   if (isOpen) {
-    console.log("UpgradeModal (isOpen=true): Displayable Product Names:", displayableProductNames);
+    console.log("UpgradeModal (isOpen=true): Product Names to Show:", productNamesToShow);
   }
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl">
+      <DialogContent className="sm:max-w-xl md:max-w-2xl lg:max-w-3xl"> {/* Adjusted width for potentially 3 cards */}
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
@@ -163,47 +166,66 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onOpenChange, trigg
         )}
 
         {isOpen && !plansLoading && !plansError && plans && (
-          <div className={`grid gap-4 py-4 sm:grid-cols-${displayableProductNames.length > 1 ? 2 : 1}`}>
-            {displayableProductNames.map(productName => {
-              const productPlans = getProductPlans(productName);
-              const currentCyclePlan = productPlans.find(p => p.interval === billingCycle);
-              if (!currentCyclePlan) return null;
+          // Adjust grid columns based on how many products we are showing
+          <div className={`grid gap-4 py-4 sm:grid-cols-1 md:grid-cols-${Math.min(productNamesToShow.length, 3)}`}> 
+            {productNamesToShow.map((productName) => {
+              // Find the relevant monthly or annual price for this product based on the toggle
+              const priceForCurrentCycle = plans.find(p => 
+                p.name === productName && 
+                p.interval === billingCycle
+              );
+
+              if (!priceForCurrentCycle) {
+                // Could show a placeholder or a message if a plan doesn't have the selected cycle
+                // For now, just skip rendering this product card if no matching price for cycle
+                console.warn(`No ${billingCycle} price found for ${productName}`);
+                return null; 
+              }
+              
+              // Determine if this is the "Most Popular" - example logic
+              const isMostPopular = productName === 'Pro'; // Or based on a metadata flag
 
               return (
-                <div key={currentCyclePlan.id} className="p-4 border rounded-lg flex flex-col h-full">
-                  <h3 className="text-lg font-semibold mb-1">{currentCyclePlan.name}</h3>
-                  <p className="text-2xl font-bold">
-                    {currentCyclePlan.price}
-                    <span className="text-sm font-normal text-muted-foreground">{currentCyclePlan.priceDescription}</span>
+                <div key={priceForCurrentCycle.productId || priceForCurrentCycle.id} 
+                     className={`p-4 md:p-6 border rounded-lg flex flex-col h-full relative ${isMostPopular ? 'border-primary ring-2 ring-primary' : ''}`}>
+                  {isMostPopular && (
+                    <Badge variant="default" className="absolute -top-3 left-1/2 -translate-x-1/2">Most Popular</Badge>
+                  )}
+                  <h3 className="text-xl font-semibold mb-1 text-center">{priceForCurrentCycle.name}</h3>
+                  <p className="text-3xl font-bold text-center">{priceForCurrentCycle.price}
+                    <span className="text-base font-normal text-muted-foreground">{priceForCurrentCycle.priceDescription}</span>
                   </p>
-                  <ul className="mt-3 mb-4 space-y-1 text-sm text-muted-foreground flex-grow">
-                    {currentCyclePlan.features.slice(0, 3).map(feature => (
+                  <p className="text-xs text-muted-foreground text-center mb-3">
+                    {billingCycle === 'year' ? `Billed as $${(parseFloat(priceForCurrentCycle.price.substring(1)) * 12).toFixed(2)} per year` : 'Billed monthly'}
+                  </p>
+                  
+                  <ul className="mt-3 mb-6 space-y-2 text-sm text-muted-foreground flex-grow">
+                    {priceForCurrentCycle.features.slice(0, 3).map(feature => (
                        <li key={feature} className="flex items-center">
                          <CheckCircle className="h-4 w-4 mr-2 text-green-500 flex-shrink-0" />
                          {feature}
                        </li>
                     ))}
+                    {priceForCurrentCycle.features.length > 3 && <li className='text-xs'>+ {priceForCurrentCycle.features.length - 3} more</li>}
                   </ul>
                   <Button 
-                    className="mt-auto w-full"
-                    onClick={(e) => {
-                      console.log(`--- BUTTON onClick FIRED FOR ${currentCyclePlan.name} ---`); 
-                      // alert(`--- ALERT: BUTTON CLICKED FOR ${currentCyclePlan.name} ---`);
-                      // handleUpgrade(currentCyclePlan.id, currentCyclePlan.nickname || currentCyclePlan.name); // Keep this commented for now
-                    }}
-                    onMouseDown={(e) => {
-                      console.log(`--- BUTTON onMouseDown FIRED FOR ${currentCyclePlan.name} ---`);
-                      // alert(`--- ALERT: BUTTON MOUSEDOWN FOR ${currentCyclePlan.name} ---`);
-                    }}
-                    disabled={isRedirecting === currentCyclePlan.id}
+                    variant={isMostPopular ? 'default' : 'outline'}
+                    className="mt-auto w-full py-3 text-base"
+                    onClick={() => handleUpgrade(priceForCurrentCycle.id, priceForCurrentCycle.nickname || priceForCurrentCycle.name)}
+                    disabled={isRedirecting === priceForCurrentCycle.id}
                   >
-                    {isRedirecting === currentCyclePlan.id ? <Loader2 className="h-4 w-4 mr-2 animate-spin"/> : <Zap className="h-4 w-4 mr-2" />}
-                    Upgrade to {currentCyclePlan.name}
+                    {isRedirecting === priceForCurrentCycle.id ? <Loader2 className="h-4 w-4 mr-2 animate-spin"/> : <Zap className="h-4 w-4 mr-2" />}
+                    Choose {priceForCurrentCycle.name}
                   </Button>
+                   {/* Plan Guidance Micro-copy */}
+                   <p className="text-xs text-muted-foreground text-center mt-2">
+                    { productName === 'Pro' && "For power users & creators." }
+                    { productName === 'Teams' && "For 3+ collaborators, seat-based." }
+                   </p>
                 </div>
               );
             })}
-            {displayableProductNames.length === 0 && plans.length > 0 && (
+            {productNamesToShow.length === 0 && plans.length > 0 && (
               <p className="text-sm text-muted-foreground col-span-full text-center py-4">
                 No other upgrade plans available for the selected billing cycle.
               </p>

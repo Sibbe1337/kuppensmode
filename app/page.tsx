@@ -11,6 +11,10 @@ import { Switch } from "@/components/ui/switch";
 import Marquee from "react-fast-marquee";
 import { Badge } from "@/components/ui/badge";
 import { loadStripe } from '@stripe/stripe-js';
+import { useAuth } from "@clerk/nextjs";
+import { useToast } from "@/hooks/use-toast";
+import { useRouter } from "next/navigation";
+import { cn } from "@/lib/utils";
 
 // Initialize Stripe.js outside component to avoid recreating on every render
 // Make sure NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY is set in your environment!
@@ -143,6 +147,9 @@ const faqItems = [
 ];
 
 const HomePage: NextPage = () => {
+  const { toast } = useToast();
+  const { isSignedIn } = useAuth();
+  const router = useRouter();
   const [isDemoModalOpen, setIsDemoModalOpen] = useState(false);
   const [isAnnualPricing, setIsAnnualPricing] = useState(false);
   const [showStickyCta, setShowStickyCta] = useState(false);
@@ -155,18 +162,18 @@ const HomePage: NextPage = () => {
   const teamsMonthlyPriceId = process.env.NEXT_PUBLIC_PRICE_TEAMS_MONTHLY;
   const teamsAnnualPriceId = process.env.NEXT_PUBLIC_PRICE_TEAMS_ANNUAL;
 
-  useEffect(() => {
-    const handleScroll = () => {
-      if (window.scrollY > 300) {
-        setShowStickyCta(true);
-      } else {
-        setShowStickyCta(false);
-      }
-    };
+  const handleScroll = React.useCallback(() => {
+    if (window.scrollY > 300) {
+      setShowStickyCta(true);
+    } else {
+      setShowStickyCta(false);
+    }
+  }, []);
 
+  React.useEffect(() => {
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
+  }, [handleScroll]);
 
   const handleTeamSeatChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     let count = parseInt(event.target.value, 10);
@@ -236,215 +243,215 @@ const HomePage: NextPage = () => {
     }
   };
 
+  const primaryCtaAction = () => {
+    if (isSignedIn) {
+      router.push('/dashboard');
+    } else {
+      // For new users, typically redirect to sign-up or a pricing/plans page
+      // Or open Clerk sign-in modal which can lead to sign-up
+      // For now, let's assume it pushes to /sign-up for a new user flow
+      router.push('/sign-up'); 
+    }
+  };
+
   return (
-    <div className="bg-zinc-950 text-zinc-50 min-h-screen">
+    <div className="flex flex-col min-h-screen bg-background">
       {/* Hero Section */}
-      <section className="min-h-screen flex flex-col items-center justify-center text-center px-4 py-16 relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-zinc-950 via-zinc-900 to-slate-900 opacity-70 z-0"></div>
-        <div className="absolute inset-0 opacity-10 [background-image:radial-gradient(circle_at_50%_0,_#3b82f6_0%,_transparent_40%)] z-0"></div>
-        
-        <div className="relative z-10">
-          <h1 className="text-5xl sm:text-6xl md:text-7xl font-extrabold tracking-tight mb-6 bg-clip-text text-transparent bg-gradient-to-r from-blue-400 via-cyan-400 to-emerald-400">
-            Never lose a Notion doc again.
+      <main className="flex-grow">
+        <section className="container mx-auto px-4 py-20 md:py-32 text-center">
+          <h1 className="text-4xl md:text-6xl font-bold tracking-tight mb-6 bg-gradient-to-r from-primary via-blue-400 to-secondary text-transparent bg-clip-text">
+            Never lose a Notion page again.
           </h1>
-          <p className="max-w-xl mx-auto text-lg sm:text-xl text-zinc-400 mb-10">
-            Automatic hourly snapshots, AI change-diff e-mails, 1-click restore. Your Notion workspace, secured and effortlessly recoverable.
+          <p className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto mb-8">
+            Automatic hourly snapshots, AI change-diff emails, and 1-click restore to protect your valuable Notion workspace.
           </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-12">
-            <Button asChild size="lg" className="bg-blue-600 hover:bg-blue-700 text-white text-lg px-8 py-3 w-full sm:w-auto">
-              <Link href="/dashboard">Start free backup</Link>
+          <div className="flex flex-col sm:flex-row justify-center items-center gap-4 mb-4">
+            <Button size="lg" className="text-lg px-8 py-6 bg-primary hover:bg-primary/90 text-primary-foreground" onClick={primaryCtaAction}>
+              Start Free Backup
             </Button>
             <Button variant="link" onClick={() => setIsDemoModalOpen(true)} className="text-blue-400 hover:text-blue-300 text-lg w-full sm:w-auto">
               <PlayCircle className="mr-2 h-5 w-5" />
               Watch 15-sec demo
             </Button>
           </div>
-          <div className="flex flex-wrap justify-center items-center gap-x-8 gap-y-4 text-sm text-zinc-500">
-            <div className="flex items-center">
-              <Shield className="h-5 w-5 mr-2 text-green-500" />
-              <span>ISO-27001 compliant</span>
-            </div>
-            <div className="flex items-center">
-              <Users className="h-5 w-5 mr-2 text-sky-500" />
-              <span>500k+ pages protected</span>
-            </div>
-            <div className="flex items-center">
-              <Star className="h-5 w-5 mr-2 text-yellow-500" />
-              <span>Loved by builders</span>
-            </div>
-          </div>
-        </div>
-      </section>
-      <DemoModal isOpen={isDemoModalOpen} onClose={() => setIsDemoModalOpen(false)} videoUrl={loomDemoUrl} />
+          <p className="text-sm text-muted-foreground">
+            No credit card required. Quick 30-second setup.
+          </p>
+        </section>
 
-      {/* Visual Explainer Section */}
-      <section className="py-16 sm:py-24 px-4 bg-zinc-900">
-        <div className="container mx-auto text-center">
-          <h2 className="text-3xl sm:text-4xl font-bold mb-4 text-zinc-100">How It Works in 4 Simple Steps</h2>
-          <p className="text-zinc-400 mb-12 sm:mb-16 max-w-2xl mx-auto">Focus on your work, we\'ll handle the safety net.</p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 items-start relative">
-            {/* Gradient line (decorative) */}
-            <div className="hidden lg:block absolute top-1/2 left-0 w-full h-px -translate-y-1/2 ">
-              <div className="h-full w-3/4 mx-auto bg-gradient-to-r from-transparent via-blue-500 to-transparent opacity-50"></div>
-            </div>
-            
-            {[
-              { icon: Edit3, label: "You Edit Notion", description: "Work as usual. We detect changes automatically." },
-              { icon: Camera, label: "Auto Snapshot", description: "Hourly backups capture every version seamlessly." },
-              { icon: MailCheck, label: "AI Change Diff", description: "Get smart email summaries of what changed." },
-              { icon: RotateCcw, label: "1-Click Restore", description: "Easily roll back to any previous snapshot." },
-            ].map((step, index) => (
-              <div key={index} className="flex flex-col items-center p-6 bg-zinc-800 rounded-lg shadow-lg relative z-10">
-                <div className="p-4 bg-blue-600 rounded-full mb-4 inline-block">
-                  <step.icon className="h-8 w-8 text-white" />
-                </div>
-                <h3 className="text-xl font-semibold mb-2 text-zinc-100">{step.label}</h3>
-                <p className="text-zinc-400 text-sm">{step.description}</p>
+        {/* Visual Explainer Section */}
+        <section className="py-16 sm:py-24 px-4 bg-zinc-900">
+          <div className="container mx-auto text-center">
+            <h2 className="text-3xl sm:text-4xl font-bold mb-4 text-zinc-100">How It Works in 4 Simple Steps</h2>
+            <p className="text-zinc-400 mb-12 sm:mb-16 max-w-2xl mx-auto">Focus on your work, we\'ll handle the safety net.</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 items-start relative">
+              {/* Gradient line (decorative) */}
+              <div className="hidden lg:block absolute top-1/2 left-0 w-full h-px -translate-y-1/2 ">
+                <div className="h-full w-3/4 mx-auto bg-gradient-to-r from-transparent via-blue-500 to-transparent opacity-50"></div>
               </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Pricing Teaser Section */}
-      <section className="py-16 sm:py-24 px-4">
-        <div className="container mx-auto">
-          <div className="max-w-2xl mx-auto text-center mb-12 sm:mb-16">
-            <h2 className="text-3xl sm:text-4xl font-bold mb-4 text-zinc-100">Simple, Transparent Pricing</h2>
-            <p className="text-zinc-400">Choose the plan that\'s right for you. Cancel anytime.</p>
-          </div>
-
-          <div className="flex justify-center items-center mb-8">
-            <span className={`mr-3 text-sm font-medium ${!isAnnualPricing ? 'text-blue-400' : 'text-zinc-500'}`}>Monthly</span>
-            <Switch
-              checked={isAnnualPricing}
-              onCheckedChange={setIsAnnualPricing}
-              id="pricing-toggle"
-              aria-label="Toggle annual pricing"
-            />
-            <span className={`ml-3 text-sm font-medium ${isAnnualPricing ? 'text-blue-400' : 'text-zinc-500'}`}>
-              Annual <span className="text-emerald-400">(Save 17%)</span>
-            </span>
-          </div>
-
-          <div className="bg-zinc-900 rounded-xl p-6 sm:p-10 shadow-2xl">
-            <div className="grid grid-cols-1 md:grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8">
-              {/* Free Plan */}
-              <PricingCard
-                planName="Free"
-                price="Free"
-                features={[
-                  "5 Snapshots / Workspace",
-                  "Daily Automatic Backups",
-                  "Manual Snapshots",
-                  "Basic Email Support",
-                ]}
-                ctaText="Get started"
-                ctaVariant="default"
-                ctaHref="/dashboard"
-              />
-              {/* Pro Plan - Updated */}
-              <PricingCard
-                planName="Pro"
-                price={isAnnualPricing ? "$7.50" : "$9"}
-                priceFrequency={isAnnualPricing ? "/mo, billed annually ($90)" : "/mo"}
-                features={[
-                  "Unlimited Snapshots",
-                  "Hourly Automatic Backups",
-                  "AI Change Diff Emails",
-                  "Priority Restore Queue",
-                  "Priority Email Support",
-                ]}
-                ctaText="Upgrade to Pro"
-                ctaVariant="secondary"
-                isPrimary={false}
-                highlightText="Ideal for Power Users"
-                ctaHref="/dashboard?plan=pro"
-              />
-              {/* Teams Plan - Updated with state and seat selector */}
-              <PricingCard
-                planName="Teams"
-                price={`$${((isAnnualPricing ? teamsAnnualPricePerSeat : teamsMonthlyPricePerSeat) * teamSeatCount / 100).toFixed(2)}`}
-                priceFrequency={isAnnualPricing ? "/total/mo, billed annually" : "/total/mo"}
-                features={[
-                  "Increased Snapshot Quota (500/ws)",
-                  "Unlimited Shared Workspaces",
-                  "Seat-Based Billing",
-                  "Role-Based Permissions",
-                  "Optional Backup to own S3/GCS",
-                  "Activity/Restore Audit Log (90 days)",
-                  "Priority Chat Support (≤2h response)",
-                  "Early Access to AI Features",
-                ]}
-                ctaText={isCheckingOut ? "Processing..." : "Start 14-day Teams Trial"}
-                ctaVariant="default"
-                isPrimary={true}
-                highlightText="Most popular for companies"
-                badgeText="Most popular for companies"
-                ribbonText="14-day free trial"
-                onCtaClick={handleTeamCheckout}
-                seatSelectorElement={(
-                  <div className="my-4 flex items-center justify-center gap-3">
-                    <label htmlFor="team-seats" className={`text-sm font-medium text-zinc-400`}>Seats:</label>
-                    <input 
-                      type="number"
-                      id="team-seats"
-                      name="team-seats"
-                      min="1"
-                      max="50"
-                      value={teamSeatCount}
-                      onChange={handleTeamSeatChange}
-                      className="w-16 p-1.5 border rounded bg-zinc-700/50 border-zinc-600 text-center text-zinc-100 focus:ring-blue-500 focus:border-blue-500"
-                      disabled={isCheckingOut}
-                    />
+              
+              {[
+                { icon: Edit3, label: "You Edit Notion", description: "Work as usual. We detect changes automatically." },
+                { icon: Camera, label: "Auto Snapshot", description: "Hourly backups capture every version seamlessly." },
+                { icon: MailCheck, label: "AI Change Diff", description: "Get smart email summaries of what changed." },
+                { icon: RotateCcw, label: "1-Click Restore", description: "Easily roll back to any previous snapshot." },
+              ].map((step, index) => (
+                <div key={index} className="flex flex-col items-center p-6 bg-zinc-800 rounded-lg shadow-lg relative z-10">
+                  <div className="p-4 bg-blue-600 rounded-full mb-4 inline-block">
+                    <step.icon className="h-8 w-8 text-white" />
                   </div>
-                )}
-              />
+                  <h3 className="text-xl font-semibold mb-2 text-zinc-100">{step.label}</h3>
+                  <p className="text-zinc-400 text-sm">{step.description}</p>
+                </div>
+              ))}
             </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* Testimonials Marquee Section */}
-      <section className="py-16 sm:py-24 overflow-hidden bg-zinc-900">
-        <div className="container mx-auto">
-          <h2 className="text-3xl sm:text-4xl font-bold text-center mb-12 sm:mb-16 text-zinc-100">Loved by Notion Users</h2>
-          <Marquee gradient={true} gradientColor={'rgb(24, 24, 27)'} gradientWidth={100} speed={40} pauseOnHover={true}>
-            {testimonials.map((testimonial) => (
-              <div key={testimonial.id} className="bg-zinc-800 p-6 rounded-lg shadow-lg mx-4 w-80 md:w-96">
-                <p className="text-zinc-300 mb-4 italic">"{testimonial.quote}"</p>
-                <p className="text-sm font-semibold text-blue-400">{testimonial.author}</p>
+        {/* Pricing Teaser Section */}
+        <section className="py-16 sm:py-24 px-4">
+          <div className="container mx-auto">
+            <div className="max-w-2xl mx-auto text-center mb-12 sm:mb-16">
+              <h2 className="text-3xl sm:text-4xl font-bold mb-4 text-zinc-100">Simple, Transparent Pricing</h2>
+              <p className="text-zinc-400">Choose the plan that\'s right for you. Cancel anytime.</p>
+            </div>
+
+            <div className="flex justify-center items-center mb-8">
+              <span className={`mr-3 text-sm font-medium ${!isAnnualPricing ? 'text-blue-400' : 'text-zinc-500'}`}>Monthly</span>
+              <Switch
+                checked={isAnnualPricing}
+                onCheckedChange={setIsAnnualPricing}
+                id="pricing-toggle"
+                aria-label="Toggle annual pricing"
+              />
+              <span className={`ml-3 text-sm font-medium ${isAnnualPricing ? 'text-blue-400' : 'text-zinc-500'}`}>
+                Annual <span className="text-emerald-400">(Save 17%)</span>
+              </span>
+            </div>
+
+            <div className="bg-zinc-900 rounded-xl p-6 sm:p-10 shadow-2xl">
+              <div className="grid grid-cols-1 md:grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8">
+                {/* Free Plan */}
+                <PricingCard
+                  planName="Free"
+                  price="Free"
+                  features={[
+                    "5 Snapshots / Workspace",
+                    "Daily Automatic Backups",
+                    "Manual Snapshots",
+                    "Basic Email Support",
+                  ]}
+                  ctaText="Get started"
+                  ctaVariant="default"
+                  ctaHref="/dashboard"
+                />
+                {/* Pro Plan - Updated */}
+                <PricingCard
+                  planName="Pro"
+                  price={isAnnualPricing ? "$7.50" : "$9"}
+                  priceFrequency={isAnnualPricing ? "/mo, billed annually ($90)" : "/mo"}
+                  features={[
+                    "Unlimited Snapshots",
+                    "Hourly Automatic Backups",
+                    "AI Change Diff Emails",
+                    "Priority Restore Queue",
+                    "Priority Email Support",
+                  ]}
+                  ctaText="Upgrade to Pro"
+                  ctaVariant="secondary"
+                  isPrimary={false}
+                  highlightText="Ideal for Power Users"
+                  ctaHref="/dashboard?plan=pro"
+                />
+                {/* Teams Plan - Updated with state and seat selector */}
+                <PricingCard
+                  planName="Teams"
+                  price={`$${((isAnnualPricing ? teamsAnnualPricePerSeat : teamsMonthlyPricePerSeat) * teamSeatCount / 100).toFixed(2)}`}
+                  priceFrequency={isAnnualPricing ? "/total/mo, billed annually" : "/total/mo"}
+                  features={[
+                    "Increased Snapshot Quota (500/ws)",
+                    "Unlimited Shared Workspaces",
+                    "Seat-Based Billing",
+                    "Role-Based Permissions",
+                    "Optional Backup to own S3/GCS",
+                    "Activity/Restore Audit Log (90 days)",
+                    "Priority Chat Support (≤2h response)",
+                    "Early Access to AI Features",
+                  ]}
+                  ctaText={isCheckingOut ? "Processing..." : "Start 14-day Teams Trial"}
+                  ctaVariant="default"
+                  isPrimary={true}
+                  highlightText="Most popular for companies"
+                  badgeText="Most popular for companies"
+                  ribbonText="14-day free trial"
+                  onCtaClick={handleTeamCheckout}
+                  seatSelectorElement={(
+                    <div className="my-4 flex items-center justify-center gap-3">
+                      <label htmlFor="team-seats" className={`text-sm font-medium text-zinc-400`}>Seats:</label>
+                      <input 
+                        type="number"
+                        id="team-seats"
+                        name="team-seats"
+                        min="1"
+                        max="50"
+                        value={teamSeatCount}
+                        onChange={handleTeamSeatChange}
+                        className="w-16 p-1.5 border rounded bg-zinc-700/50 border-zinc-600 text-center text-zinc-100 focus:ring-blue-500 focus:border-blue-500"
+                        disabled={isCheckingOut}
+                      />
+                    </div>
+                  )}
+                />
               </div>
-            ))}
-          </Marquee>
-        </div>
-      </section>
+            </div>
+          </div>
+        </section>
 
-      {/* FAQ Accordion Section */}
-      <section className="py-16 sm:py-24 px-4">
-        <div className="container mx-auto max-w-3xl">
-          <h2 className="text-3xl sm:text-4xl font-bold text-center mb-12 sm:mb-16 text-zinc-100">Frequently Asked Questions</h2>
-          <Accordion type="single" collapsible className="w-full">
-            {faqItems.map((item, index) => (
-              <AccordionItem key={index} value={`item-${index + 1}`} className="border-zinc-700">
-                <AccordionTrigger className="text-left text-lg hover:no-underline text-zinc-100 hover:text-blue-400 [&[data-state=open]]:text-blue-400">
-                  {item.q}
-                </AccordionTrigger>
-                <AccordionContent className="text-zinc-400 pt-2">
-                  {item.a}
-                </AccordionContent>
-              </AccordionItem>
-            ))}
-          </Accordion>
-        </div>
-      </section>
+        {/* Testimonials Marquee Section */}
+        <section className="py-16 sm:py-24 overflow-hidden bg-zinc-900">
+          <div className="container mx-auto">
+            <h2 className="text-3xl sm:text-4xl font-bold text-center mb-12 sm:mb-16 text-zinc-100">Loved by Notion Users</h2>
+            <Marquee gradient={true} gradientColor={'rgb(24, 24, 27)'} gradientWidth={100} speed={40} pauseOnHover={true}>
+              {testimonials.map((testimonial) => (
+                <div key={testimonial.id} className="bg-zinc-800 p-6 rounded-lg shadow-lg mx-4 w-80 md:w-96">
+                  <p className="text-zinc-300 mb-4 italic">"{testimonial.quote}"</p>
+                  <p className="text-sm font-semibold text-blue-400">{testimonial.author}</p>
+                </div>
+              ))}
+            </Marquee>
+          </div>
+        </section>
 
-      {/* Sticky Mobile CTA */}
+        {/* FAQ Accordion Section */}
+        <section className="py-16 sm:py-24 px-4">
+          <div className="container mx-auto max-w-3xl">
+            <h2 className="text-3xl sm:text-4xl font-bold text-center mb-12 sm:mb-16 text-zinc-100">Frequently Asked Questions</h2>
+            <Accordion type="single" collapsible className="w-full">
+              {faqItems.map((item, index) => (
+                <AccordionItem key={index} value={`item-${index + 1}`} className="border-zinc-700">
+                  <AccordionTrigger className="text-left text-lg hover:no-underline text-zinc-100 hover:text-blue-400 [&[data-state=open]]:text-blue-400">
+                    {item.q}
+                  </AccordionTrigger>
+                  <AccordionContent className="text-zinc-400 pt-2">
+                    {item.a}
+                  </AccordionContent>
+                </AccordionItem>
+              ))}
+            </Accordion>
+          </div>
+        </section>
+      </main>
+
+      {/* Sticky Floating CTA */}
       {showStickyCta && (
-         <div className="fixed bottom-4 inset-x-4 z-50 md:hidden">
-            <Button asChild size="lg" className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 shadow-xl">
-                <Link href="/dashboard">Start free backup</Link>
-            </Button>
+        <div className={cn(
+          "fixed bottom-0 left-0 right-0 p-4 bg-background/80 backdrop-blur-sm border-t md:hidden", // Show only on mobile/smaller screens, or adjust as needed
+          "transition-transform duration-300 ease-out",
+          showStickyCta ? "translate-y-0" : "translate-y-full"
+        )}>
+          <Button size="lg" className="w-full text-lg bg-primary hover:bg-primary/90 text-primary-foreground" onClick={primaryCtaAction}>
+            Start Free Backup
+          </Button>
         </div>
       )}
 
