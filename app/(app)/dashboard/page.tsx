@@ -84,7 +84,7 @@ export default function DashboardPage() {
         <div className="relative space-y-6">
           <div className="flex justify-between items-center gap-4">
             <div>
-              <h1 className="text-2xl font-semibold">Latest Back-ups</h1>
+              <h1 className="text-2xl font-semibold">Recent Snapshots</h1>
               <div className="mt-1">
                   <UsageMeter />
               </div>
@@ -92,6 +92,8 @@ export default function DashboardPage() {
             <Button 
               onClick={handleCreateSnapshot} 
               disabled={isCreatingSnapshot || isQuotaLoading || isOverSnapshotLimit || isQuotaError}
+              variant="default"
+              size="lg"
             >
               {isCreatingSnapshot ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
               New Snapshot

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useMemo } from 'react';
-import useSWR from 'swr';
+import useSWR, { useSWRConfig } from 'swr';
 import {
   Table,
   TableBody,
@@ -18,7 +18,7 @@ import UpgradeModal from '@/components/modals/UpgradeModal';
 import type { Snapshot } from "@/types";
 import { fetcher } from "@/lib/fetcher";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AlertCircle, Inbox, Zap, MoreHorizontal } from 'lucide-react';
+import { AlertCircle, Inbox, Zap, MoreHorizontal, Plus, CheckCircle, Loader2 } from 'lucide-react';
 import { EmptyState } from "@/components/ui/EmptyState";
 import { timeAgo } from "@/lib/utils";
 import { useQuota } from '@/hooks/useQuota';
@@ -69,6 +69,26 @@ const SnapshotsTable = () => {
     setIsWizardOpen(true);
   };
 
+  // Function to trigger snapshot creation (can be passed to EmptyState)
+  // This assumes handleCreateSnapshot from DashboardPage is not easily accessible here
+  // or we want a more direct action.
+  // For a cleaner approach, consider a global state/context for this action.
+  const triggerNewSnapshot = async () => {
+      console.log("Create First Snapshot clicked from empty state");
+      // Directly call the API endpoint or use a shared optimistic update logic if available
+      // This is a simplified call for now, ideally reuse DashboardPage logic
+      try {
+        await fetch('/api/snapshots/create', { method: 'POST' });
+        // Optionally show a toast, though the optimistic update in DashboardPage would handle it if on same view
+        // Revalidate data to update table
+        useSWRConfig().mutate('/api/snapshots');
+        useSWRConfig().mutate('/api/user/quota');
+      } catch (err) {
+        console.error("Error creating snapshot from empty state", err);
+        // Show error toast if useToast is available here
+      }
+  };
+
   // Loading State
   if (isLoading) {
     // console.log("Rendering: Loading State"); 
@@ -95,13 +115,16 @@ const SnapshotsTable = () => {
 
   // Empty State
   if (snapshots !== undefined && snapshots.length === 0) {
-    // console.log("Rendering: Empty State"); 
     return (
       <EmptyState 
-        title="No snapshots yet!" 
-        description="Use the '+' button in the bottom right to create your first snapshot backup."
+        title="No Snapshots Yet!"
+        description="Your Notion workspace snapshots will appear here once created."
         icon={<Inbox className="h-16 w-16 text-gray-300 dark:text-gray-600" />} 
-      />
+      >
+        <Button onClick={triggerNewSnapshot} className="mt-4">
+          <Plus className="mr-2 h-4 w-4" /> Create First Snapshot
+        </Button>
+      </EmptyState>
     );
   }
 
@@ -117,10 +140,10 @@ const SnapshotsTable = () => {
               </p>
             )}
             <Table>
-              <TableCaption>Your recent Notion workspace backups.</TableCaption>
+              <TableCaption>Your recent Notion workspace snapshots.</TableCaption>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Date & Time</TableHead>
+                  <TableHead>Created</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Size</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
@@ -133,12 +156,19 @@ const SnapshotsTable = () => {
                     {new Date(snapshot.timestamp).toLocaleString()}
                   </TableCell>
                   <TableCell>
-                    {snapshot.status !== "Completed" ? (
+                    {snapshot.status === "Completed" ? (
+                       <span className="text-sm text-green-600 flex items-center">
+                         <CheckCircle className="h-4 w-4 mr-1.5 flex-shrink-0" /> Saved
+                       </span>
+                    ) : snapshot.status !== "Pending" ? (
                        <Badge variant={snapshot.status === "Failed" ? "destructive" : "secondary"}>
                          {snapshot.status}
                        </Badge>
                     ) : (
-                       <span className="text-sm text-muted-foreground">Completed</span>
+                       <span className="text-sm text-muted-foreground flex items-center">
+                         <Loader2 className="h-4 w-4 mr-1.5 flex-shrink-0 animate-spin" />
+                         {snapshot.status}...
+                       </span>
                     )}
                   </TableCell>
                    <TableCell className="text-xs text-muted-foreground">
