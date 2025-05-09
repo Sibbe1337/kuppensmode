@@ -41,18 +41,24 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onOpenChange, trigg
   const swrKey = isOpen ? '/api/billing/plans' : null;
   const { data: plans, error: plansError, isLoading: plansLoading, mutate } = useSWR<PlanFromApi[]>(
     swrKey, 
-    fetcher
+    fetcher,
+    { revalidateOnFocus: false, revalidateOnMount: false }
   );
   const { toast } = useToast();
   const [isRedirecting, setIsRedirecting] = useState<string | null>(null);
 
-  // Effect to manually revalidate when the modal opens and SWR key is set
   useEffect(() => {
     if (isOpen && swrKey) {
-      console.log("UpgradeModal: isOpen is true, manually revalidating /api/billing/plans");
-      mutate(); // Call mutate to trigger revalidation of the current key
+      console.log("UpgradeModal: isOpen is true, manually revalidating /api/billing/plans with explicit fetch");
+      mutate(async () => {
+        const freshPlans = await fetcher(swrKey);
+        console.log("UpgradeModal: Fetched fresh plans manually:", freshPlans);
+        return freshPlans;
+      }, {
+        revalidate: false 
+      });
     }
-  }, [isOpen, swrKey, mutate]); // Add mutate to dependency array
+  }, [isOpen, swrKey, mutate]);
 
   console.log("UpgradeModal: SWR Data:", { plans, plansError, plansLoading, isOpen, currentPlanName, swrKey });
 
