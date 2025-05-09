@@ -186,11 +186,19 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onOpenChange, trigg
                   </ul>
                   <Button 
                     className="mt-auto w-full"
-                    onClick={() => handleUpgrade(currentCyclePlan.id, currentCyclePlan.nickname || currentCyclePlan.name)}
+                    onClick={(e) => {
+                      console.log(`--- BUTTON onClick FIRED FOR ${currentCyclePlan.name} ---`); 
+                      // alert(`--- ALERT: BUTTON CLICKED FOR ${currentCyclePlan.name} ---`);
+                      // handleUpgrade(currentCyclePlan.id, currentCyclePlan.nickname || currentCyclePlan.name); // Keep this commented for now
+                    }}
+                    onMouseDown={(e) => {
+                      console.log(`--- BUTTON onMouseDown FIRED FOR ${currentCyclePlan.name} ---`);
+                      // alert(`--- ALERT: BUTTON MOUSEDOWN FOR ${currentCyclePlan.name} ---`);
+                    }}
                     disabled={isRedirecting === currentCyclePlan.id}
                   >
                     {isRedirecting === currentCyclePlan.id ? <Loader2 className="h-4 w-4 mr-2 animate-spin"/> : <Zap className="h-4 w-4 mr-2" />}
-                    Choose {currentCyclePlan.name} {billingCycle === 'year' ? 'Annual' : 'Monthly'}
+                    Upgrade to {currentCyclePlan.name}
                   </Button>
                 </div>
               );
