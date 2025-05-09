@@ -86,16 +86,16 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onOpenChange, trigg
         throw new Error(responseData.error || responseData.message || 'Failed to create checkout session.');
       }
       
-      const { sessionId } = responseData;
-      if (!sessionId) {
-        console.error("UpgradeModal: Checkout session ID missing in responseData:", responseData);
-        throw new Error('Checkout session ID not received.');
+      const { id: sessionIdFromResponse } = responseData;
+      if (!sessionIdFromResponse) {
+        console.error("UpgradeModal: Session ID (expected as 'id') missing in responseData:", responseData);
+        throw new Error('Session ID not received from server.');
       }
       
       const stripe = await stripePromise;
       if (!stripe) throw new Error('Stripe.js failed to load.');
       
-      const { error } = await stripe.redirectToCheckout({ sessionId });
+      const { error } = await stripe.redirectToCheckout({ sessionId: sessionIdFromResponse });
       if (error) throw new Error(error.message || 'Failed to redirect to Stripe.');
 
     } catch (err: any) {
@@ -140,6 +140,14 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onOpenChange, trigg
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
+
+        {/* Plain HTML Button for testing */}
+        <button 
+          onClick={() => alert('PLAIN HTML BUTTON CLICKED!')} 
+          style={{padding: '10px', margin: '10px', border: '1px solid red'}}
+        >
+          Test Plain HTML Button
+        </button>
         
         {isOpen && plansLoading && (
           <div className="py-8 flex justify-center">

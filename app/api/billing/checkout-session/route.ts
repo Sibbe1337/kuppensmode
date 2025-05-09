@@ -1,14 +1,14 @@
 import { NextResponse } from 'next/server';
-import { auth } from '@clerk/nextjs/server';
+import { auth, clerkClient } from '@clerk/nextjs/server';
 import Stripe from 'stripe';
 import { db } from '@/lib/firestore'; // Import Firestore admin instance
 
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 if (!stripeSecretKey) {
-  console.error("STRIPE_SECRET_KEY environment variable not set.");
-  throw new Error("Stripe configuration error");
+  console.error("[Checkout API] STRIPE_SECRET_KEY environment variable not set.");
+  // Throw an error or return a 500 during init if you want to prevent startup without it
 }
-const stripe = new Stripe(stripeSecretKey, {
+const stripe = new Stripe(stripeSecretKey!, { // Added non-null assertion
   apiVersion: '2024-06-20', 
   typescript: true,
 });
@@ -17,13 +17,14 @@ const stripe = new Stripe(stripeSecretKey, {
 interface CheckoutRequestBody {
   priceId: string; // Stripe Price ID (price_...)
   seats?: number; // Number of seats (optional, defaults to 1)
-  billingInterval?: 'month' | 'year'; // Optional context from frontend
+  billingInterval?: 'month' | 'year'; // Optional context from frontend 
 }
 
 export async function POST(request: Request) {
   try {
     const { userId } = await auth();
     if (!userId) {
+      console.error("[Checkout API] Unauthorized - No userId");
       return new NextResponse("Unauthorized", { status: 401 });
     }
 
@@ -31,102 +32,85 @@ export async function POST(request: Request) {
     try {
       body = await request.json();
     } catch (error) {
+      console.error("[Checkout API] Invalid JSON body:", error);
       return new NextResponse("Invalid JSON body", { status: 400 });
     }
 
-    const { priceId, seats = 1, billingInterval } = body;
+    const { priceId, seats = 1 } = body;
+    console.log(`[Checkout API] User: ${userId}, Requested Price ID: ${priceId}, Seats: ${seats}`); // Log incoming data
+
     if (!priceId || !priceId.startsWith('price_')) {
+      console.error("[Checkout API] Invalid or missing Price ID:", priceId);
       return new NextResponse("Invalid or missing Price ID", { status: 400 });
     }
     if (typeof seats !== 'number' || !Number.isInteger(seats) || seats < 1) {
         return new NextResponse("Invalid number of seats", { status: 400 });
     }
 
-    console.log(`Creating checkout session for user: ${userId}, price: ${priceId}, seats: ${seats}, interval: ${billingInterval ?? 'N/A'}`);
-
-    // --- Fetch Price object to get metadata (e.g., trialDays) ---
-    let price: Stripe.Price | null = null;
+    // Fetch user email for Stripe customer_email
+    let userEmail: string | undefined;
     try {
-        price = await stripe.prices.retrieve(priceId);
-        console.log("Retrieved Price object:", price.id, "Metadata:", price.metadata);
-    } catch (priceError: any) {
-        console.error(`Error retrieving Stripe Price ${priceId}:`, priceError);
-        return new NextResponse(`Invalid Price ID: ${priceError.message}`, { status: 404 });
+        const client = await clerkClient(); // Call clerkClient() to get the instance
+        const user = await client.users.getUser(userId);
+        userEmail = user.emailAddresses.find((e: any) => e.id === user.primaryEmailAddressId)?.emailAddress; // Added :any temporarily
+        if (!userEmail) console.warn(`[Checkout API] Could not find primary email for user ${userId}`);
+    } catch (clerkError) {
+        console.error(`[Checkout API] Error fetching user ${userId} from Clerk:`, clerkError);
     }
-    // --- End Fetch Price ---
 
-    // --- Get User Data (for Stripe Customer ID) ---
+    // --- Get/Create Stripe Customer ID (from existing logic) ---
     let stripeCustomerId: string | undefined;
-    try {
-        const userRef = db.collection('users').doc(userId);
-        const userSnap = await userRef.get();
-        if (userSnap.exists) {
-            stripeCustomerId = userSnap.data()?.stripeCustomerId; 
-            console.log(`Found existing Stripe Customer ID: ${stripeCustomerId} for user ${userId}`);
-        } else {
-             console.log(`User document not found for ${userId}, will create new Stripe customer.`);
-             // Optionally create the user doc here if needed, though webhook is better
-        }
-    } catch (dbError) {
-        console.error(`Firestore error fetching user ${userId}:`, dbError);
-        // Decide if you want to proceed without customer ID or return error
-        // Proceeding allows checkout but makes linking harder pre-webhook
+    const userRef = db.collection('users').doc(userId);
+    const userSnap = await userRef.get();
+    if (userSnap.exists && userSnap.data()?.stripeCustomerId) {
+      stripeCustomerId = userSnap.data()?.stripeCustomerId; 
+    } else {
+      console.log(`[Checkout API] No existing Stripe Customer ID for ${userId}. Creating new.`);
+      try {
+        const customer = await stripe.customers.create({
+            email: userEmail, // Add email if available
+            metadata: { userId: userId },
+        });
+        stripeCustomerId = customer.id;
+        await userRef.set({ stripeCustomerId: stripeCustomerId }, { merge: true });
+      } catch (customerCreateError) {
+          console.error(`[Checkout API] Error creating Stripe customer for ${userId}:`, customerCreateError);
+          // Fallback or error, for now, proceed without customer if creation fails
+      }
     }
-    // --- End Get User Data ---
+    console.log(`[Checkout API] Using Stripe Customer ID: ${stripeCustomerId} for user ${userId}`);
+    // --- End Get/Create Stripe Customer ID ---
 
-    // Define URLs (use environment variables for flexibility)
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-    const successUrl = `${baseUrl}/dashboard?checkout=success&session_id={CHECKOUT_SESSION_ID}`;
-    const cancelUrl = `${baseUrl}/dashboard?checkout=cancel`;
+    const successUrl = `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/dashboard?checkout=success&session_id={CHECKOUT_SESSION_ID}`;
+    const cancelUrl = `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/dashboard?checkout=cancel`;
 
-    // Determine trial days from Price metadata
-    const trialDays = price.metadata?.trialDays ? parseInt(price.metadata.trialDays, 10) : undefined;
-    if (trialDays !== undefined && isNaN(trialDays)) {
-        console.warn(`Invalid non-numeric trialDays ('${price.metadata.trialDays}') found in metadata for price ${priceId}. Ignoring trial.`);
-    }
-    const effectiveTrialDays = (trialDays !== undefined && !isNaN(trialDays)) ? trialDays : undefined;
-
-    // Create the Stripe Checkout Session
     const sessionParams: Stripe.Checkout.SessionCreateParams = {
       payment_method_types: ['card'],
-      line_items: [
-        {
-          price: priceId,
-          quantity: seats,
-        },
-      ],
+      line_items: [{ price: priceId, quantity: seats }],
       mode: 'subscription',
       success_url: successUrl,
       cancel_url: cancelUrl,
-      client_reference_id: userId,
+      client_reference_id: userId, // Keep for webhook reconciliation
       ...(stripeCustomerId ? { customer: stripeCustomerId } : {}),
-      // Add subscription data: trial period and metadata for webhooks
-      subscription_data: {
-        ...(effectiveTrialDays && effectiveTrialDays > 0 && {
-            trial_period_days: effectiveTrialDays,
-        }),
-        metadata: {
-          userId: userId,
-        },
-      },
+      ...(userEmail && !stripeCustomerId && { customer_email: userEmail }), // Pass email if creating customer implicitly
+      subscription_data: { metadata: { userId: userId } },
     };
 
-    const checkoutSession = await stripe.checkout.sessions.create(sessionParams);
+    console.log("[Checkout API] Creating Stripe session with params:", JSON.stringify(sessionParams, null, 2));
+    const session = await stripe.checkout.sessions.create(sessionParams);
 
-    if (!checkoutSession.id) {
+    if (!session.id) {
+        console.error("[Checkout API] Stripe session.id is missing after creation.");
         throw new Error("Could not create Stripe Checkout Session.");
     }
 
-    console.log(`Created Checkout Session: ${checkoutSession.id} for user ${userId}`);
+    console.log(`[Checkout API] Stripe session created successfully. ID: ${session.id}`);
+    // Ensure the response JSON structure is exactly { id: session.id }
+    return NextResponse.json({ id: session.id }); 
 
-    // Return the session ID to the frontend
-    return NextResponse.json({ sessionId: checkoutSession.id });
-
-  } catch (error) {
-    console.error("Error creating checkout session:", error);
-    if (error instanceof Stripe.errors.StripeError) {
-      return new NextResponse(`Stripe Error: ${error.message}`, { status: error.statusCode || 500 });
-    }
-    return new NextResponse("Internal Server Error", { status: 500 });
+  } catch (err: any) {
+    console.error("[Checkout API] ERROR:", err);
+    // Ensure a JSON response for errors too, so client can parse err.message
+    return NextResponse.json({ error: err.message || 'Failed to create session' }, { status: 500 });
   }
 } 
