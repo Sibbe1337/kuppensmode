@@ -1,3 +1,5 @@
+console.log("--- [Scheduler API] Execution STARTED ---"); // Unique log at very top
+
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { CloudSchedulerClient } from '@google-cloud/scheduler';
