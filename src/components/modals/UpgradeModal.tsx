@@ -100,7 +100,20 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onOpenChange, trigg
   }
 
   const filteredPlans = plans
-    ? plans.filter(p => p.name.toLowerCase() !== 'starter' && p.name.toLowerCase() !== currentPlanName?.toLowerCase())
+    ? plans.filter(p => {
+        const planNameLower = p.name.toLowerCase();
+        const currentPlanNameLower = currentPlanName?.toLowerCase();
+        
+        // Don't show the "Starter" plan from Stripe if it's literally named "Starter"
+        if (planNameLower === 'starter') {
+          return false;
+        }
+        // Don't show the plan if its name matches the user's current plan name
+        if (planNameLower === currentPlanNameLower) {
+          return false;
+        }
+        return true;
+      })
     : [];
   
   if (isOpen) {
