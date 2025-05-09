@@ -13,6 +13,7 @@
     "@clerk/nextjs": "^6.18.5",
     "@google-cloud/firestore": "^7.11.0",
     "@google-cloud/pubsub": "^4.5.0",
+    "@google-cloud/scheduler": "^5.0.1",
     "@google-cloud/secret-manager": "^6.0.1",
     "@google-cloud/storage": "^7.16.0",
     "@notionhq/client": "^2.3.0",

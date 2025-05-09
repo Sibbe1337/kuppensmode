@@ -7,11 +7,12 @@ import { Input } from "@/components/ui/input"; // For API key input
 import { Label } from "@/components/ui/label";   // For form labels
 import { Switch } from "@/components/ui/switch"; // For toggles
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"; // For organizing sections
-import { ExternalLink, KeyRound, Bell, LogOut, HelpCircle, ShieldCheck, Loader2, AlertTriangle, Info } from 'lucide-react';
+import { ExternalLink, KeyRound, Bell, LogOut, HelpCircle, ShieldCheck, Loader2, AlertTriangle, Info, Zap } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast"; // Import useToast
 import { useUserSettings } from '@/hooks/useUserSettings'; // Corrected hook import
 import type { UserSettings } from '@/types/user'; // Corrected type import
 import { useSearchParams } from 'next/navigation'; // Import useSearchParams
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"; // For frequency selection
 
 const SettingsPage = () => {
   const { settings, isLoading, isError, mutateSettings } = useUserSettings();
@@ -31,6 +32,13 @@ const SettingsPage = () => {
     webhookUrl: "",
   });
   const [isSavingNotifications, setIsSavingNotifications] = React.useState(false);
+  const [editedAutoSnapshot, setEditedAutoSnapshot] = React.useState(
+    settings?.autoSnapshot || { 
+      enabled: false, 
+      frequency: 'daily', 
+    }
+  );
+  const [isSavingAutoSnapshot, setIsSavingAutoSnapshot] = React.useState(false);
 
   // Effect to update local isNotionCurrentlyConnected when settings change from SWR
   useEffect(() => {
@@ -77,6 +85,15 @@ const SettingsPage = () => {
       setEditedNotifications(settings.notifications);
     }
   }, [settings?.notifications]);
+
+  React.useEffect(() => {
+    if (settings?.autoSnapshot) {
+      setEditedAutoSnapshot(settings.autoSnapshot);
+    } else if (settings && !settings.autoSnapshot) {
+      // Initialize if not present in settings
+      setEditedAutoSnapshot({ enabled: false, frequency: 'daily' });
+    }
+  }, [settings?.autoSnapshot, settings]); // Added settings to dep array
 
   const handleNotionConnect = () => {
     console.log("Redirecting to Notion OAuth initiation endpoint...");
@@ -168,6 +185,67 @@ const SettingsPage = () => {
     if (!settings?.notifications) return false; // If initial settings not loaded, assume no changes
     return JSON.stringify(settings.notifications) !== JSON.stringify(editedNotifications);
   }, [settings?.notifications, editedNotifications]);
+
+  const handleAutoSnapshotSettingChange = (
+    key: keyof typeof editedAutoSnapshot,
+    value: boolean | string
+  ) => {
+    setEditedAutoSnapshot((prev) => ({
+      ...prev,
+      [key]: value,
+    }));
+  };
+
+  const handleSaveAutoSnapshots = async () => {
+    setIsSavingAutoSnapshot(true);
+    let settingsSaved = false; // Flag to track if Firestore save was successful
+    try {
+      const response = await fetch('/api/user/settings', { 
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ autoSnapshot: editedAutoSnapshot })
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: 'Failed to save auto-snapshot settings.'}));
+        throw new Error(errorData.message || 'Failed to save auto-snapshot settings.');
+      }
+      settingsSaved = true; // Mark Firestore save as successful
+      // Don't show toast yet, wait for scheduler API call
+      mutateSettings(); 
+
+      // Now, call the scheduler API
+      console.log("[SettingsPage] Auto-snapshot settings saved to DB. Now calling scheduler API with:", editedAutoSnapshot);
+      const schedulerResponse = await fetch('/api/scheduler/auto-snapshot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editedAutoSnapshot) // Send { enabled, frequency }
+      });
+
+      const schedulerData = await schedulerResponse.json();
+      if (!schedulerResponse.ok) {
+        throw new Error(schedulerData.error || 'Failed to update scheduler job.');
+      }
+
+      toast({ title: "Success", description: `Automated snapshot preferences saved. ${schedulerData.message}` });
+
+    } catch (error: any) {
+      console.error("Error in handleSaveAutoSnapshots:", error);
+      let toastMessage = error.message || "Failed to save preferences.";
+      if (settingsSaved && error.message.includes('scheduler')) {
+        // Firestore save worked, but scheduler update failed
+        toastMessage = "Settings saved to database, but failed to update the schedule. Please try saving again or contact support.";
+      }
+      toast({ title: "Error", description: toastMessage, variant: "destructive" });
+    } finally {
+      setIsSavingAutoSnapshot(false);
+    }
+  };
+
+  const hasAutoSnapshotChanges = React.useMemo(() => {
+    if (!settings) return false; 
+    const currentAutoSnapshot = settings.autoSnapshot || { enabled: false, frequency: 'daily' }; // Default if not set
+    return JSON.stringify(currentAutoSnapshot) !== JSON.stringify(editedAutoSnapshot);
+  }, [settings, editedAutoSnapshot]);
 
   if (isLoading) {
     console.log("SettingsPage: Rendering LOADING state.");
@@ -288,6 +366,70 @@ const SettingsPage = () => {
                     Treat your API key like a password. Do not share it publicly.
                 </p>
               </CardContent>
+            </Card>
+          </AccordionContent>
+        </AccordionItem>
+
+        {/* Automated Snapshots Section (New) */}
+        <AccordionItem value="item-auto-snapshot"> {/* Unique value */}
+          <AccordionTrigger className="text-lg">
+            <div className="flex items-center gap-2">
+                <Zap className="h-5 w-5" /> {/* Using Zap icon for automation */}
+                Automated Snapshots
+            </div>
+          </AccordionTrigger>
+          <AccordionContent className="pt-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Automation Settings</CardTitle>
+                <CardDescription>
+                  Enable automatic snapshots of your Notion workspace.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="flex items-center justify-between space-x-2 p-3 border rounded-md">
+                  <Label htmlFor="autoSnapshotEnabled" className="flex flex-col space-y-1">
+                    <span>Enable Automated Snapshots</span>
+                    <span className="font-normal leading-snug text-muted-foreground">
+                      Let Notion Lifeline automatically back up your workspace.
+                    </span>
+                  </Label>
+                  <Switch 
+                    id="autoSnapshotEnabled" 
+                    checked={editedAutoSnapshot.enabled}
+                    onCheckedChange={(checked) => handleAutoSnapshotSettingChange('enabled', checked)}
+                  />
+                </div>
+                
+                {editedAutoSnapshot.enabled && (
+                  <div className="p-3 border rounded-md space-y-3">
+                    <Label>Frequency</Label>
+                    <RadioGroup 
+                      value={editedAutoSnapshot.frequency}
+                      onValueChange={(value) => handleAutoSnapshotSettingChange('frequency', value)}
+                    >
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="daily" id="freq-daily" />
+                        <Label htmlFor="freq-daily" className="font-normal">Daily</Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="weekly" id="freq-weekly" />
+                        <Label htmlFor="freq-weekly" className="font-normal">Weekly (on Mondays)</Label>
+                      </div>
+                      {/* TODO: Add more options like specific day/time if needed */}
+                    </RadioGroup>
+                  </div>
+                )}
+              </CardContent>
+              <CardFooter className="border-t px-6 py-4">
+                <Button 
+                    onClick={handleSaveAutoSnapshots} 
+                    disabled={!hasAutoSnapshotChanges || isSavingAutoSnapshot}
+                >
+                    {isSavingAutoSnapshot ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                    Save Auto-Snapshot Settings
+                </Button>
+              </CardFooter>
             </Card>
           </AccordionContent>
         </AccordionItem>

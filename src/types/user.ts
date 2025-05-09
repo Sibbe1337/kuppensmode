@@ -1,12 +1,20 @@
 export interface UserSettings {
   notionConnected: boolean;
+  notionWorkspaceId: string | null;
   notionWorkspaceName: string | null;
-  apiKey: string | null; // Represents the API key for display (e.g., masked)
+  notionWorkspaceIcon: string | null;
+  apiKey: string | null; // Could be hashed or just a display version
   // The actual stored value in Firestore for the API key might be a hash, e.g., apiKeyHash
   notifications: {
     emailOnSnapshotSuccess: boolean;
     emailOnSnapshotFailure: boolean;
     webhookUrl: string | null;
+  };
+  autoSnapshot: { // No longer optional at the top level, initialized in defaults
+    enabled: boolean;
+    frequency: 'daily' | 'weekly'; // Add more if needed
+    // timeOfDay?: string; // e.g., '03:00' UTC
+    // dayOfWeek?: number; // 0 for Sunday, 1 for Monday, etc. (if weekly)
   };
 }
 

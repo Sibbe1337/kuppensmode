@@ -17,6 +17,9 @@ importers:
       '@google-cloud/pubsub':
         specifier: ^4.5.0
         version: 4.11.0
+      '@google-cloud/scheduler':
+        specifier: ^5.0.1
+        version: 5.0.1
       '@google-cloud/secret-manager':
         specifier: ^6.0.1
         version: 6.0.1
@@ -353,6 +356,10 @@ packages:
   '@google-cloud/pubsub@4.11.0':
     resolution: {integrity: sha512-xWxJAlyUGd6OPp97u8maMcI3xVXuHjxfwh6Dr7P/P+6NK9o446slJobsbgsmK0xKY4nTK8m5uuJrhEKapfZSmQ==}
     engines: {node: '>=14.0.0'}
+
+  '@google-cloud/scheduler@5.0.1':
+    resolution: {integrity: sha512-qoyvEzQKpgHjoGZVx1x+RzUT34/QKdwwPWZ1YPNhEzm+WZyquuX8zVSg5NYamQZpU4lZONrSnKlERcqTEganDQ==}
+    engines: {node: '>=18'}
 
   '@google-cloud/secret-manager@6.0.1':
     resolution: {integrity: sha512-xvFzeqXZh7u6Pv1awJH/iOYudpvLXc45cCrjgsodWPm1SmYkXvLYtKfJLkEpkJGRMdteyfzGay4CueSZCVy8Eg==}
@@ -4224,6 +4231,12 @@ snapshots:
       p-defer: 3.0.0
     transitivePeerDependencies:
       - encoding
+      - supports-color
+
+  '@google-cloud/scheduler@5.0.1':
+    dependencies:
+      google-gax: 5.0.1-rc.1
+    transitivePeerDependencies:
       - supports-color
 
   '@google-cloud/secret-manager@6.0.1':

@@ -18,7 +18,7 @@ import UpgradeModal from '@/components/modals/UpgradeModal';
 import type { Snapshot } from "@/types";
 import { fetcher } from "@/lib/fetcher";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AlertCircle, Inbox, Zap, MoreHorizontal, Plus, CheckCircle, Loader2 } from 'lucide-react';
+import { AlertCircle, Inbox, Zap, MoreHorizontal, Plus, CheckCircle, Loader2, Copy } from 'lucide-react';
 import { EmptyState } from "@/components/ui/EmptyState";
 import { timeAgo } from "@/lib/utils";
 import { useQuota } from '@/hooks/useQuota';
@@ -28,6 +28,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useToast } from "@/hooks/use-toast";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 const SnapshotsTable = () => {
   // console.log("!!! SnapshotsTable function invoked !!!"); 
@@ -45,6 +47,8 @@ const SnapshotsTable = () => {
   const [selectedSnapshot, setSelectedSnapshot] = useState<Snapshot | null>(null);
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
   const [upgradeTriggerFeature, setUpgradeTriggerFeature] = useState<string | undefined>(undefined);
+
+  const { toast } = useToast();
 
   // console.log('SWR State:', { isLoading, error, snapshots }); 
 
@@ -67,6 +71,20 @@ const SnapshotsTable = () => {
   const handleRestoreClick = (snapshot: Snapshot) => {
     setSelectedSnapshot(snapshot);
     setIsWizardOpen(true);
+  };
+
+  const handleCopySnapshotLink = (snapshotId: string) => {
+    // For now, let's assume the link just points to the dashboard
+    // In the future, this could be a deep link to a specific snapshot view
+    const snapshotUrl = `${window.location.origin}/dashboard#snapshot-${snapshotId.replace(/[^a-zA-Z0-9-_]/g, '-')}`;
+    navigator.clipboard.writeText(snapshotUrl)
+      .then(() => {
+        toast({ title: "Link Copied", description: "Snapshot link copied to clipboard." });
+      })
+      .catch(err => {
+        console.error("Failed to copy snapshot link:", err);
+        toast({ title: "Error", description: "Could not copy link.", variant: "destructive" });
+      });
   };
 
   // Function to trigger snapshot creation (can be passed to EmptyState)
@@ -113,18 +131,66 @@ const SnapshotsTable = () => {
     );
   }
 
-  // Empty State
+  // Empty State or Sample Row
   if (snapshots !== undefined && snapshots.length === 0) {
+    const sampleSnapshot: Snapshot = {
+      id: "sample-snapshot-id",
+      timestamp: new Date().toISOString(),
+      sizeKB: 1234, // Approx 1.2 MB
+      status: "Completed",
+    };
     return (
-      <EmptyState 
-        title="No Snapshots Yet!"
-        description="Your Notion workspace snapshots will appear here once created."
-        icon={<Inbox className="h-16 w-16 text-gray-300 dark:text-gray-600" />} 
-      >
-        <Button onClick={triggerNewSnapshot} className="mt-4">
-          <Plus className="mr-2 h-4 w-4" /> Create First Snapshot
-        </Button>
-      </EmptyState>
+      <div className="snapshots-table-sample">
+        <EmptyState 
+          title="No Snapshots Yet!"
+          description="Your Notion workspace snapshots will appear here once created. Here's how one looks:"
+          icon={<Inbox className="h-12 w-12 text-gray-300 dark:text-gray-600" />} 
+        >
+          {/* Optionally keep the button, or remove if sample table is enough */}
+          {/* <Button onClick={triggerNewSnapshot} className="mt-4">
+            <Plus className="mr-2 h-4 w-4" /> Create First Snapshot
+          </Button> */}
+        </EmptyState>
+        <Table className="mt-4"> {/* Add margin if button above is removed */}
+            <TableHeader>
+              <TableRow>
+                <TableHead>Created</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Size</TableHead> 
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+                <TableRow key={sampleSnapshot.id} className="opacity-70">
+                  <TableCell className="font-medium">
+                    {new Date(sampleSnapshot.timestamp).toLocaleString()} (Sample)
+                  </TableCell>
+                  <TableCell>
+                    <span className="text-sm text-green-600 flex items-center">
+                        <CheckCircle className="h-4 w-4 mr-1.5 flex-shrink-0" /> Saved
+                    </span>
+                  </TableCell>
+                   <TableCell className="text-xs text-muted-foreground">
+                       {(sampleSnapshot.sizeKB / 1024).toFixed(2)} MB
+                   </TableCell>
+                  <TableCell className="text-right">
+                    <TooltipProvider>
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Button variant="ghost" className="h-8 w-8 p-0 cursor-not-allowed" disabled>
+                                    <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                                <p>This is a sample snapshot. Create one to enable actions.</p>
+                            </TooltipContent>
+                        </Tooltip>
+                    </TooltipProvider>
+                  </TableCell>
+                </TableRow>
+            </TableBody>
+        </Table>
+      </div>
     );
   }
 
@@ -185,6 +251,9 @@ const SnapshotsTable = () => {
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem onClick={() => handleRestoreClick(snapshot)}>
                           Restore Snapshot
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleCopySnapshotLink(snapshot.id)}>
+                          <Copy className="h-4 w-4 mr-2" /> Copy Link
                         </DropdownMenuItem>
                         {isStarterPlan && (
                            <DropdownMenuItem onClick={() => handleUpgradeClick("Priority Restore")} className="text-yellow-600 focus:text-yellow-700 focus:bg-yellow-50">

@@ -85,7 +85,7 @@ const RestoreWizard: React.FC<RestoreWizardProps> = ({ snapshot, open, onOpenCha
   // const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set()); // Temporarily unused
 
   const [progressValue, setProgressValue] = useState(0);
-  const [statusMessage, setStatusMessage] = useState("Preparing restore process...");
+  const [statusMessage, setStatusMessage] = useState("Getting things ready...");
   const [isRestoreInProgress, setIsRestoreInProgress] = useState(false);
   const { toast } = useToast();
   const restoreStartTimeRef = useRef<number | null>(null);
@@ -161,7 +161,7 @@ const RestoreWizard: React.FC<RestoreWizardProps> = ({ snapshot, open, onOpenCha
       setCurrentStep(1);
       setIsRestoreInProgress(false);
       setProgressValue(0);
-      setStatusMessage("Preparing restore process...");
+      setStatusMessage("Getting things ready...");
       setCurrentRestoreId(null);
       restoreStartTimeRef.current = null;
       setRestoreTargetType('new_page'); // Reset to default on open
@@ -179,39 +179,43 @@ const RestoreWizard: React.FC<RestoreWizardProps> = ({ snapshot, open, onOpenCha
        if (!lastEvent) {
          if (currentRestoreId && !isConnected && isRestoreInProgress) {
            setStatusMessage("Connecting to restore monitor...");
-         } else if (!currentRestoreId && !isRestoreInProgress) {
-           setStatusMessage("Ready to begin restore.");
+         } else if (!currentRestoreId && !isRestoreInProgress && currentStep === 3) {
+           setStatusMessage("Initiating restore process...");
          }
          return;
        }
 
        if (lastEvent.type === 'connected') {
-         setStatusMessage("Connected. Restore starting soon...");
+         setStatusMessage("Connection established. Starting restore...");
        } else if (lastEvent.type === 'progress') {
-         let simpleMessage = `Restoring... (${lastEvent.percent}%)`;
-         if (lastEvent.message.includes("download")) {
-            simpleMessage = "Downloading backup data...";
-         } else if (lastEvent.message.includes("Decompressing")) {
-             simpleMessage = "Preparing backup files...";
-         } else if (lastEvent.message.includes("parsing")) {
-             simpleMessage = "Reading backup structure...";
-         } else if (lastEvent.message.includes("queueing") || lastEvent.message.includes("restoring")) {
-             simpleMessage = `Restoring your items... (${lastEvent.percent}%)`;
+         let userFriendlyMessage = `Restoring your items... (${lastEvent.percent}%)`;
+         const technicalMessage = lastEvent.message.toLowerCase();
+
+         if (technicalMessage.includes("downloading snapshot")) {
+            userFriendlyMessage = "Downloading your backup data...";
+         } else if (technicalMessage.includes("decompressing")) {
+            userFriendlyMessage = "Preparing backup files...";
+         } else if (technicalMessage.includes("parsing json")) {
+            userFriendlyMessage = "Reading backup structure...";
+         } else if (technicalMessage.includes("queueing notion api calls")) {
+            userFriendlyMessage = "Preparing to write to Notion...";
+         } else if (technicalMessage.includes("restoring item") || technicalMessage.includes("creating database") || technicalMessage.includes("creating page")) {
+            userFriendlyMessage = `Restoring items to Notion... (${lastEvent.percent}%)`;
          }
          
          console.log("RestoreWizard: Received progress event in useEffect", lastEvent);
          setProgressValue(lastEvent.percent);
-         setStatusMessage(simpleMessage);
+         setStatusMessage(userFriendlyMessage);
          setIsRestoreInProgress(true);
        } else if (lastEvent.type === 'complete') {
          setProgressValue(100);
-         setStatusMessage("Restore completed successfully!");
+         setStatusMessage("All items restored successfully!");
          setIsRestoreInProgress(false);
        } else if (lastEvent.type === 'error') {
-         setStatusMessage(`Restore failed: ${lastEvent.error}`);
+         setStatusMessage(`Restore failed: ${lastEvent.error}. Please try again or contact support.`);
          setIsRestoreInProgress(false);
        }
-  }, [lastEvent, isConnected, currentRestoreId, toast, mutate, isRestoreInProgress]);
+  }, [lastEvent, isConnected, currentRestoreId, toast, mutate, isRestoreInProgress, currentStep]);
 
   // --- Temporarily Commented Out Effect for selectAll checkbox ---
   /*

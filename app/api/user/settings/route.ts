@@ -4,6 +4,7 @@ import { auth } from "@clerk/nextjs/server"; // ✅ Corrected import for server-
 import { db } from "@/lib/firestore";
 import type { UserSettings } from "@/types/user";
 import { DEFAULT_USER_SETTINGS } from "@/config/defaults";
+import { FieldValue } from '@google-cloud/firestore';
 
 
 
@@ -87,10 +88,12 @@ interface UpdateSettingsBody {
     notifications?: {
         emailOnSnapshotSuccess?: boolean;
         emailOnSnapshotFailure?: boolean;
-        webhookUrl?: string | null; // Allow null to clear the webhook
+        webhookUrl?: string | null;
     };
-    // Add other updatable settings fields here later if needed
-    // For example: notionConnectionDetails?: { workspaceName: string; ... }
+    autoSnapshot?: {
+        enabled?: boolean;
+        frequency?: 'daily' | 'weekly';
+    };
 }
 
 export async function POST(request: Request) {
@@ -108,45 +111,77 @@ export async function POST(request: Request) {
     return new NextResponse("Invalid JSON body", { status: 400 });
   }
 
-    console.log(`Updating settings for user: ${userId}`, body);
+    console.log(`Updating settings for user: ${userId} with body:`, body);
   const userRef = db.collection('users').doc(userId);
   const updatesForFirestore: { [key: string]: any } = {};
 
-  // Construct the update object carefully to only include provided fields,
-  // using dot notation for updating nested fields within the 'settings' map.
-    if (body.notifications) {
-      if (body.notifications.emailOnSnapshotSuccess !== undefined) {
+  // Handle notifications update
+  if (body.notifications) {
+    if (body.notifications.emailOnSnapshotSuccess !== undefined) {
       updatesForFirestore['settings.notifications.emailOnSnapshotSuccess'] = body.notifications.emailOnSnapshotSuccess;
-      }
-      if (body.notifications.emailOnSnapshotFailure !== undefined) {
-      updatesForFirestore['settings.notifications.emailOnSnapshotFailure'] = body.notifications.emailOnSnapshotFailure;
-      }
-    // Allow setting webhookUrl to null or a string explicitly
-      if (Object.prototype.hasOwnProperty.call(body.notifications, 'webhookUrl')) {
-      updatesForFirestore['settings.notifications.webhookUrl'] = body.notifications.webhookUrl;
-      }
     }
-    
-  // Add other top-level fields of 'settings' here if they become part of UpdateSettingsBody
-  // Example: if (body.someOtherSetting !== undefined) { updatesForFirestore['settings.someOtherSetting'] = body.someOtherSetting; }
+    if (body.notifications.emailOnSnapshotFailure !== undefined) {
+      updatesForFirestore['settings.notifications.emailOnSnapshotFailure'] = body.notifications.emailOnSnapshotFailure;
+    }
+    if (Object.prototype.hasOwnProperty.call(body.notifications, 'webhookUrl')) {
+      updatesForFirestore['settings.notifications.webhookUrl'] = body.notifications.webhookUrl;
+    }
+  }
+
+  // Handle autoSnapshot update
+  if (body.autoSnapshot) {
+    if (body.autoSnapshot.enabled !== undefined) {
+      updatesForFirestore['settings.autoSnapshot.enabled'] = body.autoSnapshot.enabled;
+    }
+    if (body.autoSnapshot.frequency !== undefined) {
+      updatesForFirestore['settings.autoSnapshot.frequency'] = body.autoSnapshot.frequency;
+    }
+    // Ensure the autoSnapshot object itself is created if it wasn't there
+    // This is important if only one sub-property is sent initially.
+    // However, set with merge:true and dot notation should handle this implicitly.
+    // For safety, ensure the parent `settings` map exists if it doesn't.
+  }
 
   if (Object.keys(updatesForFirestore).length === 0) {
-        return NextResponse.json({ success: true, message: "No settings fields provided for update." });
-    }
+    return NextResponse.json({ success: true, message: "No settings fields provided for update." });
+  }
 
-  // Ensure createdAt is set if we are creating the document for the first time with settings
-  updatesForFirestore['createdAt'] = Date.now(); // This will be set on create, and merged (overwritten with same value) on update
+  // To ensure the top-level 'settings' map exists if we are creating it for the first time
+  // with nested fields, or if the user document itself is new.
+  const updatePayload = { 
+    settings: updatesForFirestore, // This nests our dot-notation paths under 'settings' again, which is wrong.
+                                // We should apply updatesForFirestore directly.
+    createdAt: FieldValue.serverTimestamp() // Ensures createdAt on new doc, updates on existing
+  };
+  
+  // Corrected approach: apply updatesForFirestore directly using .set with merge:true
+  // or .update if we are certain the 'settings' map always exists.
+  // Given GET initializes 'settings', .update should be safe if user doc exists.
 
+  // Let's ensure the user document and settings field are initialized if they don't exist,
+  // then apply updates.
   try {
-    await userRef.set(updatesForFirestore, { merge: true });
-    console.log(`Successfully updated/set settings for user ${userId} with:`, updatesForFirestore);
+    const userSnap = await userRef.get();
+    if (!userSnap.exists) {
+        console.log(`User doc ${userId} not found in POST settings, creating with new settings.`);
+        // Create doc with new settings and defaults for anything not provided.
+        const initialSettings = { 
+            ...DEFAULT_USER_SETTINGS, 
+            ...(body.notifications && { notifications: { ...DEFAULT_USER_SETTINGS.notifications, ...body.notifications } }),
+            ...(body.autoSnapshot && { autoSnapshot: { enabled: false, frequency: 'daily', ...body.autoSnapshot } })
+        };
+        await userRef.set({ settings: initialSettings, createdAt: FieldValue.serverTimestamp() });
+    } else {
+        // Document exists, apply updates using dot notation to the settings field
+        await userRef.update(updatesForFirestore);
+    }
+    
+    console.log(`Successfully updated settings for user ${userId} with:`, updatesForFirestore);
     return NextResponse.json({ success: true, message: "Settings updated." });
   } catch (error) {
     console.error(`POST /api/user/settings error for user ${userId}:`, error);
-    // It's unlikely to be a NOT_FOUND here if using set with merge:true,
-    // but keeping a general error handler.
     return new NextResponse("Internal Server Error while updating settings", { status: 500 });
-    }
+  }
 }
 
 // TODO: Remember to apply the set(..., { merge: true }) logic to the POST handler as well if it exists and uses update().
