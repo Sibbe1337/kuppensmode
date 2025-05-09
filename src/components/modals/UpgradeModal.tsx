@@ -60,14 +60,11 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onOpenChange, trigg
   });
 
   const handleUpgrade = async (priceId: string, planName: string) => {
+    console.log(`UpgradeModal: handleUpgrade CALLED for plan: ${planName}, priceId: ${priceId}`);
     setIsRedirecting(priceId);
-    if (!stripePromise) {
-      toast({ title: "Error", description: "Stripe is not configured.", variant: "destructive" });
-      setIsRedirecting(null);
-      return;
-    }
-
+    
     try {
+      console.log("UpgradeModal: Attempting to fetch /api/billing/checkout-session");
       const response = await fetch('/api/billing/checkout-session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -95,7 +92,8 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onOpenChange, trigg
       if (error) throw new Error(error.message || 'Failed to redirect to Stripe.');
 
     } catch (err: any) {
-      toast({ title: `Upgrade to ${planName} Failed`, description: err.message, variant: "destructive" });
+      console.error("UpgradeModal: Error in handleUpgrade catch block:", err);
+      toast({ title: `Upgrade to ${planName} Failed`, description: err.message || "An unexpected error occurred.", variant: "destructive" });
     } finally {
       setIsRedirecting(null);
     }
