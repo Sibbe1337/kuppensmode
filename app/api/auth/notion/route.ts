@@ -30,23 +30,26 @@ export async function DELETE(request: NextRequest) {
   try {
     const notionSnap = await notionDocRef.get();
     const updateData: { [key: string]: any } = {
-      notionConnected: false,
+      'settings.notionConnected': false,
+      'settings.notionWorkspaceId': FieldValue.delete(),
+      'settings.notionWorkspaceName': FieldValue.delete(),
+      'settings.notionWorkspaceIcon': FieldValue.delete(),
       notionAccessDetails: FieldValue.delete(),
       notionAccessToken: FieldValue.delete(),
       notionWorkspaceId: FieldValue.delete(),
       notionWorkspaceName: FieldValue.delete(),
-      notionWorkspaceIcon: FieldValue.delete()
+      notionWorkspaceIcon: FieldValue.delete(),
     };
 
     if (notionSnap.exists) {
       await notionDocRef.delete();
       console.log(`[Notion-disconnect] Successfully deleted ${notionDocRef.path}`);
-      await userDocRef.set(updateData, { merge: true });
+      await userDocRef.update(updateData);
       console.log(`[Notion-disconnect] Successfully updated user ${userId} notionConnected status and cleared details.`);
       return NextResponse.json({ success: true, message: "Notion integration disconnected." });
     } else {
       console.log(`[Notion-disconnect] Integration document ${notionDocRef.path} not found. No action needed.`);
-      await userDocRef.set(updateData, { merge: true });
+      await userDocRef.update(updateData);
       console.log(`[Notion-disconnect] Ensured user ${userId} notionConnected status is false and cleared details.`);
       return NextResponse.json({ success: true, message: "Notion integration not found, user status updated." });
     }
