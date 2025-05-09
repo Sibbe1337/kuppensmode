@@ -63,6 +63,13 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onOpenChange, trigg
     console.log(`UpgradeModal: handleUpgrade CALLED for plan: ${planName}, priceId: ${priceId}`);
     setIsRedirecting(priceId);
     
+    if (!stripePromise) {
+      toast({ title: "Error", description: "Stripe is not configured (publishable key missing).", variant: "destructive" });
+      console.error("UpgradeModal: stripePromise is null. NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY might be missing.");
+      setIsRedirecting(null);
+      return;
+    }
+
     try {
       console.log("UpgradeModal: Attempting to fetch /api/billing/checkout-session");
       const response = await fetch('/api/billing/checkout-session', {
@@ -163,7 +170,15 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onOpenChange, trigg
                   </ul>
                   <Button 
                     className="mt-auto w-full"
-                    onClick={() => handleUpgrade(plan.id, plan.name)}
+                    onClick={() => {
+                      console.log(`UpgradeModal: Button clicked for plan: ${plan.name}, ID: ${plan.id}`);
+                      if (!plan.id || !plan.name) {
+                        console.error("UpgradeModal: Clicked plan has missing id or name!", plan);
+                        toast({title: "Error", description: "Selected plan data is invalid.", variant: "destructive"});
+                        return;
+                      }
+                      handleUpgrade(plan.id, plan.name);
+                    }}
                     disabled={isRedirecting === plan.id}
                   >
                     {isRedirecting === plan.id ? <Loader2 className="h-4 w-4 mr-2 animate-spin"/> : <Zap className="h-4 w-4 mr-2" />}
