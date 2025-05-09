@@ -23,6 +23,7 @@ import PreviewSheet from './PreviewSheet';
 import { useToast } from "@/hooks/use-toast";
 import dayjs from 'dayjs'; // Import dayjs
 import { filesize } from 'filesize'; // Import filesize
+import { cn } from "@/lib/utils";
 
 // IconButton component as suggested
 const IconButton: React.FC<{
@@ -162,28 +163,37 @@ const SnapshotsTable = () => {
         </p>
       )}
       <ul className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {snapshots && snapshots.map((snap) => (
-          <li key={snap.id} className="rounded-xl bg-muted/20 dark:bg-zinc-800/60 p-5 shadow-sm hover:shadow-lg transition-shadow duration-300 border border-border/50 flex flex-col">
-            <div className="flex justify-between items-start mb-2">
-                <h3 className="text-base font-semibold text-foreground">
-                    {dayjs(snap.timestamp).format("MMM D · HH:mm")}
-                </h3>
-                <StatusPill status={snap.status} />
-            </div>
-            <p className="text-xs text-muted-foreground mb-4">
-                {/* Assuming snap.sizeKB is in kilobytes */}
-                {filesize(snap.sizeKB * 1024, { base: 2, standard: "jedec" })} 
-                {/* Add page count here when available, e.g., `· ${snap.pageCount || 0} pages` */}
-            </p>
-            
-            <div className="mt-auto pt-4 border-t border-border/30 flex justify-end gap-1">
-              <IconButton icon={Eye} tooltip="Preview" onClick={() => handlePreviewClick(snap)} />
-              <IconButton icon={Download} tooltip="Download Raw File" href={`/api/snapshots/${snap.id}/download`} />
-              <IconButton icon={RotateCcw} tooltip="Restore Snapshot" onClick={() => handleRestoreClick(snap)} />
-              {/* TODO: Add Delete IconButton later */}
-            </div>
-          </li>
-        ))}
+        {snapshots && snapshots.map((snap) => {
+          const isRecent = dayjs().diff(dayjs(snap.timestamp), 'day') < 7;
+          return (
+            <li 
+              key={snap.id} 
+              className={cn(
+                "rounded-xl bg-muted/20 dark:bg-zinc-800/60 p-5 shadow-sm hover:shadow-lg transition-shadow duration-300 border border-border/50 flex flex-col",
+                isRecent && "border-primary/50 ring-1 ring-primary/30" // Accent for recent snapshots
+              )}
+            >
+              <div className="flex justify-between items-start mb-2">
+                  <h3 className="text-base font-semibold text-foreground">
+                      {dayjs(snap.timestamp).format("MMM D · HH:mm")}
+                  </h3>
+                  <StatusPill status={snap.status} />
+              </div>
+              <p className="text-xs text-muted-foreground mb-4">
+                  {/* Assuming snap.sizeKB is in kilobytes */}
+                  {filesize(snap.sizeKB * 1024, { base: 2, standard: "jedec" })} 
+                  {/* Add page count here when available, e.g., `· ${snap.pageCount || 0} pages` */}
+              </p>
+              
+              <div className="mt-auto pt-4 border-t border-border/30 flex justify-end gap-1">
+                <IconButton icon={Eye} tooltip="Preview" onClick={() => handlePreviewClick(snap)} />
+                <IconButton icon={Download} tooltip="Download Raw File" href={`/api/snapshots/${snap.id}/download`} />
+                <IconButton icon={RotateCcw} tooltip="Restore Snapshot" onClick={() => handleRestoreClick(snap)} />
+                {/* TODO: Add Delete IconButton later */}
+              </div>
+            </li>
+          );
+        })}
       </ul>
       <RestoreWizard snapshot={selectedSnapshot} open={isWizardOpen} onOpenChange={setIsWizardOpen} onClose={() => setIsWizardOpen(false)} />
       <UpgradeModal isOpen={isUpgradeModalOpen} onOpenChange={setIsUpgradeModalOpen} triggerFeature={upgradeTriggerFeature} currentPlanName={quota?.planName} />

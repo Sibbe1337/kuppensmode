@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { SignedIn, SignedOut, SignInButton } from "@clerk/nextjs";
 import { Button } from "@/components/ui/button";
 import SnapshotsTable from "@/components/dashboard/SnapshotsTable"; 
-import UsageMeter from "@/components/dashboard/UsageMeter"; 
+import QuotaProgressButton from "@/components/dashboard/QuotaProgressButton";
 import ActivationChecklist from "@/components/dashboard/ActivationChecklist"; 
 import { useToast } from "@/hooks/use-toast"; 
 import { useSWRConfig } from 'swr';
@@ -180,13 +180,12 @@ export default function DashboardPage() {
   return (
     <>
       <SignedIn>
+        <QuotaProgressButton /> 
+
         <div className="relative space-y-6">
           <div className="flex justify-between items-center gap-4">
             <div>
               <h1 className="text-2xl font-semibold">Recent Snapshots</h1>
-              <div className="mt-1">
-                  <UsageMeter />
-              </div>
             </div>
             <Button 
               onClick={handleCreateSnapshot} 
@@ -204,19 +203,6 @@ export default function DashboardPage() {
           <SnapshotsTable />
 
           <OnboardingTour /> 
-          <UpgradeModal 
-            isOpen={isUpgradeModalOpen} 
-            onOpenChange={setIsUpgradeModalOpen} 
-            triggerFeature="more snapshots"
-            currentPlanName={quota?.planName}
-          />
-          <PreviewSheet snapshotId={previewSnapshotIdForToast} open={isToastPreviewSheetOpen} onOpenChange={setIsToastPreviewSheetOpen} />
-          <RestoreWizard 
-            snapshot={snapshotForRestoreToast}
-            open={isRestoreWizardOpenFromToast}
-            onOpenChange={setIsRestoreWizardOpenFromToast}
-            onClose={() => setIsRestoreWizardOpenFromToast(false)}
-          />
         </div>
       </SignedIn>
       <SignedOut>
