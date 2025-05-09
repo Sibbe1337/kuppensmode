@@ -174,14 +174,22 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onOpenChange, trigg
                   <Button 
                     className="mt-auto w-full"
                     onClick={(e) => {
-                      // e.stopPropagation(); // Temporarily add, then remove if it works, to test theory
-                      console.log(`--- BUTTON itself CLICKED FOR ${plan.name} ---`); 
+                      // e.stopPropagation(); // Keep this commented for now
+                      alert(`--- ALERT: BUTTON CLICKED FOR ${plan.name} ---`); // Changed to alert
+                      console.log(`--- BUTTON itself CLICKED FOR ${plan.name} (after alert) ---`); 
                     }}
                     disabled={isRedirecting === plan.id}
                   >
                     {isRedirecting === plan.id ? <Loader2 className="h-4 w-4 mr-2 animate-spin"/> : <Zap className="h-4 w-4 mr-2" />}
                     Upgrade to {plan.name}
                   </Button>
+                  {/* Test Click Div */}
+                  <div 
+                    onClick={() => alert("--- ALERT: Test Click Div in Plan Card CLICKED ---")}
+                    style={{ padding: '10px', background: 'rgba(255,0,0,0.2)', marginTop: '5px', cursor: 'pointer' }}
+                  >
+                    Test Click Area In Card
+                  </div>
                 </div>
               </div>
             ))}
@@ -195,6 +203,13 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onOpenChange, trigg
                 No upgrade plans found.
               </p>
             )}
+            {/* Test Click Div Outside Map */}
+            <div 
+                onClick={() => alert("--- ALERT: Test Click Div Outside Map CLICKED ---")}
+                style={{ padding: '10px', background: 'rgba(0,255,0,0.2)', cursor: 'pointer' }}
+            >
+                Test Click Area Outside Map
+            </div>
           </div>
         )}
 
