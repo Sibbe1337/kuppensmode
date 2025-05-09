@@ -38,29 +38,26 @@ const stripePromise = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
     : null;
 
 const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onOpenChange, triggerFeature, currentPlanName }) => {
-  const swrKey = isOpen ? '/api/billing/plans' : null;
-  const { data: plans, error: plansError, isLoading: plansLoading, mutate } = useSWR<PlanFromApi[]>(
-    swrKey, 
+  const { data: plans, error: plansError, isLoading: plansLoading } = useSWR<PlanFromApi[]>(
+    isOpen ? '/api/billing/plans' : null, 
     fetcher,
-    { revalidateOnFocus: false, revalidateOnMount: false }
+    { revalidateOnFocus: false }
   );
   const { toast } = useToast();
   const [isRedirecting, setIsRedirecting] = useState<string | null>(null);
 
   useEffect(() => {
-    if (isOpen && swrKey) {
-      console.log("UpgradeModal: isOpen is true, manually revalidating /api/billing/plans with explicit fetch");
-      mutate(async () => {
-        const freshPlans = await fetcher(swrKey);
-        console.log("UpgradeModal: Fetched fresh plans manually:", freshPlans);
-        return freshPlans;
-      }, {
-        revalidate: false 
-      });
+    console.log("UpgradeModal: isOpen prop changed to:", isOpen);
+    if (isOpen) {
+        console.log("UpgradeModal: Now attempting to fetch plans because isOpen is true.");
     }
-  }, [isOpen, swrKey, mutate]);
+  }, [isOpen]);
 
-  console.log("UpgradeModal: SWR Data:", { plans, plansError, plansLoading, isOpen, currentPlanName, swrKey });
+  useEffect(() => {
+    if (isOpen) {
+        console.log("UpgradeModal (isOpen=true): SWR Data Update:", { plans, plansError, plansLoading, currentPlanName });
+    }
+  });
 
   const handleUpgrade = async (priceId: string, planName: string) => {
     setIsRedirecting(priceId);
@@ -106,7 +103,9 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onOpenChange, trigg
     ? plans.filter(p => p.name.toLowerCase() !== 'starter' && p.name.toLowerCase() !== currentPlanName?.toLowerCase())
     : [];
   
-  console.log("UpgradeModal: Filtered Plans:", filteredPlans);
+  if (isOpen) {
+    console.log("UpgradeModal (isOpen=true): Filtered Plans:", filteredPlans);
+  }
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
@@ -116,19 +115,19 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onOpenChange, trigg
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
         
-        {plansLoading && (
+        {isOpen && plansLoading && (
           <div className="py-8 flex justify-center">
             <Loader2 className="h-8 w-8 animate-spin" />
           </div>
         )}
 
-        {plansError && (
+        {isOpen && plansError && (
           <div className="text-destructive text-sm p-4 border border-destructive/50 rounded-md">
             Could not load plans. Please try again later.
           </div>
         )}
 
-        {!plansLoading && !plansError && plans && (
+        {isOpen && !plansLoading && !plansError && plans && (
           <div className="grid gap-4 py-4 sm:grid-cols-2">
             {filteredPlans.map((plan) => (
                 <div key={plan.id} className="p-4 border rounded-lg flex flex-col">
