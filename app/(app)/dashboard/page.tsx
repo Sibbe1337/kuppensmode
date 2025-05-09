@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { SignedIn, SignedOut, SignInButton } from "@clerk/nextjs";
 import { Button } from "@/components/ui/button";
 import SnapshotsTable from "@/components/dashboard/SnapshotsTable"; 
@@ -15,13 +15,52 @@ import posthog from 'posthog-js';
 import { useQuota } from '@/hooks/useQuota';
 import type { Snapshot } from "@/types";
 import UpgradeModal from '@/components/modals/UpgradeModal';
+import { useSearchParams, useRouter } from 'next/navigation';
 
 export default function DashboardPage() {
   const { toast } = useToast();
   const { mutate } = useSWRConfig();
   const [isCreatingSnapshot, setIsCreatingSnapshot] = useState(false);
-  const { quota, isLoading: isQuotaLoading, isError: isQuotaError } = useQuota();
+  const { quota, isLoading: isQuotaLoading, isError: isQuotaError, mutateQuota } = useQuota();
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
+  const searchParams = useSearchParams();
+  const router = useRouter();
+
+  useEffect(() => {
+    const checkoutStatus = searchParams.get('checkout');
+    const sessionId = searchParams.get('session_id');
+
+    if (checkoutStatus === 'success' && sessionId) {
+      toast({ title: "Payment Successful!", description: "Finalizing your subscription..." });
+      
+      fetch(`/api/billing/verify-checkout-session?session_id=${sessionId}`)
+        .then(res => {
+          if (!res.ok) {
+            return res.json().then(err => { throw new Error(err.error || 'Verification failed') });
+          }
+          return res.json();
+        })
+        .then(data => {
+          if (data.success) {
+            toast({ title: "Subscription Activated!", description: `You are now on the ${data.planName} plan.` });
+            mutateQuota();
+            mutate('/api/user/settings');
+          } else {
+            throw new Error(data.error || 'Verification step failed after payment.');
+          }
+        })
+        .catch(err => {
+          console.error("Error verifying checkout session:", err);
+          toast({ title: "Error Finalizing Subscription", description: err.message, variant: "destructive" });
+        })
+        .finally(() => {
+          router.replace('/dashboard', { scroll: false });
+        });
+    } else if (checkoutStatus === 'cancel') {
+      toast({ title: "Checkout Canceled", description: "Your upgrade process was canceled." });
+      router.replace('/dashboard', { scroll: false });
+    }
+  }, [searchParams, router, toast, mutateQuota, mutate]);
 
   const isOverSnapshotLimit = !isQuotaLoading && !isQuotaError && quota ? quota.snapshotsUsed >= quota.snapshotsLimit : false;
 
