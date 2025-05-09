@@ -1,4 +1,7 @@
-console.log("--- [Scheduler API] Execution STARTED ---"); // Unique log at very top
+console.log("--- [Scheduler API] Execution STARTED ---");
+console.log("[Scheduler API] RAW GCP_SERVICE_ACCOUNT_KEY_JSON type:", typeof process.env.GCP_SERVICE_ACCOUNT_KEY_JSON);
+console.log("[Scheduler API] RAW GCP_SERVICE_ACCOUNT_KEY_JSON is set:", !!process.env.GCP_SERVICE_ACCOUNT_KEY_JSON);
+console.log("[Scheduler API] RAW GCP_PROJECT_ID:", process.env.GOOGLE_CLOUD_PROJECT);
 
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
