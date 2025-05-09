@@ -14,6 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import RestoreWizard from './RestoreWizard';
+import UpgradeModal from '@/components/modals/UpgradeModal';
 import type { Snapshot } from "@/types";
 import { fetcher } from "@/lib/fetcher";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -42,6 +43,8 @@ const SnapshotsTable = () => {
 
   const [isWizardOpen, setIsWizardOpen] = useState(false);
   const [selectedSnapshot, setSelectedSnapshot] = useState<Snapshot | null>(null);
+  const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
+  const [upgradeTriggerFeature, setUpgradeTriggerFeature] = useState<string | undefined>(undefined);
 
   // console.log('SWR State:', { isLoading, error, snapshots }); 
 
@@ -56,9 +59,9 @@ const SnapshotsTable = () => {
     return timeAgo(new Date(lastTimestamp)); // Use a helper like timeAgo
   }, [snapshots]);
 
-  const handleUpgradeClick = () => {
-      console.log("Upgrade clicked from table action");
-       window.location.href = '/pricing';
+  const handleUpgradeClick = (feature?: string) => {
+    setUpgradeTriggerFeature(feature || "advanced features");
+    setIsUpgradeModalOpen(true);
   };
 
   const handleRestoreClick = (snapshot: Snapshot) => {
@@ -154,7 +157,7 @@ const SnapshotsTable = () => {
                           Restore Snapshot
                         </DropdownMenuItem>
                         {isStarterPlan && (
-                           <DropdownMenuItem onClick={handleUpgradeClick} className="text-yellow-600 focus:text-yellow-700 focus:bg-yellow-50">
+                           <DropdownMenuItem onClick={() => handleUpgradeClick("Priority Restore")} className="text-yellow-600 focus:text-yellow-700 focus:bg-yellow-50">
                              <Zap className="h-4 w-4 mr-2"/> Priority Restore (Upgrade)
                            </DropdownMenuItem>
                         )}
@@ -170,6 +173,12 @@ const SnapshotsTable = () => {
               open={isWizardOpen}
               onOpenChange={setIsWizardOpen}
               onClose={() => setIsWizardOpen(false)}
+            />
+            <UpgradeModal 
+              isOpen={isUpgradeModalOpen} 
+              onOpenChange={setIsUpgradeModalOpen} 
+              triggerFeature={upgradeTriggerFeature}
+              currentPlanName={quota?.planName}
             />
         </div>
       );

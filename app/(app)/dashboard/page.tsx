@@ -14,37 +14,36 @@ import OnboardingTour from "@/components/OnboardingTour";
 import posthog from 'posthog-js';
 import { useQuota } from '@/hooks/useQuota';
 import type { Snapshot } from "@/types";
+import UpgradeModal from '@/components/modals/UpgradeModal';
 
 export default function DashboardPage() {
   const { toast } = useToast();
   const { mutate } = useSWRConfig();
   const [isCreatingSnapshot, setIsCreatingSnapshot] = useState(false);
-  const { quota, isLoading: isQuotaLoading, isError: isQuotaError } = useQuota(); // Fetch quota here for button logic
+  const { quota, isLoading: isQuotaLoading, isError: isQuotaError } = useQuota();
+  const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
 
   const isOverSnapshotLimit = !isQuotaLoading && !isQuotaError && quota ? quota.snapshotsUsed >= quota.snapshotsLimit : false;
 
-  // Moved handleCreateSnapshot logic here
   const handleCreateSnapshot = async () => {
-    if (isOverSnapshotLimit || isQuotaLoading || isQuotaError) {
-        if (isOverSnapshotLimit) {
-            toast({ title: "Snapshot Limit Reached", description: `You have used ${quota?.snapshotsUsed}/${quota?.snapshotsLimit} snapshots. Please upgrade your plan.`, variant: "destructive", });
-        }
-        if (isQuotaError) {
-            toast({ title: "Error", description: "Could not verify snapshot quota. Please try again.", variant: "destructive", });
-        }
-      return;
+    if (isQuotaLoading || isQuotaError) {
+        toast({ title: "Error", description: "Could not verify snapshot quota. Please try again.", variant: "destructive", });
+        return;
+    }
+    if (isOverSnapshotLimit) {
+        setIsUpgradeModalOpen(true);
+        return;
     }
     setIsCreatingSnapshot(true);
 
     const tempId = `temp-${Date.now()}`;
-    const tempSnapshot: Partial<Snapshot> = { // Use Partial<Snapshot>
+    const tempSnapshot: Partial<Snapshot> = {
         id: tempId,
         status: 'Pending',
         sizeKB: 0,
         timestamp: new Date().toISOString(),
     };
 
-    // Scroll table into view (keep this)
     const tableElement = document.querySelector('.snapshots-table'); 
     if (tableElement) {
         tableElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -55,7 +54,6 @@ export default function DashboardPage() {
       false
     );
 
-    // Updated Toast
     toast({ title: "Backup Started", description: "Your backup is in progress. You can continue working.", duration: 5000 });
 
     try {
@@ -84,12 +82,11 @@ export default function DashboardPage() {
     <>
       <SignedIn>
         <div className="relative space-y-6">
-          {/* Header Row */}
           <div className="flex justify-between items-center gap-4">
             <div>
-              <h1 className="text-2xl font-semibold">Latest Back-ups</h1> {/* Updated Title */} 
+              <h1 className="text-2xl font-semibold">Latest Back-ups</h1>
               <div className="mt-1">
-                  <UsageMeter /> {/* Inline Usage Meter */} 
+                  <UsageMeter />
               </div>
             </div>
             <Button 
@@ -101,14 +98,17 @@ export default function DashboardPage() {
             </Button>
           </div>
 
-          {/* Checklist (Moved below table for less prominence initially) */}
           <ActivationChecklist /> 
 
-          {/* Snapshots Table */}
           <SnapshotsTable />
 
-          {/* Onboarding Tour (keep) */}
           <OnboardingTour /> 
+          <UpgradeModal 
+            isOpen={isUpgradeModalOpen} 
+            onOpenChange={setIsUpgradeModalOpen} 
+            triggerFeature="more snapshots"
+            currentPlanName={quota?.planName}
+          />
         </div>
       </SignedIn>
       <SignedOut>
