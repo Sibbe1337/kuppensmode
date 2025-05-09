@@ -18,7 +18,7 @@ import UpgradeModal from '@/components/modals/UpgradeModal';
 import type { Snapshot } from "@/types";
 import { fetcher } from "@/lib/fetcher";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AlertCircle, Inbox, Zap, MoreHorizontal, Plus, CheckCircle, Loader2, Copy } from 'lucide-react';
+import { AlertCircle, Inbox, Zap, MoreHorizontal, Plus, CheckCircle, Loader2, Copy, Download, Eye, Trash2, RotateCcw } from 'lucide-react';
 import { EmptyState } from "@/components/ui/EmptyState";
 import { timeAgo } from "@/lib/utils";
 import { useQuota } from '@/hooks/useQuota';
@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import PreviewSheet from './PreviewSheet';
 
 const SnapshotsTable = () => {
   // console.log("!!! SnapshotsTable function invoked !!!"); 
@@ -47,6 +48,8 @@ const SnapshotsTable = () => {
   const [selectedSnapshot, setSelectedSnapshot] = useState<Snapshot | null>(null);
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
   const [upgradeTriggerFeature, setUpgradeTriggerFeature] = useState<string | undefined>(undefined);
+  const [previewSnapshotId, setPreviewSnapshotId] = useState<string | null>(null);
+  const [isPreviewSheetOpen, setIsPreviewSheetOpen] = useState(false);
 
   const { toast } = useToast();
 
@@ -85,6 +88,17 @@ const SnapshotsTable = () => {
         console.error("Failed to copy snapshot link:", err);
         toast({ title: "Error", description: "Could not copy link.", variant: "destructive" });
       });
+  };
+
+  const handlePreviewClick = (snapshot: Snapshot) => {
+    setPreviewSnapshotId(snapshot.id);
+    setIsPreviewSheetOpen(true);
+  };
+  
+  const handleDownloadClick = (snapshotId: string) => {
+    // Construct the full URL to the download API endpoint
+    // Assuming snapshotId is the full filePath like 'userId/snap_....json.gz'
+    window.open(`/api/snapshots/${snapshotId}/download`, '_blank');
   };
 
   // Function to trigger snapshot creation (can be passed to EmptyState)
@@ -143,13 +157,12 @@ const SnapshotsTable = () => {
       <div className="snapshots-table-sample">
         <EmptyState 
           title="No Snapshots Yet!"
-          description="Your Notion workspace snapshots will appear here once created. Here's how one looks:"
+          description="Create your first backup, then click Preview to inspect or Restore when needed."
           icon={<Inbox className="h-12 w-12 text-gray-300 dark:text-gray-600" />} 
         >
-          {/* Optionally keep the button, or remove if sample table is enough */}
-          {/* <Button onClick={triggerNewSnapshot} className="mt-4">
+          <Button onClick={triggerNewSnapshot} className="mt-4">
             <Plus className="mr-2 h-4 w-4" /> Create First Snapshot
-          </Button> */}
+          </Button>
         </EmptyState>
         <Table className="mt-4"> {/* Add margin if button above is removed */}
             <TableHeader>
@@ -240,24 +253,48 @@ const SnapshotsTable = () => {
                    <TableCell className="text-xs text-muted-foreground">
                        {(snapshot.sizeKB / 1024).toFixed(2)} MB
                    </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="text-right space-x-1">
+                    <TooltipProvider delayDuration={100}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handlePreviewClick(snapshot)}>
+                            <Eye className="h-4 w-4" />
+                            <span className="sr-only">Preview</span>
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent><p>Preview Snapshot</p></TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+
+                    <TooltipProvider delayDuration={100}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                           <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => handleRestoreClick(snapshot)}>
+                            <RotateCcw className="h-4 w-4" />
+                            <span className="sr-only">Restore</span>
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent><p>Restore Snapshot</p></TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                    
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button variant="ghost" className="h-8 w-8 p-0">
-                          <span className="sr-only">Open menu</span>
                           <MoreHorizontal className="h-4 w-4" />
+                           <span className="sr-only">More actions</span>
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => handleRestoreClick(snapshot)}>
-                          Restore Snapshot
-                        </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => handleCopySnapshotLink(snapshot.id)}>
                           <Copy className="h-4 w-4 mr-2" /> Copy Link
                         </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleDownloadClick(snapshot.id)}>
+                          <Download className="h-4 w-4 mr-2" /> Download Raw File
+                        </DropdownMenuItem>
                         {isStarterPlan && (
                            <DropdownMenuItem onClick={() => handleUpgradeClick("Priority Restore")} className="text-yellow-600 focus:text-yellow-700 focus:bg-yellow-50">
-                             <Zap className="h-4 w-4 mr-2"/> Priority Restore (Upgrade)
+                             <Zap className="h-4 w-4 mr-2"/> Priority Features (Upgrade)
                            </DropdownMenuItem>
                         )}
                       </DropdownMenuContent>
@@ -279,6 +316,7 @@ const SnapshotsTable = () => {
               triggerFeature={upgradeTriggerFeature}
               currentPlanName={quota?.planName}
             />
+            <PreviewSheet snapshotId={previewSnapshotId} open={isPreviewSheetOpen} onOpenChange={setIsPreviewSheetOpen} />
         </div>
       );
   } 

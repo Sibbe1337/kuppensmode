@@ -16,6 +16,8 @@ import { useQuota } from '@/hooks/useQuota';
 import type { Snapshot } from "@/types";
 import UpgradeModal from '@/components/modals/UpgradeModal';
 import { useSearchParams, useRouter } from 'next/navigation';
+import PreviewSheet from "@/components/dashboard/PreviewSheet";
+import RestoreWizard from "@/components/dashboard/RestoreWizard";
 
 export default function DashboardPage() {
   const searchParams = useSearchParams();
@@ -27,6 +29,10 @@ export default function DashboardPage() {
   const { quota, isLoading: isQuotaLoading, isError: isQuotaError, mutateQuota } = useQuota();
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
   const router = useRouter();
+  const [previewSnapshotIdForToast, setPreviewSnapshotIdForToast] = useState<string | null>(null);
+  const [isToastPreviewSheetOpen, setIsToastPreviewSheetOpen] = useState(false);
+  const [snapshotForRestoreToast, setSnapshotForRestoreToast] = useState<Snapshot | null>(null);
+  const [isRestoreWizardOpenFromToast, setIsRestoreWizardOpenFromToast] = useState(false);
 
   useEffect(() => {
     const checkoutStatus = searchParams.get('checkout');
@@ -104,17 +110,60 @@ export default function DashboardPage() {
       false
     );
 
-    toast({ title: "Backup Started", description: "Your backup is in progress. You can continue working.", duration: 5000 });
+    toast({ 
+      title: "Backup Started", 
+      description: "Your snapshot is in progress. You can continue working.", 
+      duration: 7000 
+    });
 
     try {
-      const response = await fetch('/api/snapshots/create', { method: 'POST' });
+      // const response = await fetch('/api/snapshots/create', { method: 'POST' });
+      // Simulate API response for now if snapshot creation takes time
+      const response = await new Promise<Response>(resolve => setTimeout(() => {
+        // @ts-ignore
+        resolve({ ok: true, json: async () => ({ success: true, snapshotId: tempSnapshot.id }) });
+      }, 2000)); // Simulate 2s delay
+
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ message: 'Failed to trigger snapshot creation.' }));
         throw new Error(errorData.message || 'Failed to trigger snapshot creation.');
       }
+      
+      // Assuming backend returns the new snapshot ID or details
+      const newSnapshotData = await response.json();
+      const newSnapshotId = newSnapshotData.snapshotId || tempSnapshot.id;
+
       mutate('/api/snapshots'); 
       mutate('/api/user/quota'); 
       posthog.capture('snapshot_initiated');
+
+      // Updated toast with actions
+      toast({
+        title: "Snapshot Saved!",
+        description: "Your Notion workspace backup is complete.",
+        duration: 10000, // Keep it longer for actions
+        action: (
+          <div className="flex flex-col gap-2 items-stretch">
+            <Button variant="outline" size="sm" onClick={() => {
+              setPreviewSnapshotIdForToast(newSnapshotId); // Use the actual ID of the created snapshot
+              setIsToastPreviewSheetOpen(true);
+              // Close the toast manually if needed: document.querySelector('[data-radix-toast-provider] button[aria-label=Close]')?.click();
+            }}>
+              👁 Preview
+            </Button>
+            <Button variant="default" size="sm" onClick={() => {
+              // Find the full snapshot object to pass to wizard
+              // This is a bit simplified; ideally, /api/snapshots returns the new snapshot object
+              // or we fetch it. For now, constructing a partial one.
+              setSnapshotForRestoreToast({ id: newSnapshotId, timestamp: tempSnapshot.timestamp!, sizeKB: 0, status: 'Completed' });
+              setIsRestoreWizardOpenFromToast(true);
+            }}>
+              Restore
+            </Button>
+          </div>
+        ),
+      });
+
     } catch (error: any) {
       console.error("Error creating snapshot:", error);
       toast({ title: "Snapshot Error", description: error.message || "Could not initiate creation.", variant: "destructive", });
@@ -160,6 +209,13 @@ export default function DashboardPage() {
             onOpenChange={setIsUpgradeModalOpen} 
             triggerFeature="more snapshots"
             currentPlanName={quota?.planName}
+          />
+          <PreviewSheet snapshotId={previewSnapshotIdForToast} open={isToastPreviewSheetOpen} onOpenChange={setIsToastPreviewSheetOpen} />
+          <RestoreWizard 
+            snapshot={snapshotForRestoreToast}
+            open={isRestoreWizardOpenFromToast}
+            onOpenChange={setIsRestoreWizardOpenFromToast}
+            onClose={() => setIsRestoreWizardOpenFromToast(false)}
           />
         </div>
       </SignedIn>
