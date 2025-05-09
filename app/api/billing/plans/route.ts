@@ -77,7 +77,14 @@ export async function GET(request: Request) {
     // plans.sort((a, b) => /* your sorting logic */);
 
     console.log(`Returning ${plans.length} plans.`);
-    return NextResponse.json(plans);
+    return NextResponse.json(plans, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+        'Surrogate-Control': 'no-store', // For Vercel Edge Cache
+      }
+    });
 
   } catch (error) {
     console.error("Error fetching plans from Stripe:", error);
