@@ -18,12 +18,14 @@ import UpgradeModal from '@/components/modals/UpgradeModal';
 import { useSearchParams, useRouter } from 'next/navigation';
 
 export default function DashboardPage() {
+  const searchParams = useSearchParams();
+  console.log("DashboardPage INITIAL RENDER searchParams:", searchParams.toString());
+
   const { toast } = useToast();
   const { mutate } = useSWRConfig();
   const [isCreatingSnapshot, setIsCreatingSnapshot] = useState(false);
   const { quota, isLoading: isQuotaLoading, isError: isQuotaError, mutateQuota } = useQuota();
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
-  const searchParams = useSearchParams();
   const router = useRouter();
 
   useEffect(() => {
@@ -61,13 +63,13 @@ export default function DashboardPage() {
           toast({ title: "Error Finalizing Subscription", description: err.message, variant: "destructive" });
         })
         .finally(() => {
-          console.log("DashboardPage: Verify fetch chain finally block. Cleaning URL.");
-          router.replace('/dashboard', { scroll: false });
+          console.log("DashboardPage: Verify fetch chain finally block. WOULD clean URL here.");
+          // router.replace('/dashboard', { scroll: false }); // Temporarily commented out
         });
     } else if (checkoutStatus === 'cancel') {
-      console.log("DashboardPage: Checkout canceled. Cleaning URL.");
+      console.log("DashboardPage: Checkout canceled. WOULD clean URL here.");
       toast({ title: "Checkout Canceled", description: "Your upgrade process was canceled." });
-      router.replace('/dashboard', { scroll: false });
+      // router.replace('/dashboard', { scroll: false }); // Temporarily commented out
     }
   }, [searchParams, router, toast, mutateQuota]);
 
