@@ -271,7 +271,7 @@ const RestoreWizard: React.FC<RestoreWizardProps> = ({ snapshot, open, onOpenCha
         // It might be better to prevent proceeding or default, for now, let it pass as null as per previous logic
         // Or, disable "Next" button in Step 2 if this is not set.
         console.warn("Restore target type: specific_page, but no targetParentPageId selected. Defaulting to null parent.");
-        effectiveTargetParentPageId = null; 
+         effectiveTargetParentPageId = null; 
     }
 
     try {
@@ -405,9 +405,9 @@ const RestoreWizard: React.FC<RestoreWizardProps> = ({ snapshot, open, onOpenCha
                    <RadioGroupItem value="specific_page" id="target-specific" />
                    <div className="flex-grow">
                      <Label htmlFor="target-specific" className="text-sm font-normal cursor-pointer">
-                       Restore into a specific existing page...
+                     Restore into a specific existing page...
                        <p className='text-xs text-muted-foreground'>Select a page you own to restore the content into.</p>
-                     </Label>
+                   </Label>
                      {restoreTargetType === 'specific_page' && (
                         <div className="mt-2">
                             <NotionPageSearchCombobox 

@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input"; // For API key input
 import { Label } from "@/components/ui/label";   // For form labels
 import { Switch } from "@/components/ui/switch"; // For toggles
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"; // For organizing sections
-import { ExternalLink, KeyRound, Bell, LogOut, HelpCircle, ShieldCheck, Loader2, AlertTriangle, Info, Zap, CreditCard } from 'lucide-react';
+import { ExternalLink, KeyRound, Bell, LogOut, HelpCircle, ShieldCheck, Loader2, AlertTriangle, Info, Zap, CreditCard, Gift, Copy } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast"; // Import useToast
 import { useUserSettings } from '@/hooks/useUserSettings'; // Corrected hook import
 import type { UserSettings } from '@/types/user'; // Corrected type import
@@ -265,6 +265,40 @@ const SettingsPage = () => {
     // No finally block to set isRedirectingToPortal to false, as page will redirect away
   };
 
+  // B.5.A.1: State and handler for Referral Code section
+  const [referralCode, setReferralCode] = useState<string | null>(null);
+  const [referralsMadeCount, setReferralsMadeCount] = useState<number>(0);
+  const [isLoadingReferralCode, setIsLoadingReferralCode] = useState(false);
+  const [hasFetchedReferralCode, setHasFetchedReferralCode] = useState(false);
+
+  const fetchReferralCode = async () => {
+    if (hasFetchedReferralCode) return; // Fetch only once per accordion open or on demand
+    setIsLoadingReferralCode(true);
+    try {
+      const response = await fetch('/api/user/referral-code');
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to fetch referral code.");
+      }
+      setReferralCode(data.referralCode);
+      setReferralsMadeCount(data.referralsMadeCount || 0);
+      setHasFetchedReferralCode(true);
+    } catch (error: any) {
+      toast({ title: "Error Fetching Referral Code", description: error.message, variant: "destructive" });
+    } finally {
+      setIsLoadingReferralCode(false);
+    }
+  };
+
+  // Function to copy referral code
+  const handleCopyReferralCode = () => {
+    if (referralCode) {
+      navigator.clipboard.writeText(referralCode)
+        .then(() => toast({ title: 'Referral Code Copied!' }))
+        .catch(err => toast({ title: 'Copy Failed', description: 'Could not copy code.', variant: 'destructive' }));
+    }
+  };
+
   if (isLoading) {
     console.log("SettingsPage: Rendering LOADING state.");
     return (
@@ -437,6 +471,53 @@ const SettingsPage = () => {
                         Subscription management is available after your first upgrade.
                     </p>
                 )}
+              </CardContent>
+            </Card>
+          </AccordionContent>
+        </AccordionItem>
+
+        {/* B.5.A.1: Referral Section - New */}
+        <AccordionItem value="item-referral">
+          <AccordionTrigger className="text-lg" onClick={() => !hasFetchedReferralCode && fetchReferralCode()}>
+            <div className="flex items-center gap-2">
+                <Gift className="h-5 w-5" /> Refer a Friend
+            </div>
+          </AccordionTrigger>
+          <AccordionContent className="pt-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Share Pagelifeline & Earn Rewards</CardTitle>
+                <CardDescription>
+                  Share your unique referral code. When your friends sign up and upgrade, you'll both get rewarded! (Details coming soon).
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {isLoadingReferralCode && (
+                    <div className="flex items-center space-x-2">
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                        <span>Loading your referral code...</span>
+                    </div>
+                )}
+                {!isLoadingReferralCode && referralCode && (
+                    <div className="space-y-2">
+                        <Label htmlFor="referralCodeDisplay">Your Referral Code:</Label>
+                        <div className="flex items-center gap-2">
+                            <Input id="referralCodeDisplay" type="text" value={referralCode} readOnly className="font-mono"/>
+                            <Button variant="outline" size="icon" onClick={handleCopyReferralCode} aria-label="Copy referral code">
+                                <Copy className="h-4 w-4" />
+                            </Button>
+                        </div>
+                        <p className="text-sm text-muted-foreground">
+                            Friends referred: {referralsMadeCount}
+                        </p>
+                    </div>
+                )}
+                {!isLoadingReferralCode && !referralCode && hasFetchedReferralCode && (
+                    <p className="text-sm text-destructive">Could not load your referral code. Please try again later.</p>
+                )}
+                <p className="text-xs text-muted-foreground">
+                    Detailed terms and reward information will be available soon.
+                </p>
               </CardContent>
             </Card>
           </AccordionContent>
