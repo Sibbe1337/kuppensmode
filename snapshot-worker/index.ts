@@ -21,6 +21,7 @@ const PostHogNode = require('posthog-node'); // Use require for CJS compatibilit
 import { Pinecone } from '@pinecone-database/pinecone';
 import OpenAI from 'openai';
 import type { PineconeRecord } from '@pinecone-database/pinecone'; // For typing records
+import { get_encoding, Tiktoken } from 'tiktoken'; // Import Tiktoken class for the instance type
 
 const gzipAsync = promisify(gzip);
 
@@ -90,17 +91,47 @@ function getPlainTextFromRichText(richTextArray: any[]): string {
 // Array to collect records for Pinecone upsert
 let recordsToUpsertToPinecone: PineconeRecord[] = [];
 const OPENAI_EMBEDDING_MODEL = 'text-embedding-3-small';
+const MAX_CHUNK_TOKENS = 500; // Max tokens per chunk for embedding
+const CHUNK_OVERLAP_TOKENS = 50;  // Overlap tokens between chunks
+
+let tokenizer: Tiktoken;
+try {
+  tokenizer = get_encoding("cl100k_base"); // Common tokenizer for ada-002 and newer models
+} catch (e) {
+  console.error("Failed to load tiktoken tokenizer:", e);
+  // Fallback or error handling if tokenizer fails to load - critical for chunking
+  // For now, we'll let it throw if it can't load, as embedding would be unreliable.
+  throw new Error("Tiktoken tokenizer failed to load. Cannot proceed with embedding.");
+}
+
+// Retry helper function
+async function withRetry<T>(fn: () => Promise<T>, retries = 3, delayMs = 1000, operationName = "API call"): Promise<T> {
+  let lastError: any;
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await fn();
+    } catch (error: any) {
+      lastError = error;
+      console.warn(`[Retry] ${operationName} attempt ${i + 1}/${retries} failed: ${error.message}. Retrying in ${delayMs / 1000}s...`);
+      if (i < retries - 1) { // Only delay if not the last attempt
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+        delayMs *= 2; // Exponential backoff
+      }
+    }
+  }
+  console.error(`[Retry] ${operationName} failed after ${retries} retries.`);
+  throw lastError;
+}
 
 async function fetchAllBlocks(
   notionClient: NotionClient, 
   queue: PQueue, 
   blockId: string, 
   hashManifest: Record<string, string>,
-  currentSnapshotId: string // Pass snapshotId for metadata
+  currentSnapshotId: string
 ): Promise<BlockObjectResponse[]> {
     let allBlocks: BlockObjectResponse[] = [];
     let nextCursor: string | undefined | null = undefined;
-    console.log(`[fetchAllBlocks] Fetching blocks for parent: ${blockId}`);
     
     do {
         try {
@@ -120,7 +151,6 @@ async function fetchAllBlocks(
                 hashManifest[block.id] = blockHash;
                 (block as any).contentHash = blockHash; 
 
-                // --- Start Embedding Logic for Text-Based Blocks ---
                 let textToEmbed: string | null = null;
                 const blockType = (block as any).type;
                 const textBlockTypes = ['paragraph', 'heading_1', 'heading_2', 'heading_3', 'bulleted_list_item', 'numbered_list_item', 'to_do', 'quote', 'callout'];
@@ -128,41 +158,59 @@ async function fetchAllBlocks(
                 if (textBlockTypes.includes(blockType)) {
                   const richTextContent = (block as any)[blockType]?.rich_text;
                   if (richTextContent) {
-                    textToEmbed = getPlainTextFromRichText(richTextContent);
+                    textToEmbed = getPlainTextFromRichText(richTextContent).trim();
                   }
                 }
-                // Add other block types if needed, e.g., table cells, code captions (careful with token limits)
 
-                if (textToEmbed && textToEmbed.trim().length > 0 && openaiClient && pineconeClient && pineconeIndexName) {
-                  try {
-                    console.log(`[Embeddings] Generating embedding for block ${block.id} (type: ${blockType})`);
-                    const embeddingResponse = await openaiClient.embeddings.create({
-                      model: OPENAI_EMBEDDING_MODEL,
-                      input: textToEmbed.substring(0, 8000), // Truncate to avoid exceeding token limits (approx)
-                    });
-                    const embedding = embeddingResponse.data[0]?.embedding;
-                    if (embedding) {
-                      recordsToUpsertToPinecone.push({
-                        id: `${currentSnapshotId}:${block.id}`, // Unique ID for Pinecone: snapshotId:blockId
-                        values: embedding,
-                        metadata: {
-                          snapshotId: currentSnapshotId,
-                          itemId: block.id,
-                          itemType: 'block_text',
-                          blockType: blockType,
-                          originalText: textToEmbed.substring(0, 500), // Store a snippet for context
-                          blockParentId: blockId // The parent_id of this block (page or another block)
-                        }
-                      });
+                if (textToEmbed && textToEmbed.length > 0 && openaiClient && pineconeClient && pineconeIndexName && tokenizer) {
+                  const tokens = tokenizer.encode(textToEmbed);
+                  const textChunks: string[] = [];
+
+                  if (tokens.length > MAX_CHUNK_TOKENS) {
+                    for (let i = 0; i < tokens.length; i += (MAX_CHUNK_TOKENS - CHUNK_OVERLAP_TOKENS)) {
+                      const chunkTokens = tokens.slice(i, i + MAX_CHUNK_TOKENS);
+                      if (chunkTokens.length > 0) {
+                        const decodedUint8Array = tokenizer.decode(chunkTokens);
+                        textChunks.push(new TextDecoder().decode(decodedUint8Array));
+                      }
                     }
-                  } catch (embeddingError) {
-                    console.error(`[Embeddings] Failed to generate or store embedding for block ${block.id}:`, embeddingError);
+                  } else if (tokens.length > 0) { 
+                    textChunks.push(textToEmbed);
+                  }
+
+                  for (let chunkIndex = 0; chunkIndex < textChunks.length; chunkIndex++) {
+                    const chunk = textChunks[chunkIndex];
+                    if (chunk.trim().length === 0) continue;
+                    try {
+                      const embeddingResponse = await withRetry(() => openaiClient!.embeddings.create({
+                        model: OPENAI_EMBEDDING_MODEL,
+                        input: chunk,
+                      }), 3, 1000, `OpenAI embedding for block ${block.id} chunk ${chunkIndex}`);
+                      
+                      const embedding = embeddingResponse.data[0]?.embedding;
+                      if (embedding) {
+                        recordsToUpsertToPinecone.push({
+                          id: `${currentSnapshotId}:${block.id}:chunk:${chunkIndex}`,
+                          values: embedding,
+                          metadata: {
+                            snapshotId: currentSnapshotId,
+                            itemId: block.id, 
+                            itemType: 'block_chunk',
+                            blockType: blockType,
+                            chunkSequence: chunkIndex,
+                            totalChunks: textChunks.length,
+                            originalTextSnippet: chunk.substring(0, 200),
+                            blockParentId: blockId 
+                          }
+                        });
+                      }
+                    } catch (embeddingError) {
+                      console.error(`[Embeddings] Failed permanently for block ${block.id}, chunk ${chunkIndex}:`, embeddingError);
+                    }
                   }
                 }
-                // --- End Embedding Logic ---
 
                 if (block.has_children) { 
-                    console.log(`[fetchAllBlocks] Block ${block.id} has children, fetching recursively...`);
                     const childrenBlocks = await fetchAllBlocks(notionClient, queue, block.id, hashManifest, currentSnapshotId);
                     (block as any).children = childrenBlocks;
                     processedBlocks.push(block);
@@ -170,7 +218,6 @@ async function fetchAllBlocks(
                     processedBlocks.push(block);
                 }
             }
-            
             allBlocks = [...allBlocks, ...processedBlocks];
             nextCursor = response.next_cursor;
         } catch (error) {
@@ -178,12 +225,16 @@ async function fetchAllBlocks(
             nextCursor = null; 
         }
     } while (nextCursor);
-
-    console.log(`[fetchAllBlocks] Finished fetching ${allBlocks.length} total blocks for parent: ${blockId}`);
     return allBlocks;
 }
 
-async function fetchAllDatabaseRows(notionClient: NotionClient, queue: PQueue, databaseId: string, hashManifest: Record<string, string>): Promise<(PageObjectResponse & { blocks?: BlockObjectResponse[], contentHash?: string })[]> {
+async function fetchAllDatabaseRows(
+  notionClient: NotionClient, 
+  queue: PQueue, 
+  databaseId: string, 
+  hashManifest: Record<string, string>,
+  currentSnapshotId: string
+): Promise<(PageObjectResponse & { blocks?: BlockObjectResponse[], contentHash?: string })[]> {
     let allRows: PageObjectResponse[] = [];
     let nextCursor: string | undefined | null = undefined;
     console.log(`[fetchAllDatabaseRows] Fetching rows for database: ${databaseId}`);
@@ -226,7 +277,49 @@ async function fetchAllDatabaseRows(notionClient: NotionClient, queue: PQueue, d
             hashManifest[rowPage.id] = pageHash;
             (rowPage as any).contentHash = pageHash; // Add hash to the page object
 
-            const blocks = await fetchAllBlocks(notionClient, queue, rowPage.id, hashManifest, rowPage.id);
+            // --- Start Embedding Logic for Page Titles within Databases ---
+            if (openaiClient && pineconeClient && pineconeIndexName && tokenizer) {
+                let pageTitleText: string | null = null;
+                const titleProperty = Object.values(rowPage.properties).find(prop => prop.type === 'title');
+                if (titleProperty && (titleProperty as any).title) {
+                    pageTitleText = getPlainTextFromRichText((titleProperty as any).title).trim();
+                }
+
+                if (pageTitleText && pageTitleText.length > 0) {
+                    try {
+                        const tokens = tokenizer.encode(pageTitleText);
+                        const truncatedTokens = tokens.slice(0, MAX_CHUNK_TOKENS);
+                        const textForEmbedding = new TextDecoder().decode(tokenizer.decode(truncatedTokens));
+
+                        if (textForEmbedding.trim().length > 0) {
+                            const embeddingResponse = await withRetry(() => openaiClient!.embeddings.create({
+                                model: OPENAI_EMBEDDING_MODEL,
+                                input: textForEmbedding,
+                            }), 3, 1000, `OpenAI embedding for DB page title ${rowPage.id}`);
+                            const embedding = embeddingResponse.data[0]?.embedding;
+                            if (embedding) {
+                                recordsToUpsertToPinecone.push({
+                                    id: `${currentSnapshotId}:${rowPage.id}:title`,
+                                    values: embedding,
+                                    metadata: {
+                                        snapshotId: currentSnapshotId,
+                                        itemId: rowPage.id,
+                                        itemType: 'page_title',
+                                        originalText: pageTitleText.substring(0, 200),
+                                        parentId: databaseId // The DB this page belongs to
+                                    }
+                                });
+                            }
+                        }
+                    } catch (embeddingError) {
+                        console.error(`[Embeddings] Failed permanently for DB page title ${rowPage.id}:`, embeddingError);
+                    }
+                }
+            }
+            // --- End Embedding Logic for Page Titles within Databases ---
+
+            // Pass currentSnapshotId to fetchAllBlocks for blocks within these pages
+            const blocks = await fetchAllBlocks(notionClient, queue, rowPage.id, hashManifest, currentSnapshotId);
             rowsWithBlocksAndHashes.push({ ...rowPage, blocks: blocks });
             console.log(`[fetchAllDatabaseRows]   Fetched and hashed ${blocks.length} blocks for row ${rowPage.id}`);
         } catch (processError) {
@@ -474,9 +567,96 @@ functions.cloudEvent('snapshotWorker', async (cloudEvent: functions.CloudEvent<P
     }
     console.log(`[${userId}] Found ${allFetchedItems.length} top-level accessible items for snapshot ${snapshotId}.`);
 
-    const detailedItems: any[] = []; // Keep as any[] for mixed types with added props like contentHash/blocks/rows
+    const detailedItems: any[] = [];
     for (const item of allFetchedItems) {
         console.log(`[${userId}] Processing item: ${item.id} (${item.object}) for snapshot ${snapshotId}`);
+        
+        // --- Start Embedding Logic for Page/Database Titles/Descriptions ---
+        if (openaiClient && pineconeClient && pineconeIndexName && tokenizer) {
+            let itemTitleText: string | null = null;
+            let itemDescriptionText: string | null = null;
+            let itemTypeTextForEmbedding: 'page_title' | 'database_title' | 'database_description' | null = null;
+
+            if (item.object === 'page') {
+                const pageItem = item as PageObjectResponse;
+                const titleProperty = Object.values(pageItem.properties).find(prop => prop.type === 'title');
+                if (titleProperty && (titleProperty as any).title) {
+                    itemTitleText = getPlainTextFromRichText((titleProperty as any).title).trim();
+                    itemTypeTextForEmbedding = 'page_title';
+                }
+            } else if (item.object === 'database') {
+                const dbItem = item as DatabaseObjectResponse;
+                if (dbItem.title) { // title is a rich text array
+                    itemTitleText = getPlainTextFromRichText(dbItem.title).trim();
+                    itemTypeTextForEmbedding = 'database_title';
+                }
+                if (dbItem.description) { // description is also a rich text array
+                    itemDescriptionText = getPlainTextFromRichText(dbItem.description).trim();
+                    // We will handle embedding this separately if itemTitleText also exists
+                }
+            }
+
+            if (itemTitleText && itemTitleText.trim().length > 0 && itemTypeTextForEmbedding) {
+                try {
+                    const tokens = tokenizer.encode(itemTitleText);
+                    const truncatedTokens = tokens.slice(0, MAX_CHUNK_TOKENS);
+                    const textForEmbedding = new TextDecoder().decode(tokenizer.decode(truncatedTokens));
+
+                    if (textForEmbedding.trim().length > 0) {
+                        const embeddingResponse = await withRetry(() => openaiClient!.embeddings.create({
+                            model: OPENAI_EMBEDDING_MODEL,
+                            input: textForEmbedding,
+                        }), 3, 1000, `OpenAI embedding for ${itemTypeTextForEmbedding} ${item.id}`);
+                        const embedding = embeddingResponse.data[0]?.embedding;
+                        if (embedding) {
+                            recordsToUpsertToPinecone.push({
+                                id: `${snapshotId}:${item.id}:title`, 
+                                values: embedding,
+                                metadata: {
+                                    snapshotId: snapshotId,
+                                    itemId: item.id,
+                                    itemType: itemTypeTextForEmbedding,
+                                    originalText: itemTitleText.substring(0, 200)
+                                }
+                            });
+                        }
+                    }
+                } catch (embeddingError) {
+                    console.error(`[Embeddings] Failed for ${itemTypeTextForEmbedding} ${item.id}:`, embeddingError);
+                }
+            }
+            if (itemDescriptionText && itemDescriptionText.trim().length > 0 && item.object === 'database') {
+                 try {
+                    const tokens = tokenizer.encode(itemDescriptionText);
+                    const truncatedTokens = tokens.slice(0, MAX_CHUNK_TOKENS);
+                    const textForEmbedding = new TextDecoder().decode(tokenizer.decode(truncatedTokens));
+                    
+                    if (textForEmbedding.trim().length > 0) {
+                        const embeddingResponse = await withRetry(() => openaiClient!.embeddings.create({
+                            model: OPENAI_EMBEDDING_MODEL,
+                            input: textForEmbedding,
+                        }), 3, 1000, `OpenAI embedding for DB description ${item.id}`);
+                        const embedding = embeddingResponse.data[0]?.embedding;
+                        if (embedding) {
+                            recordsToUpsertToPinecone.push({
+                                id: `${snapshotId}:${item.id}:description`,
+                                values: embedding,
+                                metadata: {
+                                    snapshotId: snapshotId,
+                                    itemId: item.id,
+                                    itemType: 'database_description',
+                                    originalText: itemDescriptionText.substring(0, 200)
+                                }
+                            });
+                        }
+                    }
+                } catch (embeddingError) {
+                    console.error(`[Embeddings] Failed for database_description ${item.id}:`, embeddingError);
+                }
+            }
+        }
+        // --- End Embedding Logic for Page/Database Titles/Descriptions ---
+
         if (item.object === 'page') {
             const pageItem = item as PageObjectResponse;
             console.log(`[${userId}]   Item is a page. Fetching blocks...`);
@@ -495,7 +675,7 @@ functions.cloudEvent('snapshotWorker', async (cloudEvent: functions.CloudEvent<P
             const dbHash = computeSha256(dbString);
             hashManifest[dbItem.id] = dbHash;
 
-            const rows = await fetchAllDatabaseRows(notion, pQueue, dbItem.id, hashManifest); 
+            const rows = await fetchAllDatabaseRows(notion, pQueue, dbItem.id, hashManifest, snapshotId); 
             detailedItems.push({ ...dbItem, contentHash: dbHash, rows: rows }); 
         } else {
             // This case should ideally not be reached if initial search results are filtered
@@ -516,18 +696,16 @@ functions.cloudEvent('snapshotWorker', async (cloudEvent: functions.CloudEvent<P
     };
     console.log(`[${userId}] Notion data fetch processing complete.`);
 
-    // --- Upsert embeddings to Pinecone ---
+    // --- Upsert embeddings to Pinecone --- (Updated with retry and batching)
     if (openaiClient && pineconeClient && pineconeIndexName && recordsToUpsertToPinecone.length > 0) {
       console.log(`[${userId}] Preparing to upsert ${recordsToUpsertToPinecone.length} embeddings to Pinecone for snapshot ${snapshotId}...`);
       try {
-        const index = pineconeClient.index(pineconeIndexName); // Target the index
-        // Upsert in batches if necessary (Pinecone has limits, e.g., 100 vectors per upsert or 2MB payload)
-        // For simplicity here, upserting all at once. Production code should batch.
-        const batchSize = 100;
+        const index = pineconeClient.index(pineconeIndexName); 
+        const batchSize = 50; // Reduced batch size for Pinecone, common recommendation is < 100 or by payload size
         for (let i = 0; i < recordsToUpsertToPinecone.length; i += batchSize) {
           const batch = recordsToUpsertToPinecone.slice(i, i + batchSize);
-          await index.upsert(batch);
-          console.log(`[${userId}] Upserted batch ${i/batchSize + 1} to Pinecone.`);
+          await withRetry(() => index.upsert(batch), 3, 1000, `Pinecone upsert batch ${Math.floor(i/batchSize) + 1}`);
+          console.log(`[${userId}] Upserted batch ${Math.floor(i/batchSize) + 1} to Pinecone.`);
         }
         console.log(`[${userId}] Pinecone upsert completed for snapshot ${snapshotId}.`);
       } catch (pineconeError) {
@@ -536,7 +714,7 @@ functions.cloudEvent('snapshotWorker', async (cloudEvent: functions.CloudEvent<P
         // For now, log and continue creating the main snapshot file.
       }
     }
-    recordsToUpsertToPinecone = []; // Clear the array regardless of success or failure for this run
+    recordsToUpsertToPinecone = [];
     // --- End Pinecone Upsert ---
 
     const jsonData = JSON.stringify(finalSnapshotData, null, 2);

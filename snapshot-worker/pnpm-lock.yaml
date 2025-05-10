@@ -38,6 +38,9 @@ importers:
       posthog-node:
         specifier: ^4.0.0
         version: 4.17.1
+      tiktoken:
+        specifier: ^1.0.21
+        version: 1.0.21
       zlib:
         specifier: ^1.0.5
         version: 1.0.5
@@ -990,6 +993,9 @@ packages:
   teeny-request@9.0.0:
     resolution: {integrity: sha512-resvxdc6Mgb7YEThw6G6bExlXKkv6+YbuzGg9xuXxSgxJF7Ozs+o8Y9+2R3sArdWdW8nOokoQb1yrpFB0pQK2g==}
     engines: {node: '>=14'}
+
+  tiktoken@1.0.21:
+    resolution: {integrity: sha512-/kqtlepLMptX0OgbYD9aMYbM7EFrMZCL7EoHM8Psmg2FuhXoo/bH64KqOiZGGwa6oS9TPdSEDKBnV2LuB8+5vQ==}
 
   toidentifier@1.0.1:
     resolution: {integrity: sha512-o5sSPKEkg/DIQNmH43V0/uerLrpzVedkUh8tGNvaeXpfpuwjKenlSox/2O/BTlZUtEe+JG7s5YhEz608PlAHRA==}
@@ -2173,6 +2179,8 @@ snapshots:
     transitivePeerDependencies:
       - encoding
       - supports-color
+
+  tiktoken@1.0.21: {}
 
   toidentifier@1.0.1: {}
 
