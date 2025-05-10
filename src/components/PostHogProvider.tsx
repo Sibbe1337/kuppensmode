@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import posthog from 'posthog-js';
 import { PostHogProvider as PHProvider } from 'posthog-js/react';
 import { useAuth, useUser } from '@clerk/nextjs'; // For user identification
 import { useToast } from "@/hooks/use-toast"; // For NPS Toast
 import { Button } from "@/components/ui/button"; // For NPS Toast actions
+import NPSModal from "@/components/modals/NPSModal"; // Import NPSModal
 
 // Check if PostHog is client-side enabled
 if (typeof window !== 'undefined') {
@@ -40,6 +41,7 @@ function PostHogAuthWrapper({ children }: PostHogProviderProps) {
   const { isSignedIn, userId } = useAuth();
   const { user } = useUser();
   const { toast } = useToast();
+  const [isNPSModalOpen, setIsNPSModalOpen] = useState(false); // State for NPS modal
 
   useEffect(() => {
     if (isSignedIn && userId && user) {
@@ -64,41 +66,32 @@ function PostHogAuthWrapper({ children }: PostHogProviderProps) {
         localStorage.setItem(loginCountKey, currentLoginCount.toString());
 
         if (currentLoginCount === 3) {
+          // Open the modal instead of complex toast
+          // setIsNPSModalOpen(true); 
+          // Decided to keep the toast as a less intrusive prompt, then modal opens from toast action
           toast({
             title: "How are we doing?",
-            description: "Help us improve Pagelifeline! How likely are you to recommend us to a friend or colleague?",
-            duration: 30000, // Keep it open longer for interaction
+            description: "Help us improve Pagelifeline! Would you take a moment to share your feedback?",
+            duration: 30000, 
             action: (
               <div className="flex flex-col gap-2 items-stretch mt-2">
-                {[...Array(11)].map((_, i) => (
-                  <Button 
-                    key={i} 
-                    variant="outline" 
-                    size="sm"
-                    onClick={() => {
-                      posthog.capture('nps_score_submitted', { score: i, userId });
-                      toast({ title: "Thanks for your feedback!", duration: 3000 });
-                      localStorage.setItem(npsShownKey, 'true');
-                      // Manually close the NPS toast - this requires access to dismiss function or toast ID
-                      // For now, it relies on user clicking a score or it timing out.
-                    }}
-                  >
-                    {i}
-                  </Button>
-                )).slice(0,5) /* Show 0-4 in one row */ 
-                }
-                 <div className="flex justify-between"> 
-                 {[...Array(11)].map((_, i) => (
-                    <Button key={i} variant="outline" size="sm" /* ... same onClick ... */ >{i}</Button>
-                 )).slice(5,8) /* Show 5-7 */}
-                 </div>
-                 <div className="flex justify-between"> 
-                 {[...Array(11)].map((_, i) => (
-                    <Button key={i} variant="outline" size="sm" /* ... same onClick ... */ >{i}</Button>
-                 )).slice(8,11) /* Show 8-10 */}
-                 </div>
-                 {/* A simpler version could just have one button "Give Feedback" linking to a form */}
-                 <Button variant="link" size="sm" onClick={() => localStorage.setItem(npsShownKey, 'true')}>Maybe later</Button>
+                <Button 
+                  variant="default" 
+                  size="sm"
+                  onClick={() => {
+                    posthog.capture('nps_feedback_prompt_clicked', { userId });
+                    setIsNPSModalOpen(true); // Open modal from toast action
+                    // Toast will be dismissed by user or timeout, or NPSModal will mark npsShown
+                  }}
+                >
+                  Rate Us
+                </Button>
+                <Button variant="link" size="sm" onClick={() => {
+                    localStorage.setItem(npsShownKey, 'true'); // Mark as shown if user clicks maybe later
+                    // Manually close toast if toast component provides a way (e.g. by id)
+                }} className="text-xs">
+                    Maybe later
+                </Button>
               </div>
             ),
           });
@@ -110,7 +103,12 @@ function PostHogAuthWrapper({ children }: PostHogProviderProps) {
     }
   }, [isSignedIn, userId, user, toast]);
 
-  return <>{children}</>;
+  return (
+    <>
+      {children}
+      <NPSModal isOpen={isNPSModalOpen} onOpenChange={setIsNPSModalOpen} />
+    </>
+  );
 }
 
 export function PostHogProvider({ children }: PostHogProviderProps) {

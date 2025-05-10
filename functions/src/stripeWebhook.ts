@@ -267,8 +267,9 @@ export const stripeWebhook = http('stripeWebhook', async (req: Request, res: Res
         if (hasEnded || willEnd) {
             console.log(`Subscription ${fullSubscription.id} for user ${userId} is considered ended/canceled. Downgrading quota.`);
             updatePayload.quota = DEFAULT_USER_QUOTA;
-            updatePayload.plan = DEFAULT_USER_QUOTA.planName; // Reflect free plan name
-            updatePayload.planId = DEFAULT_USER_QUOTA.planId; // Reflect free plan conceptual ID
+            updatePayload.plan = DEFAULT_USER_QUOTA.planName; 
+            updatePayload.planId = DEFAULT_USER_QUOTA.planId; 
+            updatePayload['flags.needsCancellationSurvey'] = true; // B.4: Set flag for survey
 
             if (posthogClient) {
                 posthogClient.capture({
@@ -347,15 +348,16 @@ export const stripeWebhook = http('stripeWebhook', async (req: Request, res: Res
         // Update billing status and downgrade quota
         // The subscription object itself might be minimal, focus on marking as deleted and downgrading.
         const billingUpdate = {
-            status: 'deleted', // Or use subscription.status if it's 'canceled'
+            status: 'deleted', 
             endedAt: subscription.ended_at ? Timestamp.fromMillis(subscription.ended_at * 1000) : Timestamp.now(),
         };
 
         await userRef.set({ 
-            billing: billingUpdate, // Merge with existing billing info to update status
+            billing: billingUpdate, 
             quota: DEFAULT_USER_QUOTA,
             plan: DEFAULT_USER_QUOTA.planName,
             planId: DEFAULT_USER_QUOTA.planId,
+            'flags.needsCancellationSurvey': true, // B.4: Set flag for survey
         }, { merge: true });
 
         if (posthogClient) {

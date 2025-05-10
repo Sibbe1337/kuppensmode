@@ -5,7 +5,7 @@
   "main": "dist/index.js",
   "private": true,
   "scripts": {
-    "build": "rm -rf dist-* && esbuild src/snapshot.ts src/restore.ts src/stripeWebhook.ts --bundle --platform=node --target=node20 --format=cjs --outdir=dist-temp --external:@google-cloud/* && mkdir -p dist-snapshot dist-restore dist-stripe-webhook && mv dist-temp/snapshot.js dist-snapshot/index.js && mv dist-temp/restore.js dist-restore/index.js && mv dist-temp/stripeWebhook.js dist-stripe-webhook/index.js && rmdir dist-temp && node build-copy.js"
+    "build": "rm -rf dist-* && esbuild src/snapshot.ts src/restore.ts src/stripeWebhook.ts src/updateDailyStats.ts --bundle --platform=node --target=node20 --format=cjs --outdir=dist-temp --external:@google-cloud/* && mkdir -p dist-snapshot dist-restore dist-stripe-webhook dist-daily-stats && mv dist-temp/snapshot.js dist-snapshot/index.js && mv dist-temp/restore.js dist-restore/index.js && mv dist-temp/stripeWebhook.js dist-stripe-webhook/index.js && mv dist-temp/updateDailyStats.js dist-daily-stats/index.js && rmdir dist-temp && node build-copy.js"
   },
   "dependencies": {
     "@google-cloud/functions-framework": "^4.0.0",
