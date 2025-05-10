@@ -15,6 +15,7 @@ import { useAuth } from "@clerk/nextjs";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
+import StatusBadge from '@/components/layout/StatusBadge';
 
 // Initialize Stripe.js outside component to avoid recreating on every render
 // Make sure NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY is set in your environment!
@@ -269,9 +270,14 @@ const HomePage: NextPage = () => {
             <Button size="lg" className="text-lg px-8 py-6 bg-primary hover:bg-primary/90 text-primary-foreground" onClick={primaryCtaAction}>
               Start Free Backup
             </Button>
-            <Button variant="link" onClick={() => setIsDemoModalOpen(true)} className="text-blue-400 hover:text-blue-300 text-lg w-full sm:w-auto">
-              <PlayCircle className="mr-2 h-5 w-5" />
-              Watch 15-sec demo
+            <Button variant="outline" size="lg" className="text-lg px-8 py-6" asChild>
+              <Link href="/dashboard?sandbox=1">Try Live Demo</Link>
+            </Button>
+          </div>
+          <div className="flex justify-center items-center gap-4 mb-4">
+            <Button variant="link" onClick={() => setIsDemoModalOpen(true)} className="text-blue-400 hover:text-blue-300 text-base">
+              <PlayCircle className="mr-2 h-4 w-4" />
+              Watch 15-sec product demo
             </Button>
           </div>
           <p className="text-sm text-muted-foreground">
@@ -456,8 +462,11 @@ const HomePage: NextPage = () => {
       )}
 
       {/* Footer (simple) */}
-      <footer className="py-8 text-center border-t border-zinc-800">
-        <p className="text-zinc-500 text-sm">&copy; {new Date().getFullYear()} Notion Lifeline. All rights reserved.</p>
+      <footer className="py-8 border-t border-zinc-800">
+        <div className="container mx-auto flex flex-col sm:flex-row justify-between items-center text-sm text-zinc-500 gap-4">
+          <p>&copy; {new Date().getFullYear()} Notion Lifeline. All rights reserved.</p>
+          <StatusBadge />
+        </div>
       </footer>
 
     </div>

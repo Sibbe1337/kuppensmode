@@ -1,0 +1,32 @@
+{
+  "userId": "demo_user_123",
+  "email": "demo@pagelifeline.app",
+  "name": "Demo User",
+  "plan": "Pro Demo Plan", 
+  "quota": {
+    "planName": "Pro Demo Plan",
+    "planId": "demo_pro_plan",
+    "snapshotsUsed": 2,
+    "snapshotsLimit": 10
+  },
+  "settings": {
+    "notionConnected": true,
+    "notionWorkspaceName": "Demo Workspace",
+    "notionWorkspaceIcon": "https://via.placeholder.com/50/FFA500/FFFFFF?Text=DW",
+    "apiKey": "demo_api_key_masked_******",
+    "notifications": {
+      "emailOnSnapshotSuccess": true,
+      "emailOnSnapshotFailure": true,
+      "webhookUrl": null
+    },
+    "autoSnapshot": {
+      "enabled": true,
+      "frequency": "daily"
+    }
+  },
+  "activation": {
+    "connectedNotion": true,
+    "createdFirstBackup": true,
+    "initiatedFirstRestore": false
+  }
+} 

@@ -27,6 +27,8 @@ import useSWR from 'swr';
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import NotionPageSearchCombobox, { NotionPageInfo } from './NotionPageSearchCombobox';
+import { useSandbox } from '@/hooks/useSandbox';
+import { apiClient } from '@/lib/apiClient';
 
 interface RestoreWizardProps {
   snapshot: Snapshot | null;
@@ -99,6 +101,8 @@ const RestoreWizard: React.FC<RestoreWizardProps> = ({ snapshot, open, onOpenCha
   const [restoreTargetType, setRestoreTargetType] = useState<'new_page' | 'specific_page' | 'in_place'>('new_page');
   const [targetParentPageId, setTargetParentPageId] = useState<string | null>(null);
   const [targetParentPageTitle, setTargetParentPageTitle] = useState<string | null>(null);
+
+  const isSandbox = useSandbox(); // Use the hook
 
   // Use the helper function to clean the ID for the URL
   const cleanSnapshotId = snapshot ? getCleanSnapshotId(snapshot.id) : null;
@@ -241,24 +245,44 @@ const RestoreWizard: React.FC<RestoreWizardProps> = ({ snapshot, open, onOpenCha
   const handleBeginRestore = async () => {
     if (!snapshot || currentRestoreId) return;
 
+    // const selectedIdsArray: string[] = Array.from(selectedItemIds); // Re-enable if item selection is used
     const selectedIdsArray: string[] = []; 
-    console.log("Attempting to initiate restore for snapshot:", snapshot.id, "(Full Restore - No Targets Selected)");
+    console.log(`Attempting to initiate restore for snapshot: ${snapshot.id}, Targets: ${selectedIdsArray.length > 0 ? selectedIdsArray.join(', ') : 'Full Restore'}`);
     
     setCurrentStep(3); 
     setProgressValue(0);
-    setStatusMessage("Initiating restore..."); 
+    setStatusMessage(isSandbox ? "Simulating restore initiation..." : "Initiating restore..."); 
     setIsRestoreInProgress(true);
     restoreStartTimeRef.current = Date.now();
     
     let effectiveTargetParentPageId: string | null = targetParentPageId;
 
-    // PostHog capture BEFORE potentially lengthy API calls or modifications
     posthog.capture('restore_started', { 
         snapshot_id: snapshot.id, 
         target_count: selectedIdsArray.length, 
         restore_target_type: restoreTargetType,
-        ...(restoreTargetType === 'specific_page' && effectiveTargetParentPageId && { target_parent_page_id: effectiveTargetParentPageId })
+        ...(restoreTargetType === 'specific_page' && effectiveTargetParentPageId && { target_parent_page_id: effectiveTargetParentPageId }),
+        demo: isSandbox // Add demo flag
     });
+
+    if (isSandbox) {
+      // Simulate sandbox restore
+      setStatusMessage("Demo: Preparing restore environment...");
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      setProgressValue(25);
+      setStatusMessage("Demo: Downloading snapshot data...");
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      setProgressValue(50);
+      setStatusMessage("Demo: Restoring items to Notion (simulated)...");
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      setProgressValue(100);
+      setStatusMessage("Demo: Restore completed successfully!");
+      setIsRestoreInProgress(false);
+      // No actual currentRestoreId is set for demo, so SSE won't connect
+      // The useRestoreProgress hook's lastEvent will not update further for this demo restore.
+      // We directly set final state.
+      return;
+    }
 
     if (restoreTargetType === 'new_page') {
          console.log("Restore target type: new_page (passing null parent)");
@@ -267,15 +291,12 @@ const RestoreWizard: React.FC<RestoreWizardProps> = ({ snapshot, open, onOpenCha
          console.log("Restore target type: in_place (passing null parent)");
          effectiveTargetParentPageId = null; 
     } else if (restoreTargetType === 'specific_page' && !effectiveTargetParentPageId) {
-        // If specific page is chosen but no page ID is set (e.g. user didn't select one)
-        // It might be better to prevent proceeding or default, for now, let it pass as null as per previous logic
-        // Or, disable "Next" button in Step 2 if this is not set.
         console.warn("Restore target type: specific_page, but no targetParentPageId selected. Defaulting to null parent.");
          effectiveTargetParentPageId = null; 
     }
 
     try {
-      const response = await fetch('/api/restore', {
+      const response = await apiClient<{restoreId: string}>(/* Using apiClient now */ '/api/restore', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -285,23 +306,23 @@ const RestoreWizard: React.FC<RestoreWizardProps> = ({ snapshot, open, onOpenCha
         }),
       });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ message: 'Failed to start restore process.' }));
-        throw new Error(errorData.message || 'Failed to start restore process.');
-      }
-      
-      const result = await response.json();
-      setCurrentRestoreId(result.restoreId);
+      // No need to check response.ok, apiClient handles it
+      // const result = response; // apiClient returns parsed JSON directly
+      setCurrentRestoreId(response.restoreId);
       setIsRestoreInProgress(true);
-      setCurrentStep(3);
-      setStatusMessage("Awaiting initiation...");
+      // setCurrentStep(3); // Already set
+      setStatusMessage("Restore process initiated. Waiting for progress updates..."); // Updated message
     } catch (err: any) {
       console.error("Failed to initiate restore:", err);
       toast({
         title: "Restore Error",
-        description: "Failed to start restore process.",
+        description: err.data?.message || err.message || "Failed to start restore process.",
         variant: "destructive",
       });
+      // Reset state on failure to allow retry or closing
+      setIsRestoreInProgress(false);
+      setCurrentStep(1); // Or back to step 2
+      setStatusMessage("Failed to start. Please try again.");
     }
   };
 

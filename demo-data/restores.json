@@ -1,0 +1,22 @@
+[
+  {
+    "id": "demo_restore_1",
+    "snapshotId": "demo_snap_1_actual",
+    "status": "completed",
+    "message": "Restore completed successfully!",
+    "percentage": 100,
+    "requestedAt": "2024-07-21T10:00:00.000Z",
+    "updatedAt": "2024-07-21T10:05:00.000Z",
+    "restoredPageUrl": "https://www.notion.so/Demo-Restored-Page-1-URL"
+  },
+  {
+    "id": "demo_restore_2",
+    "snapshotId": "demo_snap_2_actual",
+    "status": "restoring",
+    "message": "Restoring items to Notion... (65%)",
+    "percentage": 65,
+    "requestedAt": "2024-07-22T11:00:00.000Z",
+    "updatedAt": "2024-07-22T11:03:00.000Z",
+    "restoredPageUrl": null
+  }
+] 

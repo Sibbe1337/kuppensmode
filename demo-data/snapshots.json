@@ -1,0 +1,33 @@
+[
+  {
+    "id": "demo_snap_3",
+    "snapshotIdActual": "demo_snap_3_actual",
+    "timestamp": "2024-07-22T10:00:00.000Z",
+    "sizeKB": 1200,
+    "status": "Completed",
+    "latestRestoreStatus": "completed",
+    "latestRestoreUrl": "https://www.notion.so/Demo-Restore-Page-3-URL",
+    "diffSummary": {
+      "added": 5,
+      "removed": 2,
+      "changed": 3,
+      "previousSnapshotId": "demo_snap_2_actual"
+    }
+  },
+  {
+    "id": "demo_snap_2",
+    "snapshotIdActual": "demo_snap_2_actual",
+    "timestamp": "2024-07-21T08:00:00.000Z",
+    "sizeKB": 1100,
+    "status": "Completed",
+    "diffSummary": null
+  },
+  {
+    "id": "demo_snap_1",
+    "snapshotIdActual": "demo_snap_1_actual",
+    "timestamp": "2024-07-20T14:30:00.000Z",
+    "sizeKB": 1000,
+    "status": "Completed",
+    "diffSummary": null
+  }
+] 

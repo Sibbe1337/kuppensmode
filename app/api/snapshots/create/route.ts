@@ -3,6 +3,8 @@ import { auth } from '@clerk/nextjs/server';
 import { PubSub } from '@google-cloud/pubsub';
 import { db } from '@/lib/firestore';
 import { FieldValue } from '@google-cloud/firestore';
+import { DEFAULT_USER_QUOTA } from '@/config/defaults';
+import type { UserQuota } from '@/types/user'; // Corrected import for UserQuota type
 
 // --- GCP Client Initialization ---
 const projectId = process.env.GOOGLE_CLOUD_PROJECT;
@@ -42,9 +44,38 @@ export async function POST(request: Request) {
 
     console.log(`Initiating snapshot creation request for user: ${userId}`);
 
+    // --- BEGIN QUOTA CHECK & UPDATE --- 
+    const userDocRef = db.collection('users').doc(userId);
+    let currentQuota: UserQuota;
+    let userDocSnap;
+
+    try {
+      userDocSnap = await userDocRef.get();
+      if (userDocSnap.exists && userDocSnap.data()?.quota) {
+        currentQuota = userDocSnap.data()?.quota as UserQuota;
+      } else {
+        console.log(`User ${userId} has no quota, initializing with default.`);
+        currentQuota = DEFAULT_USER_QUOTA;
+        // Initialize quota if user or quota field doesn't exist
+        await userDocRef.set({ quota: DEFAULT_USER_QUOTA, createdAt: FieldValue.serverTimestamp() }, { merge: true }); 
+      }
+    } catch (quotaError) {
+      console.error(`[Snapshot Create] Error fetching/initializing quota for user ${userId}:`, quotaError);
+      return new NextResponse("Error verifying user quota.", { status: 500 });
+    }
+
+    if (currentQuota.snapshotsUsed >= currentQuota.snapshotsLimit) {
+      console.log(`User ${userId} over snapshot limit: ${currentQuota.snapshotsUsed}/${currentQuota.snapshotsLimit}`);
+      // M-4: Over-limit - return an error that frontend can use to show banner/redirect
+      return new NextResponse(JSON.stringify({
+        error: "Snapshot limit reached. Please upgrade your plan.",
+        errorCode: "SNAPSHOT_LIMIT_REACHED"
+      }), { status: 403, headers: { 'Content-Type': 'application/json' } }); // 403 Forbidden or 429 Too Many Requests
+    }
+    // --- END QUOTA CHECK --- 
+
     // --- Check if first backup --- 
     let isFirstBackup = false;
-    const userDocRef = db.collection('users').doc(userId);
     try {
       const userDoc = await userDocRef.get();
       if (userDoc.exists) {
@@ -74,6 +105,17 @@ export async function POST(request: Request) {
     try {
         const messageId = await pubsub.topic(topicName).publishMessage({ data: dataBuffer });
         console.log(`Snapshot request message ${messageId} published to topic ${topicName} for user ${userId}.`);
+
+        // --- Increment snapshotsUsed in quota AFTER successful publish --- 
+        try {
+            await userDocRef.update({ 'quota.snapshotsUsed': FieldValue.increment(1) });
+            console.log(`[Snapshot Create] Incremented snapshotsUsed for user ${userId}`);
+        } catch (incrementError) {
+            console.error(`[Snapshot Create] Failed to increment snapshotsUsed for user ${userId}:`, incrementError);
+            // This is a tricky state: job is queued but quota might not reflect it.
+            // For MVP, log and continue. More robust system might try to compensate or alert.
+        }
+        // --- End Increment ---
 
         // --- Update activation status if it was the first --- 
         if (isFirstBackup) {

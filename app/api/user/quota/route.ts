@@ -3,11 +3,17 @@ import { auth } from '@clerk/nextjs/server';
 import { db } from '@/lib/firestore'; // This alias should also work now
 // import { Firestore } from '@google-cloud/firestore'; // Removed direct import
 // import { storage } from '@/lib/gcs'; // TODO: Import GCS utility if needed for usage calculation
-import type { UserQuota } from '@/types/user'; // Use correct alias
 import { DEFAULT_USER_QUOTA } from '@/config/defaults'; // Use correct alias
 
-// Define the structure of the quota data
-// interface UserQuota {
+// Define the structure of the quota data locally to avoid unresolved import errors.
+export interface UserQuota {
+  planName: string;
+  planId: string;
+  snapshotsUsed: number;
+  snapshotsLimit: number;
+  // storageUsedMB?: number;  // Future enhancement
+  // storageLimitMB?: number; // Future enhancement
+}
 //   planName: string;
 //   planId: string;
 //   snapshotsUsed: number;

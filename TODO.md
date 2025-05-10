@@ -78,3 +78,13 @@ Confirm implementation and exact specs for:
 - [🟡] `POST /api/user/settings` - *Placeholder created*
 - [🟡] `GET /api/user/quota` - *Placeholder created*
 - [🟡] `POST /api/user/api-key/regenerate` - *Placeholder created* 
+
+
+// In notion-lifeline/app/api/stripe/webhook/route.ts
+// Inside 'customer.subscription.updated' case or near related logic:
+
+// TODO: Implement seat synchronization (Step 4 of Stripe plan)
+// When team members are added/removed in the application,
+// call stripe.subscriptions.update() to adjust the quantity
+// for the relevant subscription item (subscription.items.data[0]?.id).
+// This requires implementing the team management API/logic first.

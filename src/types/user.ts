@@ -51,6 +51,7 @@ export interface UserQuota {
 // Add the new Snapshot interface
 export interface Snapshot {
   id: string; 
+  snapshotIdActual?: string; // Added for consistency with API
   timestamp: string; // ISO date string
   sizeKB: number;
   status: string; // This is for the backup status itself

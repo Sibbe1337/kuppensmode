@@ -8,7 +8,7 @@ import QuotaProgressButton from "@/components/dashboard/QuotaProgressButton";
 import ActivationChecklist from "@/components/dashboard/ActivationChecklist"; 
 import { useToast } from "@/hooks/use-toast"; 
 import { useSWRConfig } from 'swr';
-import { Loader2, Plus } from 'lucide-react';
+import { Loader2, Plus, Info } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import Tour from "@/components/Tour";
 import posthog from 'posthog-js';
@@ -19,13 +19,18 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import PreviewSheet from "@/components/dashboard/PreviewSheet";
 import RestoreWizard from "@/components/dashboard/RestoreWizard";
 import useSWR from 'swr';
-import { fetcher } from '@/lib/fetcher';
+import apiClient from '@/lib/apiClient';
+import { useSandbox, setSandboxMode } from '@/hooks/useSandbox';
+import { Badge } from '@/components/ui/badge';
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useUserSettings } from "@/hooks/useUserSettings";
 import CancellationSurveyModal from "@/components/modals/CancellationSurveyModal";
+import Link from 'next/link';
 
 export default function DashboardPage() {
   const searchParams = useSearchParams();
+  const router = useRouter();
+
   console.log("DashboardPage INITIAL RENDER searchParams:", searchParams.toString());
 
   const { toast } = useToast();
@@ -33,7 +38,6 @@ export default function DashboardPage() {
   const [isCreatingSnapshot, setIsCreatingSnapshot] = useState(false);
   const { quota, isLoading: isQuotaLoading, isError: isQuotaError, mutateQuota } = useQuota();
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
-  const router = useRouter();
   const [previewSnapshotIdForToast, setPreviewSnapshotIdForToast] = useState<string | null>(null);
   const [isToastPreviewSheetOpen, setIsToastPreviewSheetOpen] = useState(false);
   const [snapshotForRestoreToast, setSnapshotForRestoreToast] = useState<Snapshot | null>(null);
@@ -41,95 +45,85 @@ export default function DashboardPage() {
   const { settings: userSettings, mutateSettings: mutateUserSettings } = useUserSettings();
   const [isCancellationSurveyModalOpen, setIsCancellationSurveyModalOpen] = useState(false);
 
-  // Fetch snapshots data
-  const { data: snapshots, error: snapshotsError, isLoading: isLoadingSnapshots } = useSWR<Snapshot[]>('/api/snapshots', fetcher);
+  const { data: snapshots, error: snapshotsError, isLoading: isLoadingSnapshots } = useSWR<Snapshot[]>(
+    '/api/snapshots',
+    apiClient
+  );
+
+  useEffect(() => {
+    if (searchParams.get('sandbox') === '1') {
+      setSandboxMode(true);
+      // Optional: remove the query param from URL after setting the flag
+      // router.replace('/dashboard', { scroll: false }); 
+    }
+  }, [searchParams, router]);
+
+  const isSandbox = useSandbox();
 
   useEffect(() => {
     const checkoutStatus = searchParams.get('checkout');
     const sessionId = searchParams.get('session_id');
-    console.log(`DashboardPage Effect: checkoutStatus=${checkoutStatus}, sessionId=${sessionId}`);
-
     if (checkoutStatus === 'success' && sessionId) {
-      console.log(`DashboardPage: Success params found. Attempting to verify session: ${sessionId}`);
       toast({ title: "Payment Successful!", description: "Finalizing your subscription..." });
-      
-      fetch(`/api/billing/verify-checkout-session?session_id=${sessionId}`)
-        .then(res => {
-          console.log("DashboardPage: Verify fetch response status:", res.status);
-          if (!res.ok) {
-            return res.json().then(err => {
-              console.error("DashboardPage: Verify API error response:", err);
-              throw new Error(err.error || 'Verification failed (API error)'); 
-            });
-          }
-          return res.json();
-        })
+      apiClient<{success: boolean, planName?: string, error?: string}>(`/api/billing/verify-checkout-session?session_id=${sessionId}`)
         .then(data => {
-          console.log("DashboardPage: Verify API success data:", data);
           if (data.success) {
-            toast({ title: "Subscription Activated!", description: `You are now on the ${data.planName} plan.` });
+            toast({ title: "Subscription Activated!", description: `You are now on the ${data.planName || 'selected'} plan.` });
             mutateQuota(); 
             mutate('/api/user/settings'); 
           } else {
             throw new Error(data.error || 'Verification step failed (data.success false).');
           }
         })
-        .catch(err => {
-          console.error("DashboardPage: Error in verify fetch chain:", err);
+        .catch((err: any) => {
           toast({ title: "Error Finalizing Subscription", description: err.message, variant: "destructive" });
         })
         .finally(() => {
-          console.log("DashboardPage: Verify fetch chain finally block. WOULD clean URL here.");
-          // router.replace('/dashboard', { scroll: false }); // Temporarily commented out
+          // router.replace('/dashboard', { scroll: false }); 
         });
     } else if (checkoutStatus === 'cancel') {
-      console.log("DashboardPage: Checkout canceled. WOULD clean URL here.");
       toast({ title: "Checkout Canceled", description: "Your upgrade process was canceled." });
-      // router.replace('/dashboard', { scroll: false }); // Temporarily commented out
+      // router.replace('/dashboard', { scroll: false });
     }
-  }, [searchParams, router, toast, mutateQuota]);
+  }, [searchParams, router, toast, mutateQuota, mutate]);
 
-  // Effect to check for and trigger cancellation survey
   useEffect(() => {
     if (userSettings?.flags?.needsCancellationSurvey) {
       console.log("DashboardPage: needsCancellationSurvey flag is true. Opening modal.");
       setIsCancellationSurveyModalOpen(true);
-      // Call API to clear the flag immediately so it doesn't re-trigger
-      fetch('/api/user/flags/clear', {
+      apiClient<{success: boolean}>('/api/user/flags/clear', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ flagName: 'needsCancellationSurvey' }),
       })
-      .then(res => {
-        if (res.ok) {
+      .then(data => {
+        if (data.success) {
           console.log("DashboardPage: Cleared needsCancellationSurvey flag.");
-          // Optionally mutate userSettings here if the API doesn't trigger SWR revalidation by itself
-          // mutateUserSettings(); // This might cause a re-render; ensure it doesn't loop with the effect
         } else {
           console.error("DashboardPage: Failed to clear needsCancellationSurvey flag.");
         }
       })
-      .catch(err => console.error("DashboardPage: Error clearing needsCancellationSurvey flag:", err));
+      .catch((err: any) => console.error("DashboardPage: Error clearing needsCancellationSurvey flag:", err));
     }
-  }, [userSettings, mutateUserSettings]);
+  }, [userSettings]);
 
-  const isOverSnapshotLimit = !isQuotaLoading && !isQuotaError && quota ? quota.snapshotsUsed >= quota.snapshotsLimit : false;
+  const isOverSnapshotLimit = !isSandbox && !isQuotaLoading && !isQuotaError && quota ? quota.snapshotsUsed >= quota.snapshotsLimit : false;
 
   const handleCreateSnapshot = async () => {
-    if (isQuotaLoading || isQuotaError) {
-        toast({ title: "Error", description: "Could not verify snapshot quota. Please try again.", variant: "destructive", });
+    if (!isSandbox && (isQuotaLoading || isQuotaError)) {
+        toast({ title: "Error", description: "Could not verify snapshot quota. Please try again.", variant: "destructive" });
         return;
     }
-    if (isOverSnapshotLimit) {
-        // setIsUpgradeModalOpen(true); // Old behavior
-        router.push('/pricing?reason=limit'); // New behavior: route to pricing page
+    if (!isSandbox && isOverSnapshotLimit) {
+        router.push('/pricing?reason=limit');
         return;
     }
     setIsCreatingSnapshot(true);
 
-    const tempId = `temp-${Date.now()}`;
+    const tempIdString: string = `optimistic_snap_${Date.now()}`;
     const tempSnapshot: Partial<Snapshot> = {
-        id: tempId,
+        id: tempIdString,
+        snapshotIdActual: tempIdString,
         status: 'Pending',
         sizeKB: 0,
         timestamp: new Date().toISOString(),
@@ -141,56 +135,58 @@ export default function DashboardPage() {
     }
 
     mutate('/api/snapshots', 
-      (currentData: Snapshot[] | undefined) => [tempSnapshot as Snapshot, ...(currentData || [])], 
-      false
+      (currentData: Snapshot[] = []) => [tempSnapshot as Snapshot, ...currentData], 
+      { revalidate: false }
     );
 
     toast({ 
       title: "Backup Started", 
-      description: "Your snapshot is in progress. You can continue working.", 
+      description: isSandbox ? "Demo snapshot in progress..." : "Your snapshot is in progress. You can continue working.", 
       duration: 7000 
     });
 
-    try {
-      // const response = await fetch('/api/snapshots/create', { method: 'POST' });
-      // Simulate API response for now if snapshot creation takes time
-      const response = await new Promise<Response>(resolve => setTimeout(() => {
-        // @ts-ignore
-        resolve({ ok: true, json: async () => ({ success: true, snapshotId: tempSnapshot.id }) });
-      }, 2000)); // Simulate 2s delay
+    if (isSandbox) {
+      posthog.capture('snapshot_start', { demo: true, snapshot_id_optimistic: tempIdString });
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      mutate('/api/snapshots',
+        (currentData: Snapshot[] = []) => currentData.map(s => 
+          s.id === tempIdString ? { ...s, status: 'Completed', sizeKB: Math.floor(Math.random() * 500 + 50) } as Snapshot : s
+        ),
+        false
+      );
+      toast({ title: "Demo Snapshot Saved!", description: "This is a simulated snapshot."});
+      setIsCreatingSnapshot(false);
+      return;
+    }
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ message: 'Failed to trigger snapshot creation.' }));
-        throw new Error(errorData.message || 'Failed to trigger snapshot creation.');
-      }
-      
-      // Assuming backend returns the new snapshot ID or details
-      const newSnapshotData = await response.json();
-      const newSnapshotId = newSnapshotData.snapshotId || tempSnapshot.id;
+    try {
+      await apiClient<{snapshotId?: string, success: boolean, message: string}>('/api/snapshots/create', { method: 'POST' }); 
+      const newSnapshotId: string = tempIdString;
 
       mutate('/api/snapshots'); 
-      mutate('/api/user/quota'); 
+      mutateQuota(); 
       posthog.capture('snapshot_start', { snapshot_id_optimistic: newSnapshotId });
 
-      // Updated toast with actions
       toast({
         title: "Snapshot Saved!",
         description: "Your Notion workspace backup is complete.",
-        duration: 10000, // Keep it longer for actions
+        duration: 10000,
         action: (
           <div className="flex flex-col gap-2 items-stretch">
             <Button variant="outline" size="sm" onClick={() => {
-              setPreviewSnapshotIdForToast(newSnapshotId); // Use the actual ID of the created snapshot
+              setPreviewSnapshotIdForToast(newSnapshotId);
               setIsToastPreviewSheetOpen(true);
-              // Close the toast manually if needed: document.querySelector('[data-radix-toast-provider] button[aria-label=Close]')?.click();
             }}>
               👁 Preview
             </Button>
             <Button variant="default" size="sm" onClick={() => {
-              // Find the full snapshot object to pass to wizard
-              // This is a bit simplified; ideally, /api/snapshots returns the new snapshot object
-              // or we fetch it. For now, constructing a partial one.
-              setSnapshotForRestoreToast({ id: newSnapshotId, timestamp: tempSnapshot.timestamp!, sizeKB: 0, status: 'Completed' });
+              setSnapshotForRestoreToast({ 
+                id: newSnapshotId, 
+                snapshotIdActual: newSnapshotId, 
+                timestamp: tempSnapshot.timestamp!,
+                sizeKB: 0, 
+                status: 'Completed' 
+              });
               setIsRestoreWizardOpenFromToast(true);
             }}>
               Restore
@@ -201,12 +197,14 @@ export default function DashboardPage() {
 
     } catch (error: any) {
       console.error("Error creating snapshot:", error);
-      toast({ title: "Snapshot Error", description: error.message || "Could not initiate creation.", variant: "destructive", });
+      toast({ title: "Snapshot Error", description: error.data?.error || error.message || "Could not initiate creation.", variant: "destructive" });
       mutate('/api/snapshots', 
-          (currentData: Snapshot[] | undefined) => (currentData || []).filter(snap => snap.id !== tempId),
+          (currentData: Snapshot[] = []) => currentData.filter(snap => snap.id !== tempIdString),
           false
       );
-      mutate('/api/user/quota');
+      if(error.data?.errorCode !== 'SNAPSHOT_LIMIT_REACHED') {
+        mutateQuota();
+      }
     } finally {
       setIsCreatingSnapshot(false);
     }
@@ -215,16 +213,17 @@ export default function DashboardPage() {
   return (
     <>
       <SignedIn>
-        <QuotaProgressButton /> 
+        {!isSandbox && <QuotaProgressButton />}
 
         <div className="relative space-y-6">
           <div className="flex justify-between items-center gap-4">
-            <div>
+            <div className="flex items-center gap-2">
               <h1 className="text-2xl font-semibold">Recent Snapshots</h1>
+              {isSandbox && <Badge variant="outline" className="border-yellow-500 text-yellow-600"><Info className="h-3 w-3 mr-1" />Demo Mode</Badge>}
             </div>
             <Button 
               onClick={handleCreateSnapshot} 
-              disabled={isCreatingSnapshot || isQuotaLoading || isOverSnapshotLimit || isQuotaError}
+              disabled={isCreatingSnapshot || (!isSandbox && (isQuotaLoading || isOverSnapshotLimit || isQuotaError))}
               variant="default"
               size="lg"
             >
@@ -233,37 +232,47 @@ export default function DashboardPage() {
             </Button>
           </div>
 
-          <ActivationChecklist /> 
+          {!isSandbox && <ActivationChecklist />}
 
-          {/* Conditional rendering for snapshots */}
+          {isSandbox && (
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded-md text-sm text-blue-700 dark:bg-blue-900/30 dark:border-blue-700 dark:text-blue-300">
+              <Info className="inline h-4 w-4 mr-1.5 -mt-0.5" />
+              You are in Demo Mode. Data is mocked and actions are simulated. 
+              <Link href="/dashboard/settings" className="font-semibold underline hover:text-blue-600 dark:hover:text-blue-200 ml-1" onClick={() => setSandboxMode(false)}>
+                Connect your real Notion workspace
+              </Link> 
+              to use live features.
+            </div>
+          )}
+
           {isLoadingSnapshots && (
             <div className="flex justify-center items-center py-10">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
           )}
-          {snapshotsError && (
+          {snapshotsError && !isSandbox && (
             <div className="text-center py-10 px-4 border border-dashed border-destructive rounded-lg text-destructive">
               <p className="text-xl font-semibold mb-1">Failed to load snapshots</p>
               <p className="text-sm">{snapshotsError.message || "Could not fetch snapshot data."}</p>
             </div>
           )}
-          {snapshots && snapshots.length === 0 && !isLoadingSnapshots && !snapshotsError && (
+          {snapshots && snapshots.length === 0 && !isLoadingSnapshots && (!snapshotsError || isSandbox) && (
             <EmptyState
-              title="No snapshots yet"
-              description="Create your first backup in ~60 sec and sleep better tonight."
-              illustration="/assets/empty-backup.svg" // Make sure this asset exists
+              title={isSandbox ? "Demo Snapshots Area" : "No snapshots yet"}
+              description={isSandbox ? "This is where your snapshots would appear. Try creating a demo snapshot!" : "Create your first backup..."}
+              illustration="/assets/empty-backup.svg"
             >
               <Button onClick={handleCreateSnapshot} className="mt-6">
                 <Plus className="mr-2 h-4 w-4" />
-                Take my first snapshot
+                {isSandbox ? "Try Demo Snapshot" : "Take my first snapshot"}
               </Button>
             </EmptyState>
           )}
-          {snapshots && snapshots.length > 0 && !isLoadingSnapshots && !snapshotsError && (
+          {snapshots && snapshots.length > 0 && !isLoadingSnapshots && (!snapshotsError || isSandbox) && (
             <SnapshotsTable snapshots={snapshots} />
           )}
 
-          <Tour />
+          {!isSandbox && <Tour />}
           <CancellationSurveyModal 
             isOpen={isCancellationSurveyModalOpen} 
             onOpenChange={setIsCancellationSurveyModalOpen} 
@@ -279,6 +288,8 @@ export default function DashboardPage() {
           </SignInButton>
         </div>
       </SignedOut>
+      <PreviewSheet snapshotId={previewSnapshotIdForToast} open={isToastPreviewSheetOpen} onOpenChange={setIsToastPreviewSheetOpen} />
+      <RestoreWizard snapshot={snapshotForRestoreToast} open={isRestoreWizardOpenFromToast} onOpenChange={setIsRestoreWizardOpenFromToast} onClose={() => setIsRestoreWizardOpenFromToast(false)} />
     </>
   );
 } 

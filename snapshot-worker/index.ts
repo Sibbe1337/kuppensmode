@@ -1,6 +1,6 @@
 import * as functions from '@google-cloud/functions-framework';
 import { Storage } from '@google-cloud/storage';
-import { Firestore } from '@google-cloud/firestore';
+import { Firestore, FieldValue } from '@google-cloud/firestore';
 import { Client as NotionClient } from '@notionhq/client';
 import { SecretManagerServiceClient } from '@google-cloud/secret-manager';
 import JSZip from 'jszip';
@@ -18,6 +18,8 @@ import type {
 } from '@notionhq/client/build/src/api-endpoints';
 import { PubSub } from '@google-cloud/pubsub';
 const PostHogNode = require('posthog-node'); // Use require for CJS compatibility
+import { Pinecone } from '@pinecone-database/pinecone';
+import OpenAI from 'openai';
 
 const gzipAsync = promisify(gzip);
 
@@ -230,47 +232,83 @@ function transformBlocksForCreate(blocks: any[]): any[] {
 }
 
 let posthogClient: InstanceType<typeof PostHogNode> | null = null;
+let pineconeClient: Pinecone | null = null;
+let openaiClient: OpenAI | null = null;
+let pineconeIndexName: string | null = null;
 
 // Updated initialization function
 async function initializeAllClients(): Promise<void> {
-    if (storage && db && secretManagerClient && notionQueue && posthogClient) { // Check all relevant clients
-        // Assuming storage, db, secretManagerClient, notionQueue are initialized elsewhere or always available
-        // This function will focus on PostHog, assuming Notion client is per-request
-        if (posthogClient) return;
+    // Check if all essential clients are already initialized
+    if (posthogClient && pineconeClient && openaiClient && pineconeIndexName /* && other essential clients like db, storage */) {
+        console.log('[SnapshotWorker] All relevant clients already initialized.');
+        return;
     }
 
-    console.log('[SnapshotWorker] Initializing PostHog client...');
+    console.log('[SnapshotWorker] Initializing clients (PostHog, OpenAI, Pinecone)...');
     try {
-        const phApiKey = await getSecret('POSTHOG_API_KEY'); // Reuse getSecret if available and applicable
-        const phHost = process.env.POSTHOG_HOST || 'https://app.posthog.com';
+        const [phApiKey, phHost, openAIApiKey, pcApiKey, pcIndex] = await Promise.all([
+            getSecret('POSTHOG_API_KEY'),
+            Promise.resolve(process.env.POSTHOG_HOST || 'https://app.posthog.com'),
+            getSecret('OPENAI_API_KEY'),
+            getSecret('PINECONE_API_KEY'),
+            getSecret('PINECONE_INDEX_NAME')
+        ]);
         
+        // PostHog initialization (existing)
         if (phApiKey && PostHogNode) {
-            posthogClient = new PostHogNode(phApiKey, { host: phHost });
-            console.log('[SnapshotWorker] PostHog client initialized.');
+            if (!posthogClient) { // Initialize only if not already done
+                posthogClient = new PostHogNode(phApiKey, { host: phHost });
+                console.log('[SnapshotWorker] PostHog client initialized.');
+            }
         } else {
             console.warn('[SnapshotWorker] POSTHOG_API_KEY not found or PostHogNode module issue. PostHog events disabled.');
         }
-    } catch (error) {
-        console.error('[SnapshotWorker] PostHog client initialization failed:', error);
-        posthogClient = null;
-    }
 
-    // Initialize PubSub client for email worker if not already done
-    if (!pubsubForEmail && process.env.GOOGLE_CLOUD_PROJECT) { // Check project ID for safety
-        try {
-            console.log('[SnapshotWorker] Initializing PubSub client for email triggers...');
-            // Assuming same credentials can be used or it defaults correctly
-            const pubSubClientConfig: any = { projectId: process.env.GOOGLE_CLOUD_PROJECT };
-            const keyJsonString = process.env.GCP_SERVICE_ACCOUNT_KEY_JSON;
-            if (keyJsonString) {
-                const credentials = JSON.parse(keyJsonString);
-                pubSubClientConfig.credentials = credentials;
+        // OpenAI initialization
+        if (openAIApiKey) {
+            if (!openaiClient) {
+                openaiClient = new OpenAI({ apiKey: openAIApiKey });
+                console.log('[SnapshotWorker] OpenAI client initialized.');
             }
-            pubsubForEmail = new PubSub(pubSubClientConfig);
-            console.log('[SnapshotWorker] PubSub client for email triggers initialized.');
-        } catch (e) {
-            console.error('[SnapshotWorker] Failed to initialize PubSub client for email triggers:', e);
+        } else {
+            console.warn('[SnapshotWorker] OPENAI_API_KEY not found. OpenAI features (embeddings) will be disabled.');
         }
+
+        // Pinecone initialization
+        if (pcApiKey && pcIndex) {
+            if (!pineconeClient) {
+                pineconeClient = new Pinecone({ apiKey: pcApiKey });
+                pineconeIndexName = pcIndex;
+                console.log(`[SnapshotWorker] Pinecone client initialized. Target index name: ${pineconeIndexName}.`);
+            }
+        } else {
+            console.warn('[SnapshotWorker] Pinecone API key or index name not found. Pinecone features (vector storage) will be disabled.');
+        }
+
+        // Initialize PubSub client for email worker (existing)
+        if (!pubsubForEmail && process.env.GOOGLE_CLOUD_PROJECT) {
+            try {
+                console.log('[SnapshotWorker] Initializing PubSub client for email triggers...');
+                // Assuming same credentials can be used or it defaults correctly
+                const pubSubClientConfig: any = { projectId: process.env.GOOGLE_CLOUD_PROJECT };
+                const keyJsonString = process.env.GCP_SERVICE_ACCOUNT_KEY_JSON;
+                if (keyJsonString) {
+                    const credentials = JSON.parse(keyJsonString);
+                    pubSubClientConfig.credentials = credentials;
+                }
+                pubsubForEmail = new PubSub(pubSubClientConfig);
+                console.log('[SnapshotWorker] PubSub client for email triggers initialized.');
+            } catch (e) {
+                console.error('[SnapshotWorker] Failed to initialize PubSub client for email triggers:', e);
+            }
+        }
+
+    } catch (error) {
+        console.error('[SnapshotWorker] Client initialization failed:', error);
+        // posthogClient = null; // Already handled in its own block potentially
+        openaiClient = null;
+        pineconeClient = null;
+        pineconeIndexName = null;
     }
 }
 
@@ -468,7 +506,7 @@ functions.cloudEvent('snapshotWorker', async (cloudEvent: functions.CloudEvent<P
     // M6.1: Add audit log for snapshot creation
     try {
       const auditLogEntry = {
-        timestamp: Firestore.FieldValue.serverTimestamp(),
+        timestamp: FieldValue.serverTimestamp(),
         type: 'snapshot_created',
         details: {
           snapshotId: snapshotId,
@@ -556,7 +594,7 @@ functions.cloudEvent('snapshotWorker', async (cloudEvent: functions.CloudEvent<P
                     added: addedCount,
                     removed: removedCount,
                     changed: changedCount,
-                    comparedAt: Firestore.FieldValue.serverTimestamp(),
+                    comparedAt: FieldValue.serverTimestamp(),
                 };
                 await db.collection('users').doc(userId).collection('snapshotDiffs').doc(snapshotId).set(diffSummary);
                 console.log(`[${userId}] Diff summary for ${snapshotId} (vs ${previousSnapshotId}) stored: +${addedCount} ~${changedCount} -${removedCount}`);

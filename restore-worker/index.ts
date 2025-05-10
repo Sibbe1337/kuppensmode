@@ -15,26 +15,31 @@ const BUCKET = process.env.GCS_BUCKET_NAME;
 const GCP_PROJECT_ID = process.env.GOOGLE_CLOUD_PROJECT;
 const DEFAULT_RESTORE_PARENT_PAGE_ID = process.env.DEFAULT_RESTORE_PARENT_PAGE_ID; // Optional: Set a default parent in env vars
 
-// Cached Notion API Key
-let notionApiKey: string | null = null;
-
-async function getNotionApiKey(): Promise<string> {
-  if (notionApiKey) {
-    return notionApiKey;
+// New function to get user-specific Notion access token from Firestore
+async function getUserNotionAccessToken(userId: string): Promise<string> {
+  if (!userId) {
+    console.error('[RestoreWorker] getUserNotionAccessToken called without userId.');
+    throw new Error('User ID is required to fetch Notion token.');
   }
-  // Replace with your actual secret resource ID:
-  const name = 'projects/notion-lifeline/secrets/NOTION_WORKER_TOKEN/versions/latest'; 
+  console.log(`[RestoreWorker] Fetching Notion access token for user ${userId}...`);
   try {
-    const [version] = await secretManagerClient.accessSecretVersion({ name });
-    const payload = version.payload?.data?.toString();
-    if (!payload) {
-      throw new Error('Secret payload for Notion API key is empty.');
+    const integrationRef = db.collection('users').doc(userId).collection('integrations').doc('notion');
+    const doc = await integrationRef.get();
+    if (!doc.exists) {
+      console.warn(`[RestoreWorker] Notion integration document not found for user ${userId}.`);
+      throw new Error(`Notion integration not found for user ${userId}.`);
     }
-    notionApiKey = payload;
-    return notionApiKey;
-  } catch (error) {
-    console.error('Failed to access Notion API key from Secret Manager:', error);
-    throw new Error('Could not retrieve Notion API key. Ensure the secret exists and the function has permissions.');
+    const accessToken = doc.data()?.accessToken;
+    if (!accessToken || typeof accessToken !== 'string') {
+        console.warn(`[RestoreWorker] Notion access token not found or invalid in integration document for user ${userId}.`);
+        throw new Error(`Notion access token not found or invalid for user ${userId}.`);
+    }
+    console.log(`[RestoreWorker] Successfully fetched Notion access token for user ${userId}.`);
+    return accessToken;
+  } catch (error: any) {
+    console.error(`[RestoreWorker] Error fetching Notion access token for user ${userId}:`, error);
+    // Re-throw to ensure the main handler catches it and can mark the job as failed.
+    throw new Error(`Failed to retrieve Notion access token for user ${userId}: ${error.message}`);
   }
 }
 
@@ -43,12 +48,7 @@ if (!BUCKET) {
 }
 // Removed initial NOTION_API_KEY check, will be checked on first use or pre-flight
 
-// Initialize Notion Client - This will be initialized dynamically after fetching the key
-let notion: Client;
-let notionQueue: any; // To be initialized with PQueue instance
-
-// Initialize Rate Limiter queue (Notion API limit is ~3 requests/second)
-// const notionQueue = new PQueue({ intervalCap: 3, interval: 1000 }); // Moved
+// Notion Client and PQueue will be initialized inside the handler
 
 // Define the structure of the job payload from Pub/Sub
 interface RestoreJob {
@@ -109,10 +109,54 @@ interface PubSubCloudEventData {
   // subscription?: string;
 }
 
-// Helper function to transform block objects from the snapshot/fetch format 
+// Helper function to transform block objects from the snapshot/fetch format
 // into the format required for the pages.create API's 'children' array.
 function transformBlocksForCreate(blocks: any[]): any[] {
-    // ... (implementation from previous step) ...
+    if (!blocks || blocks.length === 0) {
+        return [];
+    }
+
+    const transformedChildren: any[] = [];
+
+    for (const block of blocks) {
+        // Basic structure for the create API block object
+        const createBlock: any = {
+            object: 'block',
+            type: block.type,
+            [block.type]: block[block.type] // Copy the type-specific data directly
+        };
+
+        // If the block has children (fetched during fetchAllBlocks),
+        // recursively transform them as well.
+        if (block.children && Array.isArray(block.children) && block.children.length > 0) {
+             console.log(`[transformBlocks] Block ${block.id} has ${block.children.length} children, transforming recursively...`);
+             // The API expects children within the type-specific object for *some* block types,
+             // but for the general `children` array in pages.create, they should be at the top level.
+             // However, when *creating* nested blocks, they go INSIDE the parent block's type payload.
+             // Let's assume for now we are creating a flat list first for the page's children.
+             // The recursive call in fetchAllBlocks already placed children in `block.children`.
+             // We need to transform *those* children for the `pages.create` payload format.
+             // For the `pages.create` API, nested children are NOT directly added to the parent block object in the list.
+             // Instead, the API creates the parent block, and then subsequent blocks in the children array
+             // implicitly become children if their indentation/structure dictates.
+             // Exception: Synced Blocks, Column Lists require children nested within the type payload during creation.
+
+             // TODO: Refine this logic based on block types that *require* nested children during creation (e.g., Synced Blocks)
+             // For now, we'll just use the direct data, ignoring block.children during transformation,
+             // as fetchAllBlocks already flattened the hierarchy suitable for page creation.
+             // If nested structure IS needed for certain create types, add logic here.
+
+             // Simple approach: Copy the block data, recursion handled by fetchAllBlocks structure.
+        }
+
+        // TODO: Add specific transformations if needed for certain block types (e.g., file URLs, select options)
+        // For most basic block types (paragraph, heading, lists, code, quote, callout, divider, etc.),
+        // simply copying the type and its data payload like above is often sufficient.
+
+        transformedChildren.push(createBlock);
+    }
+
+    return transformedChildren;
 }
 
 /**
@@ -120,25 +164,8 @@ function transformBlocksForCreate(blocks: any[]): any[] {
  * Handles downloading a snapshot and restoring it to Notion.
  */
 functions.cloudEvent('restoreWorker', async (cloudEvent: functions.CloudEvent<PubSubCloudEventData>) => {
-  // Ensure Notion client and PQueue are initialized
-  if (!notion || !notionQueue) {
-    try {
-      const apiKey = await getNotionApiKey();
-      notion = new Client({ auth: apiKey });
-      
-      // Dynamically import PQueue and initialize
-      const { default: PQueueConstructor } = await import('p-queue');
-      notionQueue = new PQueueConstructor({ intervalCap: 3, interval: 1000 });
-
-      console.log("Notion client and PQueue initialized successfully.");
-    } catch (error) {
-      console.error("Fatal: Could not initialize Notion client or PQueue:", error);
-      // Depending on retry strategy, you might throw or return to acknowledge the Pub/Sub message
-      // to prevent infinite retries if the key is permanently unavailable.
-      // For now, throw to make the function execution fail clearly.
-      throw error;
-    }
-  }
+  let notion: Client = null!; // Initialize with null assertion
+  let notionQueue: any = null!; // Initialize with null assertion
 
   if (!cloudEvent.data || !cloudEvent.data.message || typeof cloudEvent.data.message.data !== 'string') {
     console.error('Invalid Pub/Sub message format: Missing or invalid data.message.data');
@@ -496,14 +523,17 @@ functions.cloudEvent('restoreWorker', async (cloudEvent: functions.CloudEvent<Pu
                                         
                                         // --- Fetch and transform block children for this page ---
                                         let transformedDbPageBlocks: any[] = [];
-                                        try {
-                                            console.log(`[${restoreId}] Fetching blocks for database page ${pageRow.id}`);
-                                            const dbPageBlocks = await fetchAllBlocks(notion, notionQueue, pageRow.id); 
-                                            transformedDbPageBlocks = transformBlocksForCreate(dbPageBlocks); 
-                                            console.log(`[${restoreId}] Transformed ${transformedDbPageBlocks.length} blocks for database page ${pageRow.id}`);
-                                        } catch (blockError) {
-                                            console.error(`[${restoreId}] Failed to fetch/transform blocks for database page ${pageRow.id}:`, blockError);
-                                            // Continue trying to create the page, but without blocks
+                                        if (pageRow.blocks && Array.isArray(pageRow.blocks)) { // Check if blocks exist on the pageRow
+                                            try {
+                                                console.log(`[${restoreId}] Transforming ${pageRow.blocks.length} blocks for database page ${pageRow.id}`);
+                                                transformedDbPageBlocks = transformBlocksForCreate(pageRow.blocks); // Use pageRow.blocks
+                                                console.log(`[${restoreId}] Transformed ${transformedDbPageBlocks.length} blocks for database page ${pageRow.id}`);
+                                            } catch (blockError) {
+                                                console.error(`[${restoreId}] Failed to transform blocks for database page ${pageRow.id}:`, blockError);
+                                                // Continue trying to create the page, but without blocks
+                                            }
+                                        } else {
+                                            console.log(`[${restoreId}] No blocks found in snapshot data for database page ${pageRow.id}.`);
                                         }
                                         // --- End block fetching/transformation ---
 
