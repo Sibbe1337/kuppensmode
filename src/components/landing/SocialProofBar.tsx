@@ -57,21 +57,4 @@ const SocialProofBar: React.FC = () => {
   );
 };
 
-// Need to get theme for gradientColor
-const SocialProofBarWrapper: React.FC = () => {
-    const [theme, setTheme] = React.useState("light"); // Default or get from useTheme
-    React.useEffect(() => {
-        // Crude way to get theme if useTheme is not easily usable here
-        // or if this component isn't deeply nested in ThemeProvider context from layout
-        if (typeof window !== 'undefined' && window.document.documentElement.classList.contains('dark')) {
-            setTheme("dark");
-        }
-    }, []);
-    return <SocialProofBar theme={theme} />
-}
-
-// This wrapper is a bit of a hack. Ideally, SocialProofBar itself uses useTheme or gets theme via prop from parent.
-// For now, let's modify SocialProofBar to accept theme as a prop or use useTheme if available.
-// Removing the wrapper for now, and making SocialProofBar use useTheme from next-themes.
-
-export default SocialProofBar; // Will adjust to use useTheme inside SocialProofBar 
+export default SocialProofBar; 
