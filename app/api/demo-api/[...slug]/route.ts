@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 import { NextResponse } from 'next/server';
 import fs from 'fs/promises';
 import path from 'path';
@@ -9,8 +11,6 @@ const getDemoDataPath = (fileName: string) => {
   // In Vercel Edge Functions, process.cwd() is the project root.
   return path.join(process.cwd(), 'demo-data', fileName);
 };
-
-export const runtime = 'edge';
 
 export async function GET(
   request: Request,
