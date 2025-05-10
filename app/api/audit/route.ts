@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { db } from '@/lib/firestore';
+import { getDb, FieldValue } from '@/lib/firestore';
 import { Timestamp } from '@google-cloud/firestore'; // For type checking if needed
 
 const DEFAULT_PAGE_LIMIT = 25;
@@ -15,6 +15,7 @@ interface AuditLog {
 }
 
 export async function GET(request: Request) {
+  const db = getDb(); // Added for GET
   const { userId } = await auth();
   if (!userId) {
     return new NextResponse(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { 'Content-Type': 'application/json' } });
@@ -89,7 +90,43 @@ export async function GET(request: Request) {
     });
 
   } catch (error: any) {
-    console.error(`[API Audit] Error fetching audit logs for user ${userId}:`, error);
+    console.error(`[API Audit GET] Error fetching audit logs for user ${userId}:`, error);
     return new NextResponse(JSON.stringify({ error: 'Failed to fetch audit logs.', details: error.message }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+  }
+}
+
+export const runtime = 'nodejs';
+
+export async function POST(request: Request) {
+  const db = getDb();
+  const { userId } = await auth(); // Changed to await auth()
+  if (!userId) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  try {
+    const body = await request.json();
+    const { type, details, context } = body;
+
+    if (!type || typeof type !== 'string') {
+      return NextResponse.json({ error: 'Audit event type is required and must be a string.' }, { status: 400 });
+    }
+
+    const auditEvent = {
+      timestamp: FieldValue.serverTimestamp(), // Use FieldValue for server timestamp
+      type,
+      details: details || {},
+      context: context || {},
+      userId: userId, // Explicitly store userId with the event
+    };
+
+    const docRef = await db.collection('users').doc(userId).collection('audit').add(auditEvent);
+    console.log(`[API Audit POST] Audit event ${type} for user ${userId} stored with ID: ${docRef.id}`);
+    return NextResponse.json({ success: true, message: "Audit event recorded", id: docRef.id });
+
+  } catch (error: any) {
+    console.error(`[API Audit POST] Error recording audit event for user ${userId}:`, error);
+    // Avoid logging sensitive details from the request body in production errors if possible
+    return NextResponse.json({ error: "Failed to record audit event", details: error.message }, { status: 500 });
   }
 } 

@@ -1,43 +1,54 @@
 import { NextResponse } from 'next/server';
-import { auth } from '@clerk/nextjs/server'; 
+import { getAuth } from '@clerk/nextjs/server';
 import { PubSub } from '@google-cloud/pubsub';
-import { db } from '@/lib/firestore';
+import { getDb } from "@/lib/firestore";
 import { FieldValue } from '@google-cloud/firestore';
 import { DEFAULT_USER_QUOTA } from '@/config/defaults';
 import type { UserQuota } from '@/types/user'; // Corrected import for UserQuota type
 
-// --- GCP Client Initialization ---
 const projectId = process.env.GOOGLE_CLOUD_PROJECT;
 const keyJsonString = process.env.GCP_SERVICE_ACCOUNT_KEY_JSON;
-const topicName = process.env.PUBSUB_SNAPSHOT_TOPIC || 'notion-lifeline-snapshot-requests';
+const TOPIC_NAME_SNAPSHOT_CREATE = process.env.PUBSUB_SNAPSHOT_TOPIC || 'notion-lifeline-snapshot-requests'; // Specific topic name
 
-let pubSubClientConfig: any = {
-  ...(projectId && { projectId }),
-};
+let createSnapshotPubSubInstance: PubSub | null = null;
 
-if (keyJsonString) {
-  try {
-    console.log('Attempting to use PubSub credentials from GCP_SERVICE_ACCOUNT_KEY_JSON env var.');
-    const credentials = JSON.parse(keyJsonString);
-    pubSubClientConfig = { ...pubSubClientConfig, credentials };
-  } catch (e) {
-    console.error("FATAL: Failed to parse GCP_SERVICE_ACCOUNT_KEY_JSON for PubSub.", e);
-    throw new Error("Invalid GCP Service Account Key JSON provided for PubSub.");
+function getCreateSnapshotPubSubInstance(): PubSub {
+  if (createSnapshotPubSubInstance) {
+    return createSnapshotPubSubInstance;
   }
-} else if (process.env.NODE_ENV !== 'production') {
-  console.warn("GCP_SERVICE_ACCOUNT_KEY_JSON not set. Attempting Application Default Credentials for PubSub (may fail).");
-} else {
-  console.error('FATAL: GCP_SERVICE_ACCOUNT_KEY_JSON is not set in production. PubSub cannot authenticate.');
-  throw new Error("Missing GCP Service Account Key JSON for PubSub authentication.");
+  let pubSubClientConfig: any = {
+    ...(projectId && { projectId }),
+  };
+  if (keyJsonString) {
+    try {
+      console.log('[PubSub Lib - SnapCreate Route] Attempting to use credentials from GCP_SERVICE_ACCOUNT_KEY_JSON.');
+      const credentials = JSON.parse(keyJsonString);
+      pubSubClientConfig = { ...pubSubClientConfig, credentials };
+    } catch (e) {
+      console.error("[PubSub Lib - SnapCreate Route] FATAL: Failed to parse GCP_SERVICE_ACCOUNT_KEY_JSON.", e);
+      throw new Error("Invalid GCP Service Account Key JSON provided for PubSub (SnapCreate Route).");
+    }
+  } else {
+    if (process.env.NODE_ENV === 'production') {
+        console.warn('[PubSub Lib - SnapCreate Route] GCP_SERVICE_ACCOUNT_KEY_JSON is NOT SET. PubSub client will initialize without explicit credentials. Operations may fail if ADC not available/configured at runtime.');
+    } else {
+        console.warn('[PubSub Lib - SnapCreate Route] GCP_SERVICE_ACCOUNT_KEY_JSON not set in dev. Attempting Application Default Credentials.');
+    }
+  }
+  console.log(`[PubSub Lib - SnapCreate Route] Initializing PubSub instance for topic ${TOPIC_NAME_SNAPSHOT_CREATE}.`);
+  createSnapshotPubSubInstance = new PubSub(pubSubClientConfig);
+  console.log('[PubSub Lib - SnapCreate Route] PubSub instance configured.');
+  return createSnapshotPubSubInstance;
 }
 
-const pubsub = new PubSub(pubSubClientConfig);
-// --- End GCP Client Initialization ---
+const getCreateSnapshotPubSub = () => getCreateSnapshotPubSubInstance();
 
 export async function POST(request: Request) {
+  const db = getDb(); // Get instance here
+  const pubsub = getCreateSnapshotPubSub(); // Get PubSub instance here
   try {
     // 1. Get authenticated user ID
-    const { userId } = await auth();
+    const { userId } = getAuth(request as any);
     if (!userId) {
       return new NextResponse("Unauthorized", { status: 401 });
     }
@@ -103,8 +114,8 @@ export async function POST(request: Request) {
     const dataBuffer = Buffer.from(JSON.stringify(jobData));
     
     try {
-        const messageId = await pubsub.topic(topicName).publishMessage({ data: dataBuffer });
-        console.log(`Snapshot request message ${messageId} published to topic ${topicName} for user ${userId}.`);
+        const messageId = await pubsub.topic(TOPIC_NAME_SNAPSHOT_CREATE).publishMessage({ data: dataBuffer });
+        console.log(`Snapshot request message ${messageId} published to topic ${TOPIC_NAME_SNAPSHOT_CREATE} for user ${userId}.`);
 
         // --- Increment snapshotsUsed in quota AFTER successful publish --- 
         try {
@@ -132,7 +143,7 @@ export async function POST(request: Request) {
         // --- End Update ---
 
     } catch (pubsubError) {
-        console.error(`Failed to publish snapshot request for user ${userId} to topic ${topicName}:`, pubsubError);
+        console.error(`Failed to publish snapshot request for user ${userId} to topic ${TOPIC_NAME_SNAPSHOT_CREATE}:`, pubsubError);
         throw new Error('Failed to queue snapshot request.'); // Throw error to be caught below
     }
 

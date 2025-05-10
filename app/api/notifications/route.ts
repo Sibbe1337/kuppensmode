@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { db } from '@/lib/firestore';
+import { getDb } from '@/lib/firestore';
 
 export const runtime = 'nodejs';
 
@@ -18,6 +18,7 @@ export async function GET(request: Request) {
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+  const db = getDb();
 
   const { searchParams } = new URL(request.url);
   const unreadOnly = searchParams.get('unread') === 'true';

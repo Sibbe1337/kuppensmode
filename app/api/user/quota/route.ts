@@ -1,24 +1,11 @@
 import { NextResponse } from 'next/server';
-import { auth } from '@clerk/nextjs/server';
-import { db } from '@/lib/firestore'; // This alias should also work now
+import { getAuth } from '@clerk/nextjs/server';
+import { getDb } from "@/lib/firestore"; // Changed to getDb
 // import { Firestore } from '@google-cloud/firestore'; // Removed direct import
 // import { storage } from '@/lib/gcs'; // TODO: Import GCS utility if needed for usage calculation
 import { DEFAULT_USER_QUOTA } from '@/config/defaults'; // Use correct alias
+import type { UserQuota } from '@/types/user';
 
-// Define the structure of the quota data locally to avoid unresolved import errors.
-export interface UserQuota {
-  planName: string;
-  planId: string;
-  snapshotsUsed: number;
-  snapshotsLimit: number;
-  // storageUsedMB?: number;  // Future enhancement
-  // storageLimitMB?: number; // Future enhancement
-}
-//   planName: string;
-//   planId: string;
-//   snapshotsUsed: number;
-//   snapshotsLimit: number;
-//   // storageUsedMB: number; // Future
 //   // storageLimitMB: number; // Future
 // }
 
@@ -32,8 +19,8 @@ export interface UserQuota {
 // const DEFAULT_USER_QUOTA_DATA: UserQuota = { ... };
 
 export async function GET(request: Request) {
-  const authResult = await auth();
-  const userId = authResult.userId;
+  const db = getDb(); // Get instance here
+  const { userId } = getAuth(request as any);
 
     if (!userId) {
       return new NextResponse("Unauthorized", { status: 401 });

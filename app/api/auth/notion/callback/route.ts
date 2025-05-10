@@ -1,21 +1,25 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { db } from '@/lib/firestore'; // Uncommented and assuming correct path
+import { getDb } from '@/lib/firestore'; // Changed from db to getDb
 import { FieldValue } from '@google-cloud/firestore'; // For serverTimestamp
-// import { db } from '@/lib/firestore'; // TODO: Import Firestore utility
 
 // Environment variables for Notion OAuth
 const NOTION_CLIENT_ID = process.env.NOTION_CLIENT_ID;
 const NOTION_CLIENT_SECRET = process.env.NOTION_CLIENT_SECRET;
 const NOTION_REDIRECT_URI = process.env.NOTION_REDIRECT_URI; // Must match the one used in /start
 
+export const runtime = 'nodejs';
+
 export async function GET(request: Request) {
+  const db = getDb(); // Get instance here
+  const { userId } = await auth(); // Reverted to await auth()
+
   try {
-    // 1. Ensure user is logged in (should have session from before starting OAuth)
-    const { userId } = await auth();
+    // 1. Ensure user is logged in (userId is now from await auth() above)
     if (!userId) {
       // This shouldn't typically happen if the flow started correctly
-      return new NextResponse("Unauthorized: No active session during callback", { status: 401 });
+      console.warn("Notion OAuth callback: No user session found.");
+      return NextResponse.redirect(new URL('/sign-in', request.url)); // Redirect to sign-in
     }
 
     // 2. Extract code and state from query parameters

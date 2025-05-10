@@ -1,14 +1,17 @@
 import { Webhook } from 'svix';
 import { headers } from 'next/headers';
 import { WebhookEvent } from '@clerk/nextjs/server'; // Or 'any' if WebhookEvent causes issues
-import { db } from '@/lib/firestore';
+import { getDb } from '@/lib/firestore';
 import { NextResponse } from 'next/server'; // NextRequest might not be needed if req is just 'Request'
 import type { UserSettings, UserQuota } from '@/types/user';
 import { DEFAULT_USER_SETTINGS, DEFAULT_USER_QUOTA } from '@/config/defaults';
+import { FieldValue } from '@google-cloud/firestore';
 
 const WEBHOOK_SECRET = process.env.CLERK_WEBHOOK_SECRET;
 
 export async function POST(req: Request) {
+  const db = getDb();
+
   if (!WEBHOOK_SECRET) {
     console.error('Clerk Webhook Error: CLERK_WEBHOOK_SECRET environment variable not set.');
     return new Response('Error occured -- webhook secret not configured', { status: 500 });

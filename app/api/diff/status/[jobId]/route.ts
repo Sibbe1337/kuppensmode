@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
-import { auth } from '@clerk/nextjs/server';
-// import { db } from '@/lib/firestore'; // For actual status checking
+import { getAuth } from '@clerk/nextjs/server';
+import { getDb } from '@/lib/firestore'; // Changed to getDb
+import { Timestamp } from '@google-cloud/firestore';
 
 export const runtime = 'nodejs';
 
@@ -10,14 +11,9 @@ interface DiffStatusParams {
   };
 }
 
-// Mock in-memory store for job statuses for demo purposes
-const jobStatuses: Record<string, { status: string; attempts: number; resultUrl?: string; message?: string; snapshotIdFrom?: string; snapshotIdTo?: string; }> = {};
-
-// This would be populated by POST /api/diff/run (if it stored job details)
-// For demo, we are not storing it from the POST yet.
-
 export async function GET(request: Request, { params }: DiffStatusParams) {
-  const { userId } = await auth();
+  const db = getDb(); // Get instance here
+  const { userId } = getAuth(request as any); // Clerk auth
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
@@ -29,33 +25,39 @@ export async function GET(request: Request, { params }: DiffStatusParams) {
 
   console.log(`[API Diff Status] User: ${userId} requested status for job: ${jobId}`);
 
-  // Initialize status if not seen before (simple mock)
-  if (!jobStatuses[jobId]) {
-    // In a real app, POST /api/diff/run would create this entry
-    jobStatuses[jobId] = { status: 'pending', attempts: 0, snapshotIdFrom: 'mockFromId', snapshotIdTo: 'mockToId' };
+  try {
+    const jobStatusRef = db.collection('users').doc(userId).collection('diffResults').doc(jobId);
+    const docSnap = await jobStatusRef.get();
+
+    if (!docSnap.exists) {
+      return NextResponse.json({ jobId, status: 'not_found', message: 'Job not found or not yet initiated.' });
+    }
+
+    const data = docSnap.data();
+    const status = data?.status || 'unknown';
+    let message = data?.message || '';
+    let resultUrl: string | undefined = undefined;
+
+    if (status === 'pending' || status === 'processing') {
+      message = message || (status === 'pending' ? 'Job is queued.' : 'Comparison is in progress.');
+    } else if (status === 'complete') {
+      message = message || 'Comparison complete. Results are ready.';
+      // Construct result URL based on the jobId, assuming /api/diff/results/[jobId] exists
+      resultUrl = `/api/diff/results/${jobId}`;
+    } else if (status === 'error') {
+      message = `Job failed: ${data?.error || 'Unknown error'}`;
+    }
+
+    return NextResponse.json({ 
+      jobId: jobId, 
+      status: status,
+      message: message,
+      resultUrl: resultUrl,
+      updatedAt: (data?.updatedAt as Timestamp)?.toDate()?.toISOString() || new Date(0).toISOString()
+    });
+
+  } catch (error: any) {
+    console.error(`[API Diff Status] Error fetching status for job ${jobId}:`, error);
+    return NextResponse.json({ error: "Failed to get job status.", details: error.message }, { status: 500 });
   }
-
-  const job = jobStatuses[jobId];
-  job.attempts++;
-
-  // Simulate status progression for demo
-  if (job.status === 'pending' && job.attempts > 2) {
-    job.status = 'processing';
-    job.message = 'Comparison is currently in progress.';
-  } else if (job.status === 'processing' && job.attempts > 5) {
-    job.status = 'complete';
-    job.message = 'Comparison complete. Results are ready.';
-    // The actual result for this job ID would be fetched from /api/diff/results/[jobId]
-    // or by using from/to IDs if the status endpoint knew them.
-    job.resultUrl = `/api/diff/${job.snapshotIdFrom}/${job.snapshotIdTo}`; // Example using stored IDs
-  }
-
-  return NextResponse.json({ 
-    jobId: jobId, 
-    status: job.status,
-    message: job.message,
-    resultUrl: job.resultUrl,
-    // snapshotIdFrom: job.snapshotIdFrom, // Optionally return these for the client
-    // snapshotIdTo: job.snapshotIdTo
-  });
 } 

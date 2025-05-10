@@ -1,30 +1,18 @@
-import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { headers } from 'next/headers';
-import { db } from '@/lib/firestore'; // Import Firestore admin instance
-import { FieldValue } from '@google-cloud/firestore'; // For potential atomic updates or deletions
-import type { UserSettings, UserQuota } from '@/types/user'; // Assuming these are correctly aliased
-import { DEFAULT_USER_SETTINGS, DEFAULT_USER_QUOTA } from '@/config/defaults'; // Assuming these are correctly aliased
+import { NextResponse } from 'next/server';
+import { getDb } from "@/lib/firestore";
+import { FieldValue } from '@google-cloud/firestore';
+import { clerkClient } from '@clerk/nextjs/server';
+import { DEFAULT_USER_QUOTA, DEFAULT_USER_SETTINGS } from '@/config/defaults';
+import type { UserSettings, UserQuota } from '@/types/user';
 
-const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
-const webhookSecretEnv = process.env.STRIPE_WEBHOOK_SECRET;
-
-if (!stripeSecretKey) {
-  console.error("STRIPE_SECRET_KEY environment variable not set.");
-  throw new Error("Stripe configuration error");
-}
-if (!webhookSecretEnv) {
-  console.error("STRIPE_WEBHOOK_SECRET environment variable not set.");
-  throw new Error("Stripe webhook configuration error");
-}
-
-// Assign to a new constant after the check, ensuring it's a string
-const verifiedWebhookSecret: string = webhookSecretEnv;
-
-const stripe = new Stripe(stripeSecretKey, {
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: '2024-06-20',
   typescript: true,
 });
+
+const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
 
 // Define your actual Stripe Price IDs for different plans
 // Replace these with your real Price IDs from your Stripe Dashboard (Test mode for now)
@@ -67,6 +55,7 @@ function getPlanDetailsFromPriceId(priceId: string | undefined): { planId: strin
 }
 
 export async function POST(request: Request) {
+  const db = getDb();
   const body = await request.text();
   const signature = headers().get('stripe-signature');
 
@@ -78,7 +67,7 @@ export async function POST(request: Request) {
   let event: Stripe.Event;
 
   try {
-    event = stripe.webhooks.constructEvent(body, signature, verifiedWebhookSecret);
+    event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
   } catch (err: any) {
     console.error(`Webhook signature verification failed: ${err.message}`);
     return new NextResponse(`Webhook Error: ${err.message}`, { status: 400 });

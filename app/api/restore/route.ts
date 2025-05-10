@@ -1,37 +1,46 @@
 import { NextResponse } from 'next/server';
-import { auth } from '@clerk/nextjs/server';
+import { getAuth } from '@clerk/nextjs/server';
 import { PubSub } from '@google-cloud/pubsub';
 import { v4 as uuid } from 'uuid';
-import { db } from '@/lib/firestore';
+import { getDb } from "@/lib/firestore";
 import { FieldValue } from '@google-cloud/firestore';
 
-// --- GCP Client Initialization ---
 const projectId = process.env.GOOGLE_CLOUD_PROJECT;
 const keyJsonString = process.env.GCP_SERVICE_ACCOUNT_KEY_JSON;
-const TOPIC = process.env.PUBSUB_RESTORE_TOPIC ?? 'notion-lifeline-restore';
+const TOPIC_NAME_RESTORE = process.env.PUBSUB_RESTORE_TOPIC ?? 'notion-lifeline-restore'; // Renamed TOPIC to avoid conflict if other PubSub topics are used
 
-let pubSubClientConfig: any = {
-  ...(projectId && { projectId }),
-};
+let restorePubSubInstance: PubSub | null = null;
 
-if (keyJsonString) {
-  try {
-    console.log('Attempting to use PubSub credentials from GCP_SERVICE_ACCOUNT_KEY_JSON env var (Restore Route).');
-    const credentials = JSON.parse(keyJsonString);
-    pubSubClientConfig = { ...pubSubClientConfig, credentials };
-  } catch (e) {
-    console.error("FATAL: Failed to parse GCP_SERVICE_ACCOUNT_KEY_JSON for PubSub (Restore Route).", e);
-    throw new Error("Invalid GCP Service Account Key JSON provided for PubSub.");
+function getRestorePubSubInstance(): PubSub {
+  if (restorePubSubInstance) {
+    return restorePubSubInstance;
   }
-} else if (process.env.NODE_ENV !== 'production') {
-  console.warn("GCP_SERVICE_ACCOUNT_KEY_JSON not set. Attempting Application Default Credentials for PubSub (Restore Route) (may fail).");
-} else {
-  console.error('FATAL: GCP_SERVICE_ACCOUNT_KEY_JSON is not set in production. PubSub (Restore Route) cannot authenticate.');
-  throw new Error("Missing GCP Service Account Key JSON for PubSub authentication.");
+  let pubSubClientConfig: any = {
+    ...(projectId && { projectId }),
+  };
+  if (keyJsonString) {
+    try {
+      console.log('[PubSub Lib - Restore Route] Attempting to use credentials from GCP_SERVICE_ACCOUNT_KEY_JSON.');
+      const credentials = JSON.parse(keyJsonString);
+      pubSubClientConfig = { ...pubSubClientConfig, credentials };
+    } catch (e) {
+      console.error("[PubSub Lib - Restore Route] FATAL: Failed to parse GCP_SERVICE_ACCOUNT_KEY_JSON.", e);
+      throw new Error("Invalid GCP Service Account Key JSON provided for PubSub (Restore Route).");
+    }
+  } else {
+    if (process.env.NODE_ENV === 'production') {
+        console.warn('[PubSub Lib - Restore Route] GCP_SERVICE_ACCOUNT_KEY_JSON is NOT SET. PubSub client will initialize without explicit credentials. Operations may fail if ADC not available/configured at runtime.');
+    } else {
+        console.warn('[PubSub Lib - Restore Route] GCP_SERVICE_ACCOUNT_KEY_JSON not set in dev. Attempting Application Default Credentials.');
+    }
+  }
+  console.log(`[PubSub Lib - Restore Route] Initializing PubSub instance for topic ${TOPIC_NAME_RESTORE}. ProjectId: ${pubSubClientConfig.projectId || 'Default'}. Auth method: ${pubSubClientConfig.credentials ? 'JSON Key Var' : 'Default/ADC'}`);
+  restorePubSubInstance = new PubSub(pubSubClientConfig);
+  console.log('[PubSub Lib - Restore Route] PubSub instance configured.');
+  return restorePubSubInstance;
 }
 
-const pubsub = new PubSub(pubSubClientConfig);
-// --- End GCP Client Initialization ---
+const getRestorePubSub = () => getRestorePubSubInstance();
 
 // This forces the route to be dynamic if needed, but POST routes often are by default
 // export const dynamic = 'force-dynamic'; 
@@ -42,8 +51,16 @@ interface RestoreRequestBody {
   targetParentPageId?: string; // Optional: ID of the page to restore content into
 }
 
+export async function GET(request: Request) {
+  const db = getDb(); // Get instance here
+  const { userId } = getAuth(request as any);
+  // ... GET handler logic ...
+}
+
 export async function POST(request: Request) {
-  const { userId } = await auth();
+  const db = getDb(); // Get instance here
+  const pubsub = getRestorePubSub(); // Get PubSub instance here
+  const { userId } = getAuth(request as any);
   if (!userId) {
     return new NextResponse("Unauthorized", { status: 401 });
   }
@@ -114,7 +131,7 @@ export async function POST(request: Request) {
 
   try {
     const dataBuffer = Buffer.from(JSON.stringify(job));
-    const messageId = await pubsub.topic(TOPIC).publishMessage({ data: dataBuffer });
+    const messageId = await pubsub.topic(TOPIC_NAME_RESTORE).publishMessage({ data: dataBuffer });
     console.log(`Restore request ${messageId} published for user: ${userId}.`);
 
     // --- Update activation status if it was the first --- 

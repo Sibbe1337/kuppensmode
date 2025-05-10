@@ -1,15 +1,18 @@
 import { NextResponse, NextRequest } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import Stripe from 'stripe';
-import { db } from '@/lib/firestore';
+import { getDb } from "@/lib/firestore";
 import { FieldValue } from '@google-cloud/firestore';
 import { DEFAULT_USER_QUOTA } from '@/config/defaults'; // For plan details
 
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 if (!stripeSecretKey) {
-  throw new Error("Stripe secret key not configured.");
+  console.error("[Verify Checkout API] STRIPE_SECRET_KEY environment variable not set.");
 }
-const stripe = new Stripe(stripeSecretKey, { apiVersion: '2024-06-20' });
+const stripe = new Stripe(stripeSecretKey!, {
+  apiVersion: '2024-06-20',
+  typescript: true,
+});
 
 // Helper to get plan details based on Price ID (similar to webhook)
 // You might want to refactor this into a shared lib if used in multiple places
@@ -37,6 +40,7 @@ function getPlanDetailsFromPriceId(priceId: string | undefined): { planId: strin
 }
 
 export async function GET(request: NextRequest) {
+  const db = getDb();
   const { userId } = await auth();
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

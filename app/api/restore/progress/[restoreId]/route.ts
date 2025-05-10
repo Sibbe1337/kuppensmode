@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { db } from '@/lib/firestore';
+import { getDb } from '@/lib/firestore';
 import { DocumentData } from '@google-cloud/firestore';
 
 // Define the structure for progress updates read from Firestore
@@ -18,6 +18,7 @@ export async function GET(
   request: Request,
   { params }: { params: { restoreId: string } }
 ) {
+  const db = getDb();
   const { userId } = await auth();
   if (!userId) {
     // Although Clerk typically protects API routes, double-check

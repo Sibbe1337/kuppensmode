@@ -3,38 +3,45 @@ import { auth } from '@clerk/nextjs/server';
 import { Storage } from '@google-cloud/storage';
 import { gunzipSync } from 'zlib'; // Use Node.js built-in zlib for decompression
 
-// --- GCP Client Initialization ---
-// Reusing the logic from other routes to initialize Storage client
 const projectId = process.env.GOOGLE_CLOUD_PROJECT;
 const keyJsonString = process.env.GCP_SERVICE_ACCOUNT_KEY_JSON;
 const bucketName = process.env.GCS_BUCKET_NAME;
 
-let storageClientConfig: any = {
-  ...(projectId && { projectId }),
-};
+let storageInstance: Storage | null = null;
 
-if (keyJsonString) {
-  try {
-    console.log('Attempting to use Storage credentials from GCP_SERVICE_ACCOUNT_KEY_JSON env var (Snapshot Content Route).');
-    const credentials = JSON.parse(keyJsonString);
-    storageClientConfig = { ...storageClientConfig, credentials };
-  } catch (e) {
-    console.error("FATAL: Failed to parse GCP_SERVICE_ACCOUNT_KEY_JSON for Storage (Snapshot Content Route).", e);
-    // Throwing error here will prevent the function from initializing storageClient properly
-    // Handle appropriately based on deployment strategy - maybe fall back if needed?
-    // For now, we assume the key is required if present.
-    throw new Error("Invalid GCP Service Account Key JSON provided for Storage.");
+function getStorageInstance(): Storage {
+  if (storageInstance) {
+    return storageInstance;
   }
-} else if (process.env.NODE_ENV !== 'production' && !process.env.GCP_SERVICE_ACCOUNT_KEY_JSON) {
-   // Allow missing credentials only in non-production environments if the key JSON is explicitly missing
-   console.warn('GCP_SERVICE_ACCOUNT_KEY_JSON not found. Storage client initialized without explicit credentials (Snapshot Content Route).');
-} else if (process.env.NODE_ENV === 'production' && !keyJsonString) {
-    // In production, credentials MUST be provided via env var
-    console.error("FATAL: GCP_SERVICE_ACCOUNT_KEY_JSON is required in production for Storage (Snapshot Content Route).");
-    throw new Error("GCP Service Account Key JSON is required in production.");
+
+  let storageClientConfig: any = {
+    ...(projectId && { projectId }),
+  };
+
+  if (keyJsonString) {
+    try {
+      console.log('[Storage Lib - Snapshot Content] Attempting to use credentials from GCP_SERVICE_ACCOUNT_KEY_JSON.');
+      const credentials = JSON.parse(keyJsonString);
+      storageClientConfig = { ...storageClientConfig, credentials };
+    } catch (e) {
+      console.error("[Storage Lib - Snapshot Content] FATAL: Failed to parse GCP_SERVICE_ACCOUNT_KEY_JSON.", e);
+      throw new Error("Invalid GCP Service Account Key JSON provided for Storage.");
+    }
+  } else {
+    if (process.env.NODE_ENV === 'production') {
+        console.warn('[Storage Lib - Snapshot Content] GCP_SERVICE_ACCOUNT_KEY_JSON is NOT SET. Storage client will initialize without explicit credentials. Operations may fail if ADC not available/configured at runtime.');
+    } else {
+        console.warn('[Storage Lib - Snapshot Content] GCP_SERVICE_ACCOUNT_KEY_JSON not set in dev. Attempting Application Default Credentials.');
+    }
+  }
+
+  console.log(`[Storage Lib - Snapshot Content] Initializing Storage instance. ProjectId: ${storageClientConfig.projectId || 'Default'}. Auth method: ${storageClientConfig.credentials ? 'JSON Key Var' : 'Default/ADC'}`);
+  storageInstance = new Storage(storageClientConfig);
+  console.log('[Storage Lib - Snapshot Content] Storage instance configured.');
+  return storageInstance;
 }
 
-const storage = new Storage(storageClientConfig);
+const getStorage = () => getStorageInstance();
 
 // Type definition for the items we want to return to the frontend
 interface SnapshotItemSummary {
@@ -63,6 +70,7 @@ export async function GET(
   request: Request,
   { params }: { params: { snapshotId: string } }
 ) {
+  const storage = getStorage(); // Get instance here
   try {
     const { userId } = await auth();
     if (!userId) {

@@ -2,33 +2,42 @@ import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { PubSub } from '@google-cloud/pubsub';
 
-// --- GCP Client Initialization ---
 const projectId = process.env.GOOGLE_CLOUD_PROJECT;
 const keyJsonString = process.env.GCP_SERVICE_ACCOUNT_KEY_JSON;
-const TOPIC_NAME = process.env.PUBSUB_SCHEDULE_SNAPSHOT_TOPIC || 'scheduleSnapshot'; // Use env var or default
+const TOPIC_NAME = process.env.PUBSUB_SCHEDULE_SNAPSHOT_TOPIC || 'scheduleSnapshot';
 
-let pubSubClientConfig: any = {
-  ...(projectId && { projectId }),
-};
+let pubSubInstance: PubSub | null = null;
 
-if (keyJsonString) {
-  try {
-    console.log('Attempting to use PubSub credentials from GCP_SERVICE_ACCOUNT_KEY_JSON env var (Scheduler API).');
-    const credentials = JSON.parse(keyJsonString);
-    pubSubClientConfig = { ...pubSubClientConfig, credentials };
-  } catch (e) {
-    console.error("FATAL: Failed to parse GCP_SERVICE_ACCOUNT_KEY_JSON for PubSub (Scheduler API).", e);
-    throw new Error("Invalid GCP Service Account Key JSON provided for PubSub.");
+function getPubSubInstance(): PubSub {
+  if (pubSubInstance) {
+    return pubSubInstance;
   }
-} else if (process.env.NODE_ENV !== 'production') {
-  console.warn("GCP_SERVICE_ACCOUNT_KEY_JSON not set. Attempting Application Default Credentials for PubSub (Scheduler API) (may fail).");
-} else {
-  console.error('FATAL: GCP_SERVICE_ACCOUNT_KEY_JSON is not set in production. PubSub (Scheduler API) cannot authenticate.');
-  throw new Error("Missing GCP Service Account Key JSON for PubSub authentication.");
+  let pubSubClientConfig: any = {
+    ...(projectId && { projectId }),
+  };
+  if (keyJsonString) {
+    try {
+      console.log('[PubSub Lib - Scheduler Route] Attempting to use credentials from GCP_SERVICE_ACCOUNT_KEY_JSON.');
+      const credentials = JSON.parse(keyJsonString);
+      pubSubClientConfig = { ...pubSubClientConfig, credentials };
+    } catch (e) {
+      console.error("[PubSub Lib - Scheduler Route] FATAL: Failed to parse GCP_SERVICE_ACCOUNT_KEY_JSON.", e);
+      throw new Error("Invalid GCP Service Account Key JSON provided for PubSub.");
+    }
+  } else {
+    if (process.env.NODE_ENV === 'production') {
+        console.warn('[PubSub Lib - Scheduler Route] GCP_SERVICE_ACCOUNT_KEY_JSON is NOT SET. PubSub client will initialize without explicit credentials. Operations may fail if ADC not available/configured at runtime.');
+    } else {
+        console.warn('[PubSub Lib - Scheduler Route] GCP_SERVICE_ACCOUNT_KEY_JSON not set in dev. Attempting Application Default Credentials.');
+    }
+  }
+  console.log(`[PubSub Lib - Scheduler Route] Initializing PubSub instance. ProjectId: ${pubSubClientConfig.projectId || 'Default'}. Auth method: ${pubSubClientConfig.credentials ? 'JSON Key Var' : 'Default/ADC'}`);
+  pubSubInstance = new PubSub(pubSubClientConfig);
+  console.log('[PubSub Lib - Scheduler Route] PubSub instance configured.');
+  return pubSubInstance;
 }
 
-const pubsub = new PubSub(pubSubClientConfig);
-// --- End GCP Client Initialization ---
+const getPubSub = () => getPubSubInstance();
 
 interface ScheduleRequestBody {
   cron: string; // e.g., "0 2 * * *"
@@ -37,6 +46,7 @@ interface ScheduleRequestBody {
 }
 
 export async function POST(request: Request) {
+  const pubsub = getPubSub(); // Get instance here
   const { userId } = await auth();
   if (!userId) {
     return new NextResponse(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { 'Content-Type': 'application/json' } });

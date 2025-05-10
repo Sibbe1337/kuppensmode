@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
-import { auth } from '@clerk/nextjs/server';
-import fs from 'fs/promises';
-import path from 'path';
-// Assuming SemanticDiffResult and related types might be shared or defined here/imported
+import { getAuth } from '@clerk/nextjs/server';
+import { getDb } from "@/lib/firestore"; // Changed to getDb
+import type { SemanticDiffResult } from '@/types/diff'; // Import shared SemanticDiffResult
+import { Timestamp } from '@google-cloud/firestore';
+// Remove fs and path, as we'll fetch from Firestore now
 
 export const runtime = 'nodejs';
 
@@ -22,30 +23,6 @@ type ChangedItemDetail = {
     similarityScore?: number;
 };
 
-interface SemanticDiffResult {
-    summary: {
-        added: number;
-        deleted: number;
-        contentHashChanged: number;
-        semanticallySimilar: number;
-        semanticallyChanged: number;
-    };
-    details?: {
-        addedItems: { id: string; name?: string; type?: string; blockType?: string }[];
-        deletedItems: { id: string; name?: string; type?: string; blockType?: string }[];
-        changedItems: ChangedItemDetail[];
-    };
-    error?: string;
-    message?: string;
-    // Include original snapshot IDs for context
-    snapshotIdFrom?: string;
-    snapshotIdTo?: string;
-}
-
-const getDemoDataPath = (fileName: string) => {
-  return path.join(process.cwd(), 'demo-data', fileName);
-};
-
 interface DiffResultParams {
   params: {
     jobId: string;
@@ -53,7 +30,8 @@ interface DiffResultParams {
 }
 
 export async function GET(request: Request, { params }: DiffResultParams) {
-  const { userId } = await auth();
+  const db = getDb(); // Get instance here
+  const { userId } = getAuth(request as any); // TODO: Verify Clerk auth method here
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
@@ -65,39 +43,27 @@ export async function GET(request: Request, { params }: DiffResultParams) {
 
   console.log(`[API Diff Results] User: ${userId} requested results for job: ${jobId}`);
 
-  // TODO: In a real implementation, fetch the stored diff result for this jobId from Firestore.
-  // For now, return the content of demo-data/analytics_compare.json as a placeholder structure.
   try {
-    const compareDataString = await fs.readFile(getDemoDataPath('analytics_compare.json'), 'utf-8');
-    const demoCompareData = JSON.parse(compareDataString);
+    const resultDocRef = db.collection('users').doc(userId).collection('diffResults').doc(jobId);
+    const docSnap = await resultDocRef.get();
 
-    // Adapt the demo data to the SemanticDiffResult structure
-    const result: SemanticDiffResult = {
-        snapshotIdFrom: demoCompareData.fromSnapshot.id,
-        snapshotIdTo: demoCompareData.toSnapshot.id,
-        summary: {
-            added: demoCompareData.added || 0,
-            deleted: Math.abs(demoCompareData.removed || 0), // Assuming removed is stored as negative
-            contentHashChanged: (demoCompareData.modified || 0) + (demoCompareData.added || 0) + Math.abs(demoCompareData.removed || 0), // Example
-            semanticallySimilar: 0, // Placeholder
-            semanticallyChanged: 0, // Placeholder
-        },
-        details: {
-            addedItems: demoCompareData.added > 0 ? [{id: 'added_item_1', name: 'New Demo Page', type: 'page'}] : [],
-            deletedItems: demoCompareData.removed < 0 ? [{id: 'deleted_item_1', name: 'Old Demo Section', type: 'block'}] : [],
-            changedItems: demoCompareData.modified > 0 ? [{
-                id: 'changed_item_1',
-                name: 'Updated Project Plan',
-                itemType: 'page',
-                changeType: 'pending_semantic_check',
-            }] : [],
-        },
-        message: `Displaying mock diff results for job ${jobId}. Based on demo data.`
-    };
+    if (!docSnap.exists) {
+      return NextResponse.json({ error: `Diff results for job ${jobId} not found.` }, { status: 404 });
+    }
 
-    return NextResponse.json(result);
+    const resultData = docSnap.data() as SemanticDiffResult;
+    // Convert Firestore Timestamps to ISO strings if they exist and are Timestamps
+    if (resultData.createdAt && typeof (resultData.createdAt as Timestamp).toDate === 'function') {
+      resultData.createdAt = (resultData.createdAt as Timestamp).toDate().toISOString();
+    }
+    if (resultData.updatedAt && typeof (resultData.updatedAt as Timestamp).toDate === 'function') {
+      resultData.updatedAt = (resultData.updatedAt as Timestamp).toDate().toISOString();
+    }
+
+    return NextResponse.json(resultData);
+    
   } catch (error: any) {
-    console.error("[API Diff Results] Error fetching/mocking diff results:", error);
+    console.error(`[API Diff Results] Error fetching results for job ${jobId}:`, error);
     return NextResponse.json({ error: "Failed to retrieve diff results.", details: error.message }, { status: 500 });
   }
 } 

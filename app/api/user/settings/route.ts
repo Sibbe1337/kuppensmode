@@ -1,7 +1,7 @@
 // app/api/user/settings/route.ts
 import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server"; // ✅ Corrected import for server-side
-import { db } from "@/lib/firestore";
+import { getAuth, clerkClient } from "@clerk/nextjs/server"; // ✅ Corrected import for server-side
+import { getDb } from "@/lib/firestore";
 import type { UserSettings } from "@/types/user";
 import { DEFAULT_USER_SETTINGS } from "@/config/defaults";
 import { FieldValue } from '@google-cloud/firestore';
@@ -16,9 +16,9 @@ import { FieldValue } from '@google-cloud/firestore';
 // -----------------------------------------------------------------------------
 // GET /api/user/settings
 // -----------------------------------------------------------------------------
-export async function GET() {
-  const authResult = await auth();
-  const userId = authResult.userId;
+export async function GET(request: Request) {
+  const db = getDb();
+  const { userId } = getAuth(request as any);
 
     if (!userId) {
       return new NextResponse("Unauthorized", { status: 401 });
@@ -109,8 +109,8 @@ interface UpdateSettingsBody {
 }
 
 export async function POST(request: Request) {
-  const authResult = await auth();
-  const userId = authResult.userId;
+  const db = getDb();
+  const { userId } = getAuth(request as any);
 
     if (!userId) {
       return new NextResponse("Unauthorized", { status: 401 });

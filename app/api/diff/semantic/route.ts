@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { auth } from '@clerk/nextjs/server';
-import { db } from '@/lib/firestore'; // Firestore admin instance
+import { getAuth } from '@clerk/nextjs/server'; // Or your preferred auth method
+import { getDb } from '@/lib/firestore'; // Changed to getDb
 import { Storage } from '@google-cloud/storage'; // GCS client
 import { gunzipSync } from 'zlib'; // Node.js built-in zlib for decompression
 import { Pinecone, type RecordMetadata, type PineconeRecord } from '@pinecone-database/pinecone';
@@ -128,8 +128,9 @@ const SEMANTIC_SIMILARITY_THRESHOLD_LOW = 0.85;  // If < this, consider signific
                                              // Between LOW and HIGH could be 'moderately similar' or just 'changed'
 
 export async function POST(request: Request) {
-  const { userId: authenticatedUserId } = await auth();
-  if (!authenticatedUserId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const db = getDb(); // Get instance here
+  const { userId } = getAuth(request as any); // Or your preferred auth method
+  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
     const body: SemanticDiffRequest = await request.json();
@@ -137,7 +138,7 @@ export async function POST(request: Request) {
     if (!snapshotIdFrom || !snapshotIdTo || !BUCKET_NAME) return NextResponse.json({ error: 'Config error' }, { status: 400 });
 
     // Fetch manifests
-    const userSnapshotsRef = db.collection('users').doc(authenticatedUserId).collection('snapshots');
+    const userSnapshotsRef = db.collection('users').doc(userId).collection('snapshots');
     const fromSnapshotDoc = await userSnapshotsRef.doc(snapshotIdFrom).get();
     const toSnapshotDoc = await userSnapshotsRef.doc(snapshotIdTo).get();
     if (!fromSnapshotDoc.exists || !toSnapshotDoc.exists) return NextResponse.json({ error: 'Snapshots not found' }, { status: 404 });
@@ -227,7 +228,7 @@ export async function POST(request: Request) {
               const descVec = fetchedVectorsMap[`${snapshotIdTo}:${itemId}:description`]?.values;
               if (descVec) vecsTo.push(descVec);
             }
-          } else if (toEntry.type === 'block' && toEntry.totalChunks && toEntry.totalChunks > 0) {
+          } else if (toEntry.type === 'block' && toEntry.type === 'block' && toEntry.totalChunks && toEntry.totalChunks > 0) {
             for (let i = 0; i < toEntry.totalChunks; i++) {
               const chunkVec = fetchedVectorsMap[`${snapshotIdTo}:${itemId}:chunk:${i}`]?.values;
               if (chunkVec) vecsTo.push(chunkVec);

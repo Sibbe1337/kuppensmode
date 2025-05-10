@@ -6,7 +6,7 @@ console.log("[Scheduler API] RAW GCP_PROJECT_ID:", process.env.GOOGLE_CLOUD_PROJ
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { CloudSchedulerClient } from '@google-cloud/scheduler';
-import { db } from '@/lib/firestore'; // For fetching user-specific details if needed
+// import { db } from '@/lib/firestore'; // Removed as it was unused
 
 // Simplified Initialization & Logging
 let schedulerClient: CloudSchedulerClient;

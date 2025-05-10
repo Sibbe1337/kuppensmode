@@ -12,9 +12,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { AlertTriangle, Loader2 } from 'lucide-react';
 import type { Snapshot } from "@/types";
 import ComparisonEngineBar from '@/components/dashboard/ComparisonEngineBar';
+import { useKpis } from '@/hooks/useKpis';
 
 // Define types for the expected API responses (can be moved to @/types)
-interface KpiData extends Omit<KpiCardProps, 'slotRight' | 'className'> {}
+// interface KpiData extends Omit<KpiCardProps, 'slotRight' | 'className'> {} // This type is no longer needed for KPIs from API
 
 interface ComparisonData {
   fromSnapshot: { id: string; label: string };
@@ -67,8 +68,9 @@ const MonthlyUsageGauge: React.FC<{ value: number; limit: number; warning?: bool
   );
 };
 
-export default function DashboardPage() { // Renamed function to DashboardPage
-  const { data: kpis, error: kpisError, isLoading: kpisLoading } = useSWR<KpiData[]>('/api/analytics/kpis', apiClient);
+export default function DashboardPage() {
+  // const { data: kpis, error: kpisError, isLoading: kpisLoading } = useSWR<KpiData[]>('/api/analytics/kpis', apiClient); // Old KPI fetching
+  const { data: kpisData, error: kpisError, isLoading: kpisLoading } = useKpis(); // New KPI fetching
   const { data: compareData, error: compareError, isLoading: compareLoading } = useSWR<ComparisonData>('/api/analytics/compare', apiClient);
   const { data: latestData, error: latestError, isLoading: latestLoading } = useSWR<LatestData>('/api/analytics/latest', apiClient);
   const { data: snapshotsData, error: snapshotsError, isLoading: snapshotsLoading } = useSWR<Snapshot[]>('/api/snapshots', apiClient);
@@ -122,16 +124,24 @@ export default function DashboardPage() { // Renamed function to DashboardPage
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-8">
-        {kpis?.map((kpi, index) => (
-          <KpiCard 
-            key={index} 
-            title={kpi.title} 
-            value={kpi.value} 
-            delta={kpi.delta} 
-            subtitle={kpi.subtitle} 
-            gradientPreset={kpi.gradientPreset as any}
+        {/* Real KPI Card for Total Snapshots */}
+        {kpisData && (
+          <KpiCard
+            title="Total Snapshots"
+            value={kpisData.snapshotsTotal.toLocaleString()}
+            subtitle={
+              kpisData.latestSnapshotAt
+                ? `Last: ${new Date(kpisData.latestSnapshotAt).toLocaleString()}`
+                : 'No snapshots yet'
+            }
+            gradientPreset="blue"
+            // delta could be added here if calculated or available from API in future
           />
-        ))}
+        )}
+        {/* Placeholder for other KPIs that were previously mapped, if needed later, or add new specific ones */}
+        {/* Example: If you want to keep a placeholder for Avg. Processing Time (static for now) */}
+        {/* <KpiCard title="Avg. Processing Time" value="1.1s" delta="-2%" subtitle="Snapshot worker efficiency" gradientPreset="purple" /> */}
+        
         {quotaData && (
             <KpiCard 
                 title="Monthly Usage" 

@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
-import { auth } from '@clerk/nextjs/server';
-import { db } from '@/lib/firestore'; // Import Firestore utility
+import { getAuth } from '@clerk/nextjs/server';
+import { getDb } from "@/lib/firestore"; // Changed to getDb
+import { FieldValue } from '@google-cloud/firestore';
+import { v4 as uuidv4 } from 'uuid';
 // For a real implementation, you'd use a crypto library for hashing
 // import crypto from 'crypto'; 
 
@@ -14,9 +16,9 @@ async function generateAndHashApiKey(): Promise<{ apiKey: string, hashedApiKey: 
 }
 
 export async function POST(request: Request) {
+  const db = getDb(); // Get instance here
+  const { userId } = getAuth(request as any);
   try {
-    const authResult = await auth(); // Await the auth() call first
-    const userId = authResult.userId; // Then access userId
     if (!userId) {
       return new NextResponse("Unauthorized", { status: 401 });
     }

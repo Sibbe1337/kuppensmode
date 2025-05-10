@@ -1,44 +1,56 @@
 import { NextResponse } from 'next/server';
-import { auth } from '@clerk/nextjs/server';
+import { auth, getAuth } from '@clerk/nextjs/server';
 import { Storage } from '@google-cloud/storage';
 import type { Snapshot } from '@/types';
-import { db } from '@/lib/firestore';
+import { getDb } from "@/lib/firestore";
+import { FieldValue } from '@google-cloud/firestore';
 
-// Initialize GCS Storage client
 const projectId = process.env.GOOGLE_CLOUD_PROJECT;
 const keyJsonString = process.env.GCP_SERVICE_ACCOUNT_KEY_JSON;
 const bucketName = process.env.GCS_BUCKET_NAME;
 
-let storageClientConfig: any = {
-  ...(projectId && { projectId }),
-};
+let storageInstance: Storage | null = null;
 
-if (keyJsonString) {
-  try {
-    console.log('Attempting to use Storage credentials from GCP_SERVICE_ACCOUNT_KEY_JSON env var.');
-    const credentials = JSON.parse(keyJsonString);
-    storageClientConfig = { ...storageClientConfig, credentials };
-  } catch (e) {
-    console.error("FATAL: Failed to parse GCP_SERVICE_ACCOUNT_KEY_JSON for Storage.", e);
-    throw new Error("Invalid GCP Service Account Key JSON provided for Storage.");
+function getStorageInstance(): Storage {
+  if (storageInstance) {
+    return storageInstance;
   }
-} else if (process.env.NODE_ENV !== 'production') {
-  console.warn("GCP_SERVICE_ACCOUNT_KEY_JSON not set. Attempting Application Default Credentials for Storage (may fail).");
-} else {
-  console.error('FATAL: GCP_SERVICE_ACCOUNT_KEY_JSON is not set in production. Storage cannot authenticate.');
-  throw new Error("Missing GCP Service Account Key JSON for Storage authentication.");
+  let storageClientConfig: any = {
+    ...(projectId && { projectId }),
+  };
+  if (keyJsonString) {
+    try {
+      console.log('[Storage Lib - Snapshots Route] Attempting to use credentials from GCP_SERVICE_ACCOUNT_KEY_JSON.');
+      const credentials = JSON.parse(keyJsonString);
+      storageClientConfig = { ...storageClientConfig, credentials };
+    } catch (e) {
+      console.error("[Storage Lib - Snapshots Route] FATAL: Failed to parse GCP_SERVICE_ACCOUNT_KEY_JSON.", e);
+      throw new Error("Invalid GCP Service Account Key JSON provided for Storage.");
+    }
+  } else {
+    if (process.env.NODE_ENV === 'production') {
+      console.warn('[Storage Lib - Snapshots Route] GCP_SERVICE_ACCOUNT_KEY_JSON is NOT SET. Storage client will initialize without explicit credentials. Operations may fail if ADC not available/configured at runtime.');
+    } else {
+      console.warn('[Storage Lib - Snapshots Route] GCP_SERVICE_ACCOUNT_KEY_JSON not set in dev. Attempting Application Default Credentials.');
+    }
+  }
+  storageInstance = new Storage(storageClientConfig);
+  console.log('[Storage Lib - Snapshots Route] Storage instance configured.');
+  return storageInstance;
 }
 
-const storage = new Storage(storageClientConfig);
+const getStorage = () => getStorageInstance();
 
 export async function GET(request: Request) {
+  const storage = getStorage();
+  const db = getDb();
+  const { userId } = getAuth(request as any);
   if (!bucketName) {
     console.error("GCS_BUCKET_NAME environment variable not set.");
     return new NextResponse("Server configuration error", { status: 500 });
   }
 
   try {
-    const { userId } = await auth();
     if (!userId) {
       return new NextResponse("Unauthorized", { status: 401 });
     }
@@ -102,4 +114,11 @@ export async function GET(request: Request) {
     // You might want more specific error handling based on GCS errors
     return new NextResponse("Internal Server Error", { status: 500 });
   }
+}
+
+export async function DELETE(request: Request) {
+  const storage = getStorage();
+  const db = getDb();
+  const { userId } = getAuth(request as any);
+  // ... DELETE logic ...
 } 

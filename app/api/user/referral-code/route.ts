@@ -1,15 +1,18 @@
 import { NextResponse } from 'next/server';
-import { auth } from '@clerk/nextjs/server';
-import { db } from '@/lib/firestore';
+import { getAuth } from '@clerk/nextjs/server';
+import { getDb } from "@/lib/firestore";
 import { customAlphabet } from 'nanoid';
+import { FieldValue } from '@google-cloud/firestore';
 
 // Generate a somewhat human-readable, unique-enough code
 // Example: PGLF-A1B2C3
 const nanoidReferral = customAlphabet('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789', 6);
 const generateReferralCode = () => `PGLF-${nanoidReferral()}`;
 
+// GET handler to retrieve referral code
 export async function GET(request: Request) {
-  const { userId } = await auth();
+  const db = getDb();
+  const { userId } = getAuth(request as any);
   if (!userId) {
     return new NextResponse(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { 'Content-Type': 'application/json' }});
   }
@@ -50,4 +53,11 @@ export async function GET(request: Request) {
     console.error(`[API ReferralCode] Error fetching/generating referral code for user ${userId}:`, error);
     return new NextResponse(JSON.stringify({ error: 'Failed to get referral code.', details: error.message }), { status: 500, headers: { 'Content-Type': 'application/json' } });
   }
+}
+
+// POST handler to generate/regenerate referral code
+export async function POST(request: Request) {
+  const db = getDb();
+  const { userId } = getAuth(request as any);
+  // ... POST logic ...
 } 

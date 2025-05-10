@@ -1,17 +1,21 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/firestore'; // Assuming this lib is edge-compatible or handles it
+import { getDb } from "@/lib/firestore"; // Changed to getDb
 import { Timestamp } from '@google-cloud/firestore'; // For typing
 
-// export const runtime = 'edge'; // REMOVED: Default to Node.js runtime for Firestore Admin SDK compatibility
+export const runtime = 'nodejs'; // Or 'edge' if no Node.js specific APIs are used and DB access is edge-compatible
+// export const dynamic = 'force-dynamic'; // Force dynamic rendering if data is always fresh
 
 interface DailyStats {
   backupSuccessRate: number;
   totalPagesStored: number;
   lastUpdated: Timestamp | { seconds: number, nanoseconds: number }; // Firestore timestamp
+  totalUsers?: number;
+  totalSuccessfulSnapshotsStored?: number;
   // Add other relevant stats
 }
 
 export async function GET(request: Request) {
+  const db = getDb(); // Get instance here
   try {
     const statsDocRef = db.collection('stats').doc('daily');
     const docSnap = await statsDocRef.get();

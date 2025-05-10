@@ -143,7 +143,7 @@ functions.cloudEvent('diffWorker', async (cloudEvent: CloudEvent<MessagePublishe
   }
   let jobPayload: DiffJobPayload;
   try {
-    const messageData = Buffer.from(cloudEvent.data.message.data, 'base64').toString('utf8');
+    const messageData = Buffer.from(cloudEvent.data.message.data as string, 'base64').toString('utf8');
     jobPayload = JSON.parse(messageData) as DiffJobPayload;
   } catch (err) {
     console.error('[DiffWorker] Failed to parse Pub/Sub message data:', err);
@@ -190,7 +190,7 @@ functions.cloudEvent('diffWorker', async (cloudEvent: CloudEvent<MessagePublishe
       const entryTo = manifestTo[itemId];
       if (entryTo && !entryFrom) addedItems.push({ id: itemId, name: entryTo.name, type: entryTo.type, blockType: entryTo.blockType });
       else if (entryFrom && !entryTo) deletedItems.push({ id: itemId, name: entryFrom.name, type: entryFrom.type, blockType: entryFrom.blockType });
-      else if (entryFrom && entryTo && entryFrom.hash !== entryTo.hash) potentiallyChangedItems.push({ id: itemId, fromEntry, toEntry });
+      else if (entryFrom && entryTo && entryFrom.hash !== entryTo.hash) potentiallyChangedItems.push({ id: itemId, fromEntry: entryFrom, toEntry: entryTo });
     }
 
     let semanticallySimilarCount = 0;
@@ -198,7 +198,7 @@ functions.cloudEvent('diffWorker', async (cloudEvent: CloudEvent<MessagePublishe
     const changedItemDetailsOutput: ChangedItemDetail[] = [];
 
     // Step 4 & 5: Semantic Comparison (copied & adapted from /api/diff/semantic/route.ts)
-    if (pineconeClient && pineconeIndexName) {
+    if (pineconeClient && pineconeIndexName && openaiClient && tokenizer) {
       const pineconeIdx = pineconeClient.index(pineconeIndexName);
       for (const changed of potentiallyChangedItems) {
         // ... (Full logic for fetching embeddings for changed.fromEntry & changed.toEntry based on type/totalChunks,
@@ -285,18 +285,25 @@ functions.cloudEvent('diffWorker', async (cloudEvent: CloudEvent<MessagePublishe
           console.error(`[DW SemDiff] Item ${itemId} (${fromEntry.type}):`, e); 
           itemChangeType = 'pending_semantic_check'; 
         }
-        changedItemDetailsOutput.push({ 
-            id: itemId, 
-            name: fromEntry.name, 
-            itemType: fromEntry.type, 
-            blockType: fromEntry.blockType, 
-            changeType: itemChangeType, 
-            similarityScore: comparedSomething ? parseFloat(itemSimilarity.toFixed(4)) : undefined 
+        changedItemDetailsOutput.push({
+            id: itemId,
+            name: fromEntry?.name,
+            itemType: fromEntry.type,
+            blockType: fromEntry?.blockType,
+            changeType: itemChangeType,
+            similarityScore: comparedSomething ? parseFloat(itemSimilarity.toFixed(4)) : undefined
         });
       }
     } else {
+      // Pinecone not configured, populate changedItemDetailsOutput with hash_only_similar
       potentiallyChangedItems.forEach(changed => {
-        changedItemDetailsOutput.push({ id: changed.id, name: changed.fromEntry.name, itemType: changed.fromEntry.type, blockType: changed.fromEntry.blockType, changeType: 'hash_only_similar' });
+        changedItemDetailsOutput.push({
+          id: changed.id,
+          name: changed.fromEntry?.name,
+          itemType: changed.fromEntry.type,
+          blockType: changed.fromEntry?.blockType,
+          changeType: 'hash_only_similar'
+        });
       });
     }
 

@@ -14,7 +14,8 @@ import { cn } from "@/lib/utils";
 import Link from 'next/link';
 import { useToast } from "@/hooks/use-toast"; // For notifications
 import apiClient from '@/lib/apiClient'; // For API calls
-import type { Snapshot } from "@/types"; // Import the actual Snapshot type
+import type { Snapshot } from "@/types"; 
+import type { SemanticDiffResult, ChangedItemDetail } from "@/types/diff"; // Import from shared types
 
 // Dummy data for select placeholders
 const dummySnapshots = [
@@ -23,25 +24,12 @@ const dummySnapshots = [
   { id: 'snap3', label: 'Alpha Launch Candidate (July 10th)' },
 ];
 
-// Simplified interface for what the bar displays directly from a completed comparison
-export interface ComparisonDisplayData {
-  sourceId?: string;
-  targetId?: string;
-  added: number;
-  removed: number;
-  modified: number;
-  confidenceScore: number; // 0-100 for progress bar
-  analysisComplete: boolean;
-  viewDetailsUrl?: string; // URL for the "View details" link
-}
-
-// Interface for the job being tracked
 interface CurrentJobState {
   jobId?: string;
   statusUrl?: string;
   status: 'idle' | 'pending' | 'processing' | 'complete' | 'error';
   message?: string;
-  fetchedResult?: ComparisonDisplayData; // Store the successfully fetched full result here
+  fetchedResult?: SemanticDiffResult; // Use the shared type here
 }
 
 interface ComparisonEngineBarProps {
@@ -125,11 +113,20 @@ const ComparisonEngineBar: React.FC<ComparisonEngineBarProps> = ({ snapshots, in
           
           if (statusRes.status === 'complete' && statusRes.resultUrl) {
             clearInterval(intervalId);
-            const results = await apiClient<ComparisonDisplayData>(statusRes.resultUrl);
-            setJobState(prev => ({ ...prev, status: 'complete', fetchedResult: results, message: "Comparison complete.'"}));
+            try {
+                const results = await apiClient<SemanticDiffResult>(statusRes.resultUrl);
+                setJobState(prev => ({ 
+                    ...prev, 
+                    status: 'complete', 
+                    fetchedResult: results, // Store the full SemanticDiffResult
+                    message: results.message || 'Comparison finished.'}));
+            } catch (resultsError: any) {
+                console.error("Error fetching diff results:", resultsError);
+                setJobState(prev => ({ ...prev, status: 'error', message: "Failed to fetch results: " + resultsError.message }));
+            }
           } else if (statusRes.status === 'error') {
             clearInterval(intervalId);
-            setJobState(prev => ({ ...prev, status: 'error', message: statusRes.message || "Job failed processing."}));
+            // Message should already be in statusRes
           }
         } catch (err:any) {
           console.error("Error polling job status:", err);
@@ -143,8 +140,29 @@ const ComparisonEngineBar: React.FC<ComparisonEngineBarProps> = ({ snapshots, in
     return () => clearInterval(intervalId);
   }, [jobState.statusUrl, jobState.status]);
   
-  const displayData = jobState.fetchedResult;
-  const confidencePercent = displayData?.confidenceScore || 0;
+  const displaySummary = jobState.fetchedResult?.summary;
+  let semanticSimilarityPercent = 0;
+  if (displaySummary) {
+    const itemsWithSemanticResult = (displaySummary.semanticallySimilar || 0) + (displaySummary.semanticallyChanged || 0);
+    if (itemsWithSemanticResult > 0) {
+      semanticSimilarityPercent = ((displaySummary.semanticallySimilar || 0) / itemsWithSemanticResult) * 100;
+    } else if (displaySummary.contentHashChanged === 0 && (displaySummary.added || 0) === 0 && (displaySummary.deleted || 0) === 0){
+      semanticSimilarityPercent = 100; // No changes, so 100% similar in a way
+    } else if (displaySummary.contentHashChanged > 0) {
+      // Hashes changed, but no semantic results (e.g. all pending/error/no_embeddings_found)
+      // This implies 0% known semantic similarity for the changed items
+      semanticSimilarityPercent = 0; 
+    }
+  }
+
+  let actionButtonText = "Compare Snapshots";
+  if (jobState.jobId) {
+    if (jobState.status === 'pending' || jobState.status === 'processing') {
+      actionButtonText = "Comparing...";
+    } else {
+      actionButtonText = "Re-run Comparison";
+    }
+  }
 
   return (
     <Card className="w-full bg-slate-800/80 dark:bg-slate-800/80 shadow-xl border-slate-700/80 rounded-lg">
@@ -187,35 +205,37 @@ const ComparisonEngineBar: React.FC<ComparisonEngineBarProps> = ({ snapshots, in
             </div>
         )}
 
-        {jobState.status === 'complete' && displayData && (
+        {jobState.status === 'complete' && displaySummary && (
           <div className="space-y-4">
             <div className="flex justify-between items-center p-3 bg-slate-700/50 rounded-md text-sm">
-              <div className="flex items-center text-green-400">
-                <CheckCircle className="h-4 w-4 mr-2" /> Analysis Complete
-              </div>
-              {displayData.viewDetailsUrl && <Button variant="link" size="sm" className="text-xs h-auto p-0 text-indigo-400 hover:text-indigo-300" asChild><Link href={displayData.viewDetailsUrl}>View details</Link></Button>}
+              <div className="flex items-center text-green-400"><CheckCircle className="h-4 w-4 mr-2" /> Analysis Complete</div>
+              {jobState.jobId && 
+                <Button variant="link" size="sm" className="text-xs h-auto p-0 text-indigo-400 hover:text-indigo-300" asChild>
+                  <Link href={`/comparison/${jobState.jobId}`}>View details</Link>
+                </Button>
+              }
             </div>
 
             <div>
               <div className="flex justify-between text-xs text-slate-400 mb-1">
-                <span>Confidence Score</span>
-                <span>{confidencePercent.toFixed(0)}%</span>
+                <span>Confidence</span>
+                <span>{semanticSimilarityPercent.toFixed(0)}%</span>
               </div>
-              <Progress value={confidencePercent} className="h-1.5 bg-slate-700" />
+              <Progress value={semanticSimilarityPercent} className="h-1.5 bg-slate-700" />
             </div>
 
             <div className="grid grid-cols-3 gap-2 text-center pt-1">
               <div>
                 <p className="text-xs text-slate-400">Added</p>
-                <p className="text-xl font-bold text-green-400">+{displayData.added || 0}</p>
+                <p className="text-xl font-bold text-green-400">+{displaySummary.added || 0}</p>
               </div>
               <div>
                 <p className="text-xs text-slate-400">Modified</p>
-                <p className="text-xl font-bold text-sky-400">{displayData.modified || 0}</p>
+                <p className="text-xl font-bold text-sky-400">~{displaySummary.contentHashChanged || 0}</p>
               </div>
               <div>
                 <p className="text-xs text-slate-400">Removed</p>
-                <p className="text-xl font-bold text-red-400">{displayData.removed || 0}</p>
+                <p className="text-xl font-bold text-red-400">-{displaySummary.deleted || 0}</p>
               </div>
             </div>
           </div>
@@ -239,7 +259,7 @@ const ComparisonEngineBar: React.FC<ComparisonEngineBarProps> = ({ snapshots, in
             disabled={!fromSnapshot || !toSnapshot || jobState.status === 'pending' || jobState.status === 'processing'}
           >
             {(jobState.status === 'pending' || jobState.status === 'processing') ? <Loader2 className="h-4 w-4 mr-2 animate-spin"/> : <Eye className="h-4 w-4 mr-2" />}
-            {jobState.jobId ? 'Re-run Comparison' : 'View Changes'}
+            {actionButtonText}
           </Button>
         </div>
       </CardContent>

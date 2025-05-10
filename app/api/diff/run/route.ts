@@ -11,23 +11,55 @@ interface DiffRunRequest {
   // Potentially other options like specific items to compare, priority, etc.
 }
 
-let pubsub: PubSub | null = null;
-const topicName = process.env.PUBSUB_DIFF_TOPIC || 'notion-lifeline-diff-requests';
+const projectId = process.env.GOOGLE_CLOUD_PROJECT;
+const keyJsonString = process.env.GCP_SERVICE_ACCOUNT_KEY_JSON;
+const TOPIC_NAME_DIFF_RUN = process.env.PUBSUB_DIFF_TOPIC || 'notion-lifeline-diff-requests';
 
-// Initialize PubSub client (outside handler for potential reuse)
-if (process.env.GOOGLE_CLOUD_PROJECT) {
-  try {
-    pubsub = new PubSub({ projectId: process.env.GOOGLE_CLOUD_PROJECT });
-    console.log(`[API Diff Run] PubSub client initialized for topic: ${topicName}`);
-  } catch (error) {
-    console.error("[API Diff Run] Failed to initialize PubSub client:", error);
-    pubsub = null; // Ensure it's null if init fails
+let diffRunPubSubInstance: PubSub | null = null;
+
+function getDiffRunPubSubInstance(): PubSub | null { // Allow null return if init fails
+  if (diffRunPubSubInstance) {
+    return diffRunPubSubInstance;
   }
-} else {
-  console.warn("[API Diff Run] GOOGLE_CLOUD_PROJECT env var not set. PubSub client for diff requests not initialized.");
+  if (!projectId) {
+    console.warn("[PubSub Lib - DiffRun Route] GOOGLE_CLOUD_PROJECT env var not set. PubSub client cannot be initialized.");
+    return null;
+  }
+  let pubSubClientConfig: any = { projectId };
+
+  if (keyJsonString) {
+    try {
+      console.log('[PubSub Lib - DiffRun Route] Attempting to use credentials from GCP_SERVICE_ACCOUNT_KEY_JSON.');
+      const credentials = JSON.parse(keyJsonString);
+      pubSubClientConfig = { ...pubSubClientConfig, credentials };
+    } catch (e) {
+      console.error("[PubSub Lib - DiffRun Route] FATAL: Failed to parse GCP_SERVICE_ACCOUNT_KEY_JSON.", e);
+      // Do not throw here for build, let it be null and fail at runtime if pubsub is used without init
+      return null; 
+    }
+  } else {
+    // No keyJsonString provided, relying on ADC or build environment
+    if (process.env.NODE_ENV === 'production') {
+        console.warn('[PubSub Lib - DiffRun Route] GCP_SERVICE_ACCOUNT_KEY_JSON is NOT SET. PubSub client will initialize via ADC or fail at runtime if not configured.');
+    } else {
+        console.warn('[PubSub Lib - DiffRun Route] GCP_SERVICE_ACCOUNT_KEY_JSON not set in dev. Attempting Application Default Credentials.');
+    }
+  }
+  try {
+    console.log(`[PubSub Lib - DiffRun Route] Initializing PubSub instance for topic ${TOPIC_NAME_DIFF_RUN}.`);
+    diffRunPubSubInstance = new PubSub(pubSubClientConfig);
+    console.log('[PubSub Lib - DiffRun Route] PubSub instance configured.');
+    return diffRunPubSubInstance;
+  } catch (error) {
+    console.error("[PubSub Lib - DiffRun Route] Failed to initialize PubSub client:", error);
+    return null; // Return null if initialization fails
+  }
 }
 
+const getDiffRunPubSub = () => getDiffRunPubSubInstance();
+
 export async function POST(request: Request) {
+  const pubsub = getDiffRunPubSub(); // Get PubSub instance here
   const { userId } = await auth();
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -58,8 +90,8 @@ export async function POST(request: Request) {
     };
     const dataBuffer = Buffer.from(JSON.stringify(jobData));
     
-    await pubsub.topic(topicName).publishMessage({ data: dataBuffer });
-    console.log(`[API Diff Run] Message published for job ${diffJobId} to topic ${topicName}.`);
+    await pubsub.topic(TOPIC_NAME_DIFF_RUN).publishMessage({ data: dataBuffer });
+    console.log(`[API Diff Run] Message published for job ${diffJobId} to topic ${TOPIC_NAME_DIFF_RUN}.`);
 
     return NextResponse.json({ 
       success: true, 
@@ -73,7 +105,7 @@ export async function POST(request: Request) {
     const errorMessage = error.message || "Failed to queue difference analysis.";
     // Check for specific Pub/Sub errors if needed, e.g., topic not found
     if (error.code === 5) { // Typically GRPC code for NOT_FOUND
-        return NextResponse.json({ error: `Pub/Sub topic '${topicName}' not found. Please configure the topic.`, details: errorMessage }, { status: 500 });
+        return NextResponse.json({ error: `Pub/Sub topic '${TOPIC_NAME_DIFF_RUN}' not found. Please configure the topic.`, details: errorMessage }, { status: 500 });
     }
     return NextResponse.json({ error: "Failed to queue difference analysis.", details: errorMessage }, { status: 500 });
   }

@@ -1,62 +1,51 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/firestore'; // Assuming global Firestore admin instance
-import { KpiCardProps } from '@/components/dashboard/KpiCard'; // Import for type consistency
+import { auth }         from '@clerk/nextjs/server';
+import { Firestore }    from '@google-cloud/firestore';
 
-export const runtime = 'nodejs';
+export const runtime = 'nodejs';          // ❗ we need full Node for Firestore
 
-// Define the structure of the data stored in stats/daily by updateDailyStats
-interface DailyStatsDoc {
-  totalUsers?: number;
-  totalSnapshotsAttemptedLast24h?: number;
-  totalSnapshotsSuccessfulLast24h?: number;
-  backupSuccessRateLast24h?: number;
-  totalSuccessfulSnapshotsStored?: number; // This is count of snapshot documents
-  lastUpdated?: any; // Firestore Timestamp
-}
+// -- initialise Firestore once per cold-start ------------------------------
+const db = new Firestore();
 
-export async function GET(request: Request) {
+/** GET  /api/analytics/kpis
+ *  Returns a handful of high-level numbers for the dashboard.
+ *
+ *  Response shape:
+ *    {
+ *      snapshotsTotal:   number,
+ *      latestSnapshotAt: number | null   // epoch ms
+ *    }
+ */
+export async function GET() {
+  const { userId } = await auth();
+  if (!userId) {
+    return NextResponse.json({ error : 'unauthorised' }, { status : 401 });
+  }
+
   try {
-    const statsDocRef = db.collection('stats').doc('daily');
-    const docSnap = await statsDocRef.get();
+    // 1️⃣ total count ------------------------------------
+    const snapCol   = db.collection('users').doc(userId).collection('snapshots');
+    //   Firestore's count() aggregation – *much* cheaper than loading docs
+    //   (requires Firestore ≥ v5.0.0 / "count" aggregation GA)
+    const countSnap = await snapCol.count().get();
+    const snapshotsTotal = countSnap.data().count || 0;
 
-    let dailyStats: DailyStatsDoc = {};
-    if (docSnap.exists) {
-      dailyStats = docSnap.data() as DailyStatsDoc;
-    }
+    // 2️⃣ timestamp of most-recent snapshot ---------------
+    const latestQuery = await snapCol
+      .where('status', '==', 'Completed')          // only finished ones
+      .orderBy('timestamp', 'desc')
+      .limit(1)
+      .get();
 
-    const kpis: Omit<KpiCardProps, 'slotRight' | 'className'>[] = [];
+    const latestSnapshotAt =
+      latestQuery.empty ? null : latestQuery.docs[0]!.data().timestamp;
 
-    // 1. Total Snapshots
-    kpis.push({
-      title: "Total Snapshots Created",
-      value: (dailyStats.totalSuccessfulSnapshotsStored || 0).toLocaleString(),
-      delta: "+0.5%", // Placeholder delta
-      subtitle: "All successful snapshots",
-      gradientPreset: "blue",
-    });
-
-    // 2. Avg. Processing Time (Placeholder for MVP)
-    kpis.push({
-      title: "Avg. Processing Time",
-      value: "1.1s", // Placeholder value
-      delta: "-2%", // Placeholder delta
-      subtitle: "Snapshot worker efficiency",
-      gradientPreset: "purple",
-    });
-
-    // 3. Registered Users (as Active Data Points proxy)
-    kpis.push({
-      title: "Registered Users",
-      value: (dailyStats.totalUsers || 0).toLocaleString(),
-      delta: "+15", // Placeholder delta (e.g., new users this week)
-      subtitle: "Total users signed up",
-      gradientPreset: "cyan",
-    });
-
-    return NextResponse.json(kpis);
-
-  } catch (error: any) {
-    console.error("[API Analytics KPIs] Error fetching KPI data:", error);
-    return NextResponse.json({ error: "Failed to fetch KPI data.", details: error.message }, { status: 500 });
+    return NextResponse.json({ snapshotsTotal, latestSnapshotAt });
+  } catch (err: any) {
+    console.error('[kpis] failed:', err);
+    return NextResponse.json(
+      { error : 'internal-error', message : err?.message },
+      { status : 500 },
+    );
   }
 } 

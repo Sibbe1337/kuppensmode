@@ -1,11 +1,11 @@
 import { NextResponse, NextRequest } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { db } from '@/lib/firestore'; // Use the central Firestore utility
+import { getDb } from '@/lib/firestore'; // Changed to getDb
 import { FieldValue } from '@google-cloud/firestore'; // Corrected import for FieldValue
 
 export async function DELETE(request: NextRequest) {
-  const authResult = await auth();
-  const userId = authResult.userId;
+  const db = getDb(); // Get instance here
+  const { userId } = await auth();
   if (!userId) {
     return NextResponse.json({ error: 'Unauthenticated' }, { status: 401 });
   }
@@ -57,4 +57,10 @@ export async function DELETE(request: NextRequest) {
     console.error(`[Notion-disconnect] Error deleting Notion integration for user ${userId}:`, error);
     return NextResponse.json({ error: 'Failed to disconnect Notion integration' }, { status: 500 });
   }
+}
+
+export async function GET(request: NextRequest) {
+  const db = getDb(); // Get instance here
+  const { userId } = await auth();
+  // ... existing code ...
 } 

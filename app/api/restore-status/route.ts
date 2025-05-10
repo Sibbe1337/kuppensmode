@@ -1,13 +1,14 @@
 import { NextResponse } from 'next/server';
-import { auth } from '@clerk/nextjs/server';
-import { db } from '@/lib/firestore'; // Added Firestore db import
+import { getAuth } from '@clerk/nextjs/server';
+import { getDb } from "@/lib/firestore"; // Changed to getDb
 import type { DocumentData } from '@google-cloud/firestore';
 
 // This forces the route to be dynamic
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
-  const { userId } = await auth();
+  const db = getDb(); // Get instance here
+  const { userId } = getAuth(request as any);
   if (!userId) {
     return new NextResponse("Unauthorized", { status: 401 });
   }

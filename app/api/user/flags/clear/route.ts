@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { auth } from '@clerk/nextjs/server';
-import { db } from '@/lib/firestore';
+import { getAuth } from '@clerk/nextjs/server';
+import { getDb } from "@/lib/firestore";
 import { FieldValue } from '@google-cloud/firestore';
 
 interface ClearFlagRequestBody {
@@ -8,7 +8,8 @@ interface ClearFlagRequestBody {
 }
 
 export async function POST(request: Request) {
-  const { userId } = await auth();
+  const db = getDb();
+  const { userId } = getAuth(request as any);
   if (!userId) {
     return new NextResponse(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { 'Content-Type': 'application/json' } });
   }

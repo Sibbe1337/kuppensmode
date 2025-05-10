@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { auth } from '@clerk/nextjs/server';
-import { db } from '@/lib/firestore';
+import { getAuth } from '@clerk/nextjs/server';
+import { getDb } from "@/lib/firestore";
 
 // Define the structure for activation status
 export interface ActivationStatus {
@@ -16,7 +16,8 @@ const DEFAULT_ACTIVATION_STATUS: ActivationStatus = {
 };
 
 export async function GET(request: Request) {
-  const { userId } = await auth();
+  const db = getDb();
+  const { userId } = getAuth(request as any);
   if (!userId) {
     return new NextResponse("Unauthorized", { status: 401 });
   }
