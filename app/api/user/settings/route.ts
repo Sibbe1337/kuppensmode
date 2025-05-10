@@ -72,6 +72,7 @@ export async function GET() {
         plan: data.plan || null,
         planId: data.planId || data.billing?.planId || null,
         billing: data.billing || null,
+        flags: data.flags || null,
     };
     return NextResponse.json(responseSettings);
 

@@ -21,6 +21,8 @@ import RestoreWizard from "@/components/dashboard/RestoreWizard";
 import useSWR from 'swr';
 import { fetcher } from '@/lib/fetcher';
 import { EmptyState } from "@/components/ui/EmptyState";
+import { useUserSettings } from "@/hooks/useUserSettings";
+import CancellationSurveyModal from "@/components/modals/CancellationSurveyModal";
 
 export default function DashboardPage() {
   const searchParams = useSearchParams();
@@ -36,6 +38,8 @@ export default function DashboardPage() {
   const [isToastPreviewSheetOpen, setIsToastPreviewSheetOpen] = useState(false);
   const [snapshotForRestoreToast, setSnapshotForRestoreToast] = useState<Snapshot | null>(null);
   const [isRestoreWizardOpenFromToast, setIsRestoreWizardOpenFromToast] = useState(false);
+  const { settings: userSettings, mutateSettings: mutateUserSettings } = useUserSettings();
+  const [isCancellationSurveyModalOpen, setIsCancellationSurveyModalOpen] = useState(false);
 
   // Fetch snapshots data
   const { data: snapshots, error: snapshotsError, isLoading: isLoadingSnapshots } = useSWR<Snapshot[]>('/api/snapshots', fetcher);
@@ -84,6 +88,30 @@ export default function DashboardPage() {
       // router.replace('/dashboard', { scroll: false }); // Temporarily commented out
     }
   }, [searchParams, router, toast, mutateQuota]);
+
+  // Effect to check for and trigger cancellation survey
+  useEffect(() => {
+    if (userSettings?.flags?.needsCancellationSurvey) {
+      console.log("DashboardPage: needsCancellationSurvey flag is true. Opening modal.");
+      setIsCancellationSurveyModalOpen(true);
+      // Call API to clear the flag immediately so it doesn't re-trigger
+      fetch('/api/user/flags/clear', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ flagName: 'needsCancellationSurvey' }),
+      })
+      .then(res => {
+        if (res.ok) {
+          console.log("DashboardPage: Cleared needsCancellationSurvey flag.");
+          // Optionally mutate userSettings here if the API doesn't trigger SWR revalidation by itself
+          // mutateUserSettings(); // This might cause a re-render; ensure it doesn't loop with the effect
+        } else {
+          console.error("DashboardPage: Failed to clear needsCancellationSurvey flag.");
+        }
+      })
+      .catch(err => console.error("DashboardPage: Error clearing needsCancellationSurvey flag:", err));
+    }
+  }, [userSettings, mutateUserSettings]);
 
   const isOverSnapshotLimit = !isQuotaLoading && !isQuotaError && quota ? quota.snapshotsUsed >= quota.snapshotsLimit : false;
 
@@ -236,6 +264,10 @@ export default function DashboardPage() {
           )}
 
           <Tour />
+          <CancellationSurveyModal 
+            isOpen={isCancellationSurveyModalOpen} 
+            onOpenChange={setIsCancellationSurveyModalOpen} 
+          />
         </div>
       </SignedIn>
       <SignedOut>

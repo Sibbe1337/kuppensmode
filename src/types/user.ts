@@ -33,6 +33,11 @@ export interface UserSettings {
   referralCode?: string | null;
   referredBy?: string | null; // UserId of the person who referred this user
   referralsMadeCount?: number; // Count of users successfully referred by this user
+  // B.4.B.1.1: Add flags field
+  flags?: {
+    needsCancellationSurvey?: boolean;
+    // add other future flags here
+  } | null;
 }
 
 export interface UserQuota {
