@@ -144,10 +144,21 @@ const SnapshotsTable: React.FC<SnapshotsTableProps> = ({ snapshots }) => {
                   </h3>
                   <StatusPill status={snap.status} />
               </div>
+              <div className="flex justify-between items-baseline mb-1">
+                <p className="text-xs text-muted-foreground">
+                    {filesize(snap.sizeKB * 1024, { base: 2, standard: "jedec" })} 
+                </p>
+                {snap.diffSummary && (snap.diffSummary.added > 0 || snap.diffSummary.removed > 0 || snap.diffSummary.changed > 0) && (
+                    <Badge variant="outline" className="text-xs font-mono py-0.5 px-1.5">
+                        <span className="text-green-500">+{snap.diffSummary.added}</span>
+                        <span className="text-red-500 ml-1.5">-{snap.diffSummary.removed}</span>
+                        <span className="text-yellow-500 ml-1.5">~{snap.diffSummary.changed}</span>
+                    </Badge>
+                )}
+              </div>
               <p className="text-xs text-muted-foreground mb-4">
-                  {/* Assuming snap.sizeKB is in kilobytes */}
-                  {filesize(snap.sizeKB * 1024, { base: 2, standard: "jedec" })} 
                   {/* Add page count here when available, e.g., `· ${snap.pageCount || 0} pages` */}
+                  {/* This could also be a place for a short summary like "vs. prev. snapshot from ..." */}
               </p>
               
               <div className="mt-auto pt-4 border-t border-border/30 flex justify-end gap-1">

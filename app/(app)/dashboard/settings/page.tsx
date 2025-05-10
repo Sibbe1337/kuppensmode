@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input"; // For API key input
 import { Label } from "@/components/ui/label";   // For form labels
 import { Switch } from "@/components/ui/switch"; // For toggles
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"; // For organizing sections
-import { ExternalLink, KeyRound, Bell, LogOut, HelpCircle, ShieldCheck, Loader2, AlertTriangle, Info, Zap } from 'lucide-react';
+import { ExternalLink, KeyRound, Bell, LogOut, HelpCircle, ShieldCheck, Loader2, AlertTriangle, Info, Zap, CreditCard } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast"; // Import useToast
 import { useUserSettings } from '@/hooks/useUserSettings'; // Corrected hook import
 import type { UserSettings } from '@/types/user'; // Corrected type import
@@ -247,6 +247,24 @@ const SettingsPage = () => {
     return JSON.stringify(currentAutoSnapshot) !== JSON.stringify(editedAutoSnapshot);
   }, [settings, editedAutoSnapshot]);
 
+  // B.3: Handler for Manage Subscription button
+  const [isRedirectingToPortal, setIsRedirectingToPortal] = useState(false);
+  const handleManageSubscription = async () => {
+    setIsRedirectingToPortal(true);
+    try {
+      const response = await fetch('/api/billing/manage-subscription', { method: 'POST' });
+      const data = await response.json();
+      if (!response.ok || !data.url) {
+        throw new Error(data.error || "Failed to create customer portal session.");
+      }
+      window.location.href = data.url;
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+      setIsRedirectingToPortal(false);
+    }
+    // No finally block to set isRedirectingToPortal to false, as page will redirect away
+  };
+
   if (isLoading) {
     console.log("SettingsPage: Rendering LOADING state.");
     return (
@@ -330,51 +348,11 @@ const SettingsPage = () => {
           </AccordionContent>
         </AccordionItem>
 
-        {/* API Key Management Section */}
-        <AccordionItem value="item-2">
+        {/* Automated Snapshots Section */}
+        <AccordionItem value="item-auto-snapshot">
           <AccordionTrigger className="text-lg">
             <div className="flex items-center gap-2">
-                <KeyRound className="h-5 w-5" /> API Key Management
-            </div>
-          </AccordionTrigger>
-          <AccordionContent className="pt-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>Your API Key</CardTitle>
-                <CardDescription>
-                  Use this key to interact with the Notion Lifeline API (if applicable).
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-end gap-2">
-                  <div className="flex-grow">
-                    <Label htmlFor="apiKey">Current Key</Label>
-                    <Input id="apiKey" type="text" value={settings.apiKey || '-'} readOnly />
-                  </div>
-                  <Button 
-                    variant="secondary" 
-                    onClick={handleGenerateApiKey} 
-                    disabled={isRegeneratingKey}
-                    > 
-                      {isRegeneratingKey ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      ) : null}
-                      Regenerate
-                    </Button>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                    Treat your API key like a password. Do not share it publicly.
-                </p>
-              </CardContent>
-            </Card>
-          </AccordionContent>
-        </AccordionItem>
-
-        {/* Automated Snapshots Section (New) */}
-        <AccordionItem value="item-auto-snapshot"> {/* Unique value */}
-          <AccordionTrigger className="text-lg">
-            <div className="flex items-center gap-2">
-                <Zap className="h-5 w-5" /> {/* Using Zap icon for automation */}
+                <Zap className="h-5 w-5" />
                 Automated Snapshots
             </div>
           </AccordionTrigger>
@@ -430,6 +408,76 @@ const SettingsPage = () => {
                     Save Auto-Snapshot Settings
                 </Button>
               </CardFooter>
+            </Card>
+          </AccordionContent>
+        </AccordionItem>
+
+        {/* Billing Section - New for B.3 */}
+        <AccordionItem value="item-billing">
+          <AccordionTrigger className="text-lg">
+            <div className="flex items-center gap-2">
+                <CreditCard className="h-5 w-5" /> Billing & Subscription
+            </div>
+          </AccordionTrigger>
+          <AccordionContent className="pt-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Manage Your Subscription</CardTitle>
+                <CardDescription>
+                  View your current plan, update payment methods, and see invoice history via Stripe.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button onClick={handleManageSubscription} disabled={isRedirectingToPortal || !settings?.stripeCustomerId && !settings?.billing?.stripeCustomerId}>
+                  {isRedirectingToPortal && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Open Customer Portal
+                </Button>
+                {(!settings?.stripeCustomerId && !settings?.billing?.stripeCustomerId) && (
+                    <p className="text-xs text-muted-foreground mt-2">
+                        Subscription management is available after your first upgrade.
+                    </p>
+                )}
+              </CardContent>
+            </Card>
+          </AccordionContent>
+        </AccordionItem>
+
+        {/* API Key Management Section */}
+        <AccordionItem value="item-2">
+          <AccordionTrigger className="text-lg">
+            <div className="flex items-center gap-2">
+                <KeyRound className="h-5 w-5" /> API Key Management
+            </div>
+          </AccordionTrigger>
+          <AccordionContent className="pt-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Your API Key</CardTitle>
+                <CardDescription>
+                  Use this key to interact with the Notion Lifeline API (if applicable).
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-end gap-2">
+                  <div className="flex-grow">
+                    <Label htmlFor="apiKey">Current Key</Label>
+                    <Input id="apiKey" type="text" value={settings.apiKey || '-'} readOnly />
+                  </div>
+                  <Button 
+                    variant="secondary" 
+                    onClick={handleGenerateApiKey} 
+                    disabled={isRegeneratingKey}
+                    > 
+                      {isRegeneratingKey ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : null}
+                      Regenerate
+                    </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                    Treat your API key like a password. Do not share it publicly.
+                </p>
+              </CardContent>
             </Card>
           </AccordionContent>
         </AccordionItem>

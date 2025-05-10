@@ -130,6 +130,25 @@ export async function POST(request: Request) {
     }
     // --- End Update ---
 
+    // M6.1 (Adapted for Restore): Add audit log for restore initiation
+    try {
+      const auditLogInitiated = {
+        timestamp: FieldValue.serverTimestamp(),
+        type: 'restore_initiated',
+        details: {
+          restoreId: restoreId,
+          snapshotId: snapshotId,
+          targetParentPageId: targetParentPageId ?? null,
+          status: 'pending' // Initial status of the audit log for this event
+        },
+      };
+      await db.collection('users').doc(userId).collection('audit').add(auditLogInitiated);
+      console.log(`[Restore API] Audit log created for initiated restore ${restoreId}.`);
+    } catch (auditError) {
+      console.error(`[Restore API] Failed to write audit log for initiated restore ${restoreId}:`, auditError);
+      // Non-fatal for the restore initiation itself
+    }
+
     // Immediate ACK to client
     return NextResponse.json({ success: true, restoreId });
   } catch (err) {

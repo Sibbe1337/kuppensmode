@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { Storage } from '@google-cloud/storage';
 import type { Snapshot } from '@/types';
+import { db } from '@/lib/firestore';
 
 // Initialize GCS Storage client
 const projectId = process.env.GOOGLE_CLOUD_PROJECT;
@@ -48,25 +49,52 @@ export async function GET(request: Request) {
     const [files] = await storage.bucket(bucketName).getFiles({ prefix: `${userId}/` });
     console.log(`Found ${files.length} files/folders for user ${userId}`);
 
-    // Map GCS file data to Snapshot[] format
-    const snapshots: Snapshot[] = files
-      .filter(file => file.name !== `${userId}/`) // Filter out the directory placeholder itself
-      .map((file) => {
+    const snapshotPromises = files
+      .filter(file => file.name !== `${userId}/` && file.name.endsWith('.json.gz') && !file.name.endsWith('.manifest.json.gz'))
+      .map(async (file) => {
         const timestamp = file.metadata.timeCreated;
         const sizeBytes = Number(file.metadata.size || 0);
         const sizeKB = Math.round(sizeBytes / 1024);
+        
+        // Extract snapshotId from filename (e.g., snap_userId_timestamp)
+        // This needs to be consistent with how snapshotId is generated and used for diffSummary
+        const fileNameParts = file.name.split('/').pop()?.split('.json.gz');
+        const snapshotId = fileNameParts ? fileNameParts[0] : file.name; // Fallback to full path if parsing fails
+
+        let diffSummary = null;
+        try {
+          const diffDocRef = db.collection('users').doc(userId).collection('snapshotDiffs').doc(snapshotId);
+          const diffDoc = await diffDocRef.get();
+          if (diffDoc.exists) {
+            const data = diffDoc.data();
+            diffSummary = {
+              added: data?.added || 0,
+              removed: data?.removed || 0,
+              changed: data?.changed || 0,
+              previousSnapshotId: data?.previousSnapshotId || undefined,
+            };
+          }
+        } catch (fsError) {
+          console.warn(`[API Snapshots] Could not fetch diffSummary for ${snapshotId}:`, fsError);
+        }
 
         return {
-          id: file.name, // Use the full GCS path as the unique ID
-          timestamp: timestamp || new Date().toISOString(), // Use file creation time, fallback to now
+          id: file.name, // GCS path as ID
+          snapshotIdActual: snapshotId, // Parsed snapshotId for linking to diff
+          timestamp: timestamp || new Date().toISOString(),
           sizeKB: sizeKB,
-          status: 'Completed', // Assuming all listed files are completed snapshots
-        };
-      })
-      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()); // Sort newest first
+          status: 'Completed',
+          diffSummary: diffSummary,
+        } as Snapshot; // Cast to Snapshot type which now includes diffSummary
+      });
 
-    console.log(`Returning ${snapshots.length} snapshots for user ${userId}`);
-    return NextResponse.json(snapshots);
+    const snapshotsWithDiffs = await Promise.all(snapshotPromises);
+    
+    const sortedSnapshots = snapshotsWithDiffs
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+    console.log(`Returning ${sortedSnapshots.length} snapshots for user ${userId}`);
+    return NextResponse.json(sortedSnapshots);
 
   } catch (error) {
     console.error(`Error fetching snapshots from GCS for user:`, error);

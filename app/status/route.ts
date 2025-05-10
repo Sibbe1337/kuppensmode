@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/firestore'; // Assuming this lib is edge-compatible or handles it
 import { Timestamp } from '@google-cloud/firestore'; // For typing
 
-export const runtime = 'edge'; // Specify edge runtime
+// export const runtime = 'edge'; // REMOVED: Default to Node.js runtime for Firestore Admin SDK compatibility
 
 interface DailyStats {
   backupSuccessRate: number;

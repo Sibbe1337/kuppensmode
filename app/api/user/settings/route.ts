@@ -66,7 +66,12 @@ export async function GET() {
         autoSnapshot: {
             enabled: currentSettings?.autoSnapshot?.enabled ?? DEFAULT_USER_SETTINGS.autoSnapshot.enabled,
             frequency: currentSettings?.autoSnapshot?.frequency ?? DEFAULT_USER_SETTINGS.autoSnapshot.frequency,
-        }
+        },
+        stripeCustomerId: data.stripeCustomerId || data.billing?.stripeCustomerId || null,
+        stripeSubscriptionId: data.stripeSubscriptionId || data.billing?.stripeSubscriptionId || null,
+        plan: data.plan || null,
+        planId: data.planId || data.billing?.planId || null,
+        billing: data.billing || null,
     };
     return NextResponse.json(responseSettings);
 

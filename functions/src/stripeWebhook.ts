@@ -182,14 +182,32 @@ export const stripeWebhook = http('stripeWebhook', async (req: Request, res: Res
         const planName = product?.name || (typeof product === 'string' ? product : 'Unknown Plan');
         await userRef.set({ 
             billing: billingData,
-            stripeCustomerId: stripeCustomerId, // Keep top-level for convenience
-            stripeSubscriptionId: subscription.id, // Keep top-level for convenience
-            plan: planName, // Conceptual plan name for quick display
-            planId: billingData.planId, // Stripe Product ID
-            planActivatedAt: Timestamp.now(), // Reset activation date on new subscription
-            // quota may be set by a separate mechanism or based on planId later
+            stripeCustomerId: stripeCustomerId, 
+            stripeSubscriptionId: subscription.id, 
+            plan: planName, 
+            planId: billingData.planId, 
+            planActivatedAt: Timestamp.now(), 
         }, { merge: true });
         console.log(`User ${userId} billing info and plan updated after checkout.`);
+
+        // A.3: Add audit log for subscription creation
+        try {
+            const auditLog = {
+                timestamp: Timestamp.now(),
+                type: 'billing_subscription_created',
+                details: {
+                    stripeSubscriptionId: subscription.id,
+                    stripeCustomerId: stripeCustomerId,
+                    planId: billingData.planId,
+                    priceId: billingData.priceId,
+                    seats: billingData.seats,
+                    status: 'success'
+                }
+            };
+            await db.collection('users').doc(userId).collection('audit').add(auditLog);
+        } catch (auditError) {
+            console.error(`[Stripe Webhook] Audit log failed for new subscription ${subscription.id}:`, auditError);
+        }
 
       } catch (dbOrStripeError) {
         console.error(`Error processing checkout for user ${userId}:`, dbOrStripeError);
@@ -263,10 +281,46 @@ export const stripeWebhook = http('stripeWebhook', async (req: Request, res: Res
                     }
                 });
             }
+
+            // A.3: Add audit log for plan downgrade (part of subscription update)
+            try {
+                const auditLog = {
+                    timestamp: Timestamp.now(),
+                    type: 'billing_plan_downgraded', // More specific than just updated
+                    details: {
+                        stripeSubscriptionId: fullSubscription.id,
+                        newPlanId: DEFAULT_USER_QUOTA.planId, // Downgraded to this
+                        previousPlanId: billingData.planId,
+                        reason: `subscription_status_${fullSubscription.status}`,
+                        status: 'success' 
+                    }
+                };
+                await db.collection('users').doc(userId).collection('audit').add(auditLog);
+            } catch (auditError) {
+                console.error(`[Stripe Webhook] Audit log failed for plan downgrade ${fullSubscription.id}:`, auditError);
+            }
         } else {
            // TODO: If plan changed, update quota based on the new planId
            // This would require a mapping from planId to quota limits
            console.log(`Subscription ${fullSubscription.id} for user ${userId} updated. Status: ${fullSubscription.status}. Quota may need adjustment based on new plan.`);
+           // A.3: Add audit log for general subscription update (e.g. seats change, status change not leading to downgrade)
+           try {
+                const auditLog = {
+                    timestamp: Timestamp.now(),
+                    type: 'billing_subscription_updated',
+                    details: {
+                        stripeSubscriptionId: fullSubscription.id,
+                        newPlanId: billingData.planId,
+                        newStatus: fullSubscription.status,
+                        newSeats: billingData.seats,
+                        // Could also include old values if fetched/known
+                        status: 'success' 
+                    }
+                };
+                await db.collection('users').doc(userId).collection('audit').add(auditLog);
+            } catch (auditError) {
+                console.error(`[Stripe Webhook] Audit log failed for subscription update ${fullSubscription.id}:`, auditError);
+            }
         }
         
         await userRef.set(updatePayload, { merge: true });
@@ -316,6 +370,22 @@ export const stripeWebhook = http('stripeWebhook', async (req: Request, res: Res
             await posthogClient.shutdownAsync(); // Ensure event is sent before function terminates
         }
         console.log(`User ${userId} downgraded due to subscription deletion.`);
+
+        // A.3: Add audit log for subscription deletion
+        try {
+            const auditLog = {
+                timestamp: Timestamp.now(),
+                type: 'billing_subscription_deleted',
+                details: {
+                    stripeSubscriptionId: subscription.id,
+                    reason: 'subscription_deleted_event',
+                    status: 'success' 
+                }
+            };
+            await db.collection('users').doc(userId).collection('audit').add(auditLog);
+        } catch (auditError) {
+            console.error(`[Stripe Webhook] Audit log failed for subscription deletion ${subscription.id}:`, auditError);
+        }
 
       } catch (dbError) {
         console.error(`Error processing subscription deletion for user ${userId}:`, dbError);
