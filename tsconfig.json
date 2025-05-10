@@ -35,6 +35,10 @@
   ],
   "exclude": [
     "node_modules",
-    "functions"
+    ".next",
+    "functions",
+    "snapshot-worker",
+    "restore-worker",
+    "email-worker"
   ]
 }
