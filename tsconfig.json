@@ -30,15 +30,21 @@
   "include": [
     "next-env.d.ts",
     ".next/types/**/*.ts",
-    "**/*.ts",
-    "**/*.tsx"
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "app/**/*.ts",
+    "app/**/*.tsx",
+    "middleware.ts",
+    "instrumentation.ts",
+    "instrumentation-client.ts"
   ],
   "exclude": [
     "node_modules",
     ".next",
     "functions",
-    "snapshot-worker",
-    "restore-worker",
-    "email-worker"
+    "snapshot-worker/**",
+    "restore-worker/**",
+    "email-worker/**",
+    "demo-data/**"
   ]
 }
