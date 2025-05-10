@@ -69,12 +69,12 @@ const IconButton: React.FC<{
 // StatusPill component
 const StatusPill: React.FC<{ status: string }> = ({ status }) => {
   if (status === "Completed") {
-    return <Badge variant="success" className="text-xs"><CheckCircle className="h-3 w-3 mr-1" />Saved</Badge>;
+    return <Badge variant="outline" className="text-xs bg-green-100 text-green-700 border-green-300 dark:bg-green-700/30 dark:text-green-300 dark:border-green-600"><CheckCircle className="h-3 w-3 mr-1" />Saved</Badge>;
   }
   if (status === "Pending") {
     return <Badge variant="secondary" className="text-xs"><Loader2 className="h-3 w-3 mr-1 animate-spin" />Pending</Badge>;
   }
-  return <Badge variant="destructive" className="text-xs">{status}</Badge>; // For Failed or other statuses
+  return <Badge variant="destructive" className="text-xs"><AlertCircle className="h-3 w-3 mr-1" />{status}</Badge>;
 };
 
 const SnapshotsTable: React.FC<SnapshotsTableProps> = ({ snapshots }) => {
