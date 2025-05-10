@@ -5,7 +5,7 @@ import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import UpgradeModal from '../billing/UpgradeModal';
 import Link from 'next/link';
-import { SettingsIcon, LayoutDashboardIcon, Loader2, AlertTriangle } from 'lucide-react';
+import { SettingsIcon, LayoutDashboardIcon, BarChartBig, Loader2, AlertTriangle } from 'lucide-react';
 import { useQuota } from '@/hooks/useQuota';
 import type { UserQuota } from '@/types';
 
@@ -38,6 +38,14 @@ const Sidebar = () => {
             >
               <LayoutDashboardIcon className="h-4 w-4" />
               Dashboard
+            </Link>
+            <Link 
+              href="/analytics"
+              className="flex items-center gap-3 px-2 py-2 text-sm font-medium rounded-md hover:bg-muted hover:text-accent-foreground"
+              passHref
+            >
+              <BarChartBig className="h-4 w-4" />
+              Analytics
             </Link>
             <Link 
               href="/dashboard/settings" 

@@ -1,0 +1,23 @@
+[
+  {
+    "title": "Total Snapshots",
+    "value": "3,671",
+    "delta": "-0.03%",
+    "subtitle": "Since last month",
+    "gradientPreset": "blue"
+  },
+  {
+    "title": "Avg. Processing Time",
+    "value": "1.2s",
+    "delta": "+12%",
+    "subtitle": "Efficiency improvement",
+    "gradientPreset": "purple"
+  },
+  {
+    "title": "Active Data Points",
+    "value": "14.3K",
+    "delta": "+5.7%",
+    "subtitle": "Growth in tracked items",
+    "gradientPreset": "cyan"
+  }
+] 

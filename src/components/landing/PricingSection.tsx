@@ -4,14 +4,13 @@ import React, { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { CheckCircle } from 'lucide-react';
+import { CheckCircle, Check } from 'lucide-react';
 import apiClient from '@/lib/apiClient';
 import { useToast } from "@/hooks/use-toast";
 import { loadStripe } from '@stripe/stripe-js';
-import Link from 'next/link'; // For Free plan CTA
-import { cn } from "@/lib/utils";
+import Link from 'next/link';
+import { cn } from '@/lib/utils';
 
-// Re-using the Stripe Promise initialization logic if needed here, or assume it's handled by a parent context/provider
 const stripePromise = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY 
     ? loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY)
     : null;
@@ -19,113 +18,86 @@ const stripePromise = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
 interface PricingCardProps {
   planName: string;
   price: string;
-  priceFrequency?: string;
+  priceSuffix?: string;
+  description: string;
   features: string[];
   ctaText: string;
-  ctaVariant?: "default" | "outline" | "secondary" | "ghost" | "link" | string;
-  isPrimary?: boolean;
-  highlightText?: string;
-  badgeText?: string;
-  ribbonText?: string;
   ctaHref?: string;
   onCtaClick?: () => void;
-  seatSelectorElement?: React.ReactNode;
+  isPopular?: boolean;
+  isEnterprise?: boolean;
   disabled?: boolean;
 }
 
 const PricingCard: React.FC<PricingCardProps> = ({
-  planName, price, priceFrequency = "/mo", features, ctaText, ctaVariant = "default",
-  isPrimary, highlightText, badgeText, ribbonText, ctaHref, onCtaClick, seatSelectorElement, disabled
+  planName, price, priceSuffix, description, features, ctaText, ctaHref, onCtaClick, isPopular, isEnterprise, disabled
 }) => {
   return (
     <div className={cn(
-      "relative p-6 md:p-8 rounded-xl flex flex-col border shadow-lg hover:shadow-xl transition-all duration-300",
-      isPrimary ? 
-        'bg-primary text-primary-foreground border-primary/70 ring-2 ring-offset-4 ring-offset-background ring-primary/70' : 
-        'bg-card text-card-foreground border-border'
+      "bg-slate-800 p-8 rounded-xl shadow-2xl flex flex-col border border-slate-700",
+      isPopular && "border-indigo-500 ring-2 ring-indigo-500 scale-105 z-10"
     )}>
-      {highlightText && (
-        <div className={`absolute -top-3.5 left-1/2 -translate-x-1/2 text-xs font-semibold px-3 py-1 rounded-full ${isPrimary ? 'bg-background text-foreground' : 'bg-primary text-primary-foreground'}`}>
-          {highlightText}
+      {isPopular && (
+        <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
+          <Badge className="bg-indigo-500 text-white text-xs font-semibold px-3 py-1">POPULAR</Badge>
         </div>
       )}
-      {badgeText && (
-         <div className="flex justify-center mb-3 mt-3"> 
-            <Badge variant={isPrimary ? "secondary" : "default"} className={isPrimary ? "bg-background text-primary" : ""}> 
-                {badgeText}
-            </Badge>
-         </div>
-      )}
-      <h3 className={`text-2xl font-semibold text-center ${isPrimary ? '' : 'text-foreground'}`}>{planName}</h3>
-      <div className="my-4 text-center">
-        <span className={`text-5xl font-bold ${isPrimary ? '' : 'text-foreground'}`}>{price}</span>
-        {price !== "Free" && <span className={`text-sm ${isPrimary ? 'opacity-80' : 'text-muted-foreground'}`}>{priceFrequency}</span>}
+      <h3 className="text-2xl font-semibold text-slate-100 mb-2">{planName}</h3>
+      <p className="text-slate-400 text-sm mb-6 h-10">{description}</p>
+      
+      <div className="mb-6">
+        <span className="text-5xl font-bold text-white">{price}</span>
+        {priceSuffix && <span className="text-lg text-slate-400 ml-1">{priceSuffix}</span>}
       </div>
-      <ul className="space-y-2.5 mb-8 text-sm flex-grow">
+      
+      <ul className="space-y-3 mb-8 text-sm flex-grow">
         {features.map((feature, index) => (
-          <li key={index} className="flex items-start">
-            <CheckCircle className={`h-5 w-5 mr-2.5 flex-shrink-0 ${isPrimary ? 'opacity-80' : 'text-primary'}`} />
-            <span className={`${isPrimary ? '' : 'text-muted-foreground'}`}>{feature}</span>
+          <li key={index} className="flex items-center">
+            <Check className="h-5 w-5 mr-2.5 text-indigo-400 flex-shrink-0" />
+            <span className="text-slate-300">{feature}</span>
           </li>
         ))}
       </ul>
-      {seatSelectorElement}
+      
       {onCtaClick ? (
-          <Button variant={ctaVariant as any} size="lg" onClick={onCtaClick} className={`w-full mt-auto ${isPrimary ? 'bg-background text-primary hover:bg-background/90' : '' }`} disabled={disabled}>
+          <Button 
+            size="lg" 
+            onClick={onCtaClick} 
+            className={cn(
+                "w-full mt-auto text-base py-3 font-semibold rounded-md transition-transform hover:scale-[1.02]",
+                isPopular ? "bg-indigo-500 hover:bg-indigo-400 text-white" : "bg-slate-700 hover:bg-slate-600 text-slate-100"
+            )}
+            disabled={disabled}
+          >
               {ctaText}
           </Button>
       ) : (
-          <Button asChild variant={ctaVariant as any} size="lg" className={`w-full mt-auto ${isPrimary ? 'bg-background text-primary hover:bg-background/90' : '' }`} disabled={disabled}>
+          <Button asChild size="lg" className={cn("w-full mt-auto text-base py-3 font-semibold rounded-md transition-transform hover:scale-[1.02]", isPopular ? "bg-indigo-500 hover:bg-indigo-400 text-white" : "bg-slate-700 hover:bg-slate-600 text-slate-100")} disabled={disabled}>
               <Link href={ctaHref || '#'}>{ctaText}</Link>
           </Button>
-      )}
-      {ribbonText && (
-          <p className={`mt-4 text-xs text-center ${isPrimary ? 'opacity-80' : 'text-muted-foreground'}`}>{ribbonText}</p>
       )}
     </div>
   );
 };
 
 const PricingSection: React.FC = () => {
-  const [isAnnualPricing, setIsAnnualPricing] = useState(false);
-  const [teamSeatCount, setTeamSeatCount] = useState(1);
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   const { toast } = useToast();
 
-  // These should ideally come from a centralized config or env variables
+  // TODO: Update with actual Stripe Price IDs from .env
   const proMonthlyPriceId = process.env.NEXT_PUBLIC_PRICE_PRO_MONTHLY || 'price_pro_monthly_placeholder';
-  const proAnnualPriceId = process.env.NEXT_PUBLIC_PRICE_PRO_ANNUAL || 'price_pro_annual_placeholder';
-  const teamsMonthlyPriceId = process.env.NEXT_PUBLIC_PRICE_TEAMS_MONTHLY || 'price_teams_monthly_placeholder';
-  const teamsAnnualPriceId = process.env.NEXT_PUBLIC_PRICE_TEAMS_ANNUAL || 'price_teams_annual_placeholder';
-  
-  const proPriceMonthly = 9;
-  const proPriceAnnual = 7.5;
-  const teamsPricePerSeatMonthly = 29;
-  const teamsPricePerSeatAnnual = 24;
+  // const enterpriseContactUrl = '/contact-sales'; // Example
 
-  const handleTeamSeatChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    let count = parseInt(event.target.value, 10);
-    if (isNaN(count) || count < 1) count = 1;
-    if (count > 50) count = 50; // Max seats example
-    setTeamSeatCount(count);
-  };
-
-  const handleCheckout = async (planType: 'pro' | 'teams') => {
+  const handleCheckout = async (planType: 'pro' /*| 'enterprise' could be added if it has a direct checkout*/) => {
     if (isCheckingOut) return;
     setIsCheckingOut(true);
 
     let priceId: string | undefined;
-    let quantity = 1;
-
     if (planType === 'pro') {
-      priceId = isAnnualPricing ? proAnnualPriceId : proMonthlyPriceId;
-    } else if (planType === 'teams') {
-      priceId = isAnnualPricing ? teamsAnnualPriceId : teamsMonthlyPriceId;
-      quantity = teamSeatCount;
+      priceId = proMonthlyPriceId; // Assuming monthly for this example, toggle for annual could be added back
     }
 
     if (!priceId) {
-      console.error(`Stripe Price ID for ${planType} plan (annual: ${isAnnualPricing}) is not configured.`);
       toast({title: "Configuration Error", description: "Pricing information is currently unavailable.", variant: "destructive"});
       setIsCheckingOut(false);
       return;
@@ -135,24 +107,15 @@ const PricingSection: React.FC = () => {
       const { sessionId, error } = await apiClient<{sessionId?: string, error?: string}>('/api/billing/checkout-session', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-              priceId: priceId,
-              seats: planType === 'teams' ? quantity : undefined, // Only send seats for teams plan
-              billingInterval: isAnnualPricing ? 'year' : 'month',
-          }),
+          body: JSON.stringify({ priceId: priceId }), // No seats for these plans in this design
       });
-
-      if (error || !sessionId) {
-          throw new Error(error || 'Failed to create checkout session.');
-      }
+      if (error || !sessionId) throw new Error(error || 'Failed to create checkout session.');
       if (!stripePromise) throw new Error('Stripe.js is not configured.');
       const stripe = await stripePromise;
       if (!stripe) throw new Error('Stripe.js failed to load.');
       const { error: stripeError } = await stripe.redirectToCheckout({ sessionId });
       if (stripeError) throw new Error(`Failed to redirect to Stripe: ${stripeError.message}`);
-
     } catch (err: any) {
-      console.error("Checkout initiation failed:", err);
       const message = err.data?.error || err.message || "Checkout failed. Please try again.";
       toast({title: "Checkout Error", description: message, variant: "destructive"});
     } finally {
@@ -161,67 +124,52 @@ const PricingSection: React.FC = () => {
   };
 
   return (
-    <section className="py-16 sm:py-24 bg-background">
+    <section className="py-16 sm:py-24 bg-slate-950 text-slate-50">
       <div className="container mx-auto px-4">
-        <div className="max-w-2xl mx-auto text-center mb-12 sm:mb-16">
-          <h2 className="text-3xl sm:text-4xl font-bold mb-4 text-foreground">Simple, Transparent Pricing</h2>
-          <p className="text-muted-foreground">Choose the plan that's right for you. Cancel anytime.</p>
-        </div>
-
-        <div className="flex justify-center items-center mb-10">
-          <span className={`mr-3 text-sm font-medium ${!isAnnualPricing ? 'text-primary' : 'text-muted-foreground'}`}>Monthly</span>
-          <Switch
-            checked={isAnnualPricing}
-            onCheckedChange={setIsAnnualPricing}
-            id="pricing-toggle"
-            aria-label="Toggle annual pricing"
-          />
-          <span className={`ml-3 text-sm font-medium ${isAnnualPricing ? 'text-primary' : 'text-muted-foreground'}`}>
-            Annual <Badge variant="outline" className="ml-1 border-green-500 text-green-600">Save ~17%</Badge>
+        <div className="max-w-3xl mx-auto text-center mb-12 sm:mb-16">
+          <span className="inline-block px-3 py-1 text-xs font-semibold text-indigo-300 bg-indigo-900/70 rounded-full mb-3">
+            Pricing
           </span>
+          <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-4 tracking-tight">
+            Choose Your <span className="text-indigo-400">Perfect Plan</span>
+          </h2>
+          <p className="text-lg text-slate-400">
+            Simple, transparent pricing that grows with your needs.
+          </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-stretch">
+        {/* Annual/Monthly Toggle - removed for now based on screenshot, can be re-added */}
+        
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 max-w-6xl mx-auto items-stretch">
           <PricingCard
-            planName="Free"
-            price="$0"
-            priceFrequency="forever"
-            features={["5 Snapshots / Workspace", "Daily Automatic Backups", "Manual Snapshots", "Standard Email Support"]}
+            planName="Basic"
+            price="$9"
+            priceSuffix="/month"
+            description="Perfect for personal use and small projects."
+            features={["5 Notion pages", "Daily snapshots", "Email notifications", "7-day history retention"]}
             ctaText="Get Started"
-            ctaHref="/sign-up" // Or /dashboard if already signed in
-            ctaVariant="outline"
+            ctaHref="/sign-up" // Or logic to start free trial / go to dashboard
           />
           <PricingCard
             planName="Pro"
-            price={isAnnualPricing ? `$${proPriceAnnual.toFixed(2)}` : `$${proPriceMonthly.toFixed(2)}`}
-            priceFrequency={isAnnualPricing ? "/mo, billed annually" : "/mo"}
-            features={["Unlimited Snapshots", "Hourly Automatic Backups", "AI Change Diff Emails", "Priority Restore Queue", "Priority Email Support"]}
-            ctaText="Choose Pro"
+            price="$19"
+            priceSuffix="/month"
+            description="Enhanced features for professionals."
+            features={["15 Notion pages", "Hourly snapshots", "Advanced diff comparison", "One-click restore", "30-day history retention"]}
+            ctaText="Start Pro Trial"
             onCtaClick={() => handleCheckout('pro')}
+            isPopular={true}
             disabled={isCheckingOut}
-            highlightText="Best Value"
           />
           <PricingCard
-            planName="Teams"
-            price={`$${((isAnnualPricing ? teamsPricePerSeatAnnual : teamsPricePerSeatMonthly) * teamSeatCount).toFixed(2)}`}
-            priceFrequency={isAnnualPricing ? "/total/mo, billed annually" : "/total/mo for selected seats"}
-            features={["All Pro Features, plus:", "Centralized Billing", "Team Management", "Customizable Roles (soon)", "Audit Logs (90 days)"]}
-            ctaText="Choose Teams"
-            onCtaClick={() => handleCheckout('teams')}
-            disabled={isCheckingOut}
-            isPrimary={true}
-            badgeText="Most Popular"
-            seatSelectorElement={
-              <div className="my-4 flex items-center justify-between text-sm">
-                <label htmlFor="team-seats" className={`font-medium ${true ? 'text-primary-foreground/80' : 'text-muted-foreground'}`}>Seats:</label>
-                <input 
-                  type="number" id="team-seats" name="team-seats" min="1" max="50"
-                  value={teamSeatCount} onChange={handleTeamSeatChange}
-                  className="w-20 p-1.5 border rounded bg-background/10 border-primary-foreground/30 text-center text-primary-foreground focus:ring-primary focus:border-primary disabled:opacity-70"
-                  disabled={isCheckingOut}
-                />
-              </div>
-            }
+            planName="Enterprise"
+            price="Custom"
+            priceSuffix=""
+            description="Complete solution for teams and businesses."
+            features={["Unlimited Notion pages", "Custom snapshot frequency", "Advanced audit logs", "Custom retention policies", "Dedicated support", "SSO & advanced security"]}
+            ctaText="Contact Sales"
+            ctaHref="/contact-sales" // Link to a contact page or Calendly
+            isEnterprise={true} 
           />
         </div>
       </div>

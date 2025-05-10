@@ -1,0 +1,22 @@
+{
+  "similarityScore": 87,
+  "confidenceText": "High confidence",
+  "systemStatusText": "All systems normal",
+  "aiInsights": [
+    {
+      "id": "insight1",
+      "text": "Recommend checking metadata changes in 'Project Phoenix' database.",
+      "iconName": "Lightbulb" 
+    },
+    {
+      "id": "insight2",
+      "text": "Consider archiving 3 older pages not updated in 6 months.",
+      "iconName": "Sparkles"
+    },
+    {
+      "id": "insight3",
+      "text": "User engagement with 'New Feature X' is up by 15% this week.",
+      "iconName": "TrendingUp"
+    }
+  ]
+} 

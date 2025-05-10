@@ -53,6 +53,7 @@ export default function DashboardPage() {
   useEffect(() => {
     if (searchParams.get('sandbox') === '1') {
       setSandboxMode(true);
+      posthog.capture('sandbox_demo_started');
       // Optional: remove the query param from URL after setting the flag
       // router.replace('/dashboard', { scroll: false }); 
     }
@@ -147,15 +148,36 @@ export default function DashboardPage() {
 
     if (isSandbox) {
       posthog.capture('snapshot_start', { demo: true, snapshot_id_optimistic: tempIdString });
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      mutate('/api/snapshots',
-        (currentData: Snapshot[] = []) => currentData.map(s => 
-          s.id === tempIdString ? { ...s, status: 'Completed', sizeKB: Math.floor(Math.random() * 500 + 50) } as Snapshot : s
-        ),
-        false
-      );
-      toast({ title: "Demo Snapshot Saved!", description: "This is a simulated snapshot."});
-      setIsCreatingSnapshot(false);
+      try {
+        // Call the demo API to get a snapshotId and a dummy diffSummary
+        const response = await apiClient<{snapshotId: string, diffSummary: any, success: boolean}>(
+          '/api/snapshots/create', { method: 'POST' } // apiClient handles demo routing
+        );
+
+        // Simulate delay for snapshot completion
+        await new Promise(resolve => setTimeout(resolve, 1500)); 
+        
+        mutate('/api/snapshots',
+          (currentData: Snapshot[] = []) => currentData.map(s => 
+            s.id === tempIdString ? { 
+              ...s, 
+              snapshotIdActual: response.snapshotId, // Use ID from demo API if different
+              status: 'Completed', 
+              sizeKB: Math.floor(Math.random() * 500 + 50), 
+              diffSummary: response.diffSummary // Add the diff summary
+            } as Snapshot : s
+          ),
+          false 
+        );
+        toast({ title: "Demo Snapshot Saved!", description: "A new demo snapshot with changes has been simulated."});
+      } catch (error) {
+        console.error("Error in demo snapshot creation:", error);
+        toast({ title: "Demo Error", description: "Could not simulate snapshot creation.", variant: "destructive" });
+        // Revert optimistic update if demo API call failed
+        mutate('/api/snapshots', (currentData: Snapshot[] = []) => currentData.filter(s => s.id !== tempIdString), false);
+      } finally {
+        setIsCreatingSnapshot(false);
+      }
       return;
     }
 

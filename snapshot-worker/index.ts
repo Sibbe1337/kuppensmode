@@ -20,6 +20,7 @@ import { PubSub } from '@google-cloud/pubsub';
 const PostHogNode = require('posthog-node'); // Use require for CJS compatibility
 import { Pinecone } from '@pinecone-database/pinecone';
 import OpenAI from 'openai';
+import type { PineconeRecord } from '@pinecone-database/pinecone'; // For typing records
 
 const gzipAsync = promisify(gzip);
 
@@ -80,7 +81,23 @@ async function getUserNotionAccessToken(userId: string): Promise<string | null> 
   }
 }
 
-async function fetchAllBlocks(notionClient: NotionClient, queue: PQueue, blockId: string, hashManifest: Record<string, string>): Promise<BlockObjectResponse[]> {
+// Helper function to get plain text from Notion rich text arrays
+function getPlainTextFromRichText(richTextArray: any[]): string {
+  if (!richTextArray || !Array.isArray(richTextArray)) return '';
+  return richTextArray.map(rt => rt.plain_text || '').join('\n'); // Join with newline for better readability if logged
+}
+
+// Array to collect records for Pinecone upsert
+let recordsToUpsertToPinecone: PineconeRecord[] = [];
+const OPENAI_EMBEDDING_MODEL = 'text-embedding-3-small';
+
+async function fetchAllBlocks(
+  notionClient: NotionClient, 
+  queue: PQueue, 
+  blockId: string, 
+  hashManifest: Record<string, string>,
+  currentSnapshotId: string // Pass snapshotId for metadata
+): Promise<BlockObjectResponse[]> {
     let allBlocks: BlockObjectResponse[] = [];
     let nextCursor: string | undefined | null = undefined;
     console.log(`[fetchAllBlocks] Fetching blocks for parent: ${blockId}`);
@@ -93,7 +110,7 @@ async function fetchAllBlocks(notionClient: NotionClient, queue: PQueue, blockId
                     start_cursor: nextCursor || undefined,
                     page_size: 100 
                 })
-            ) as ListBlockChildrenResponse; // Assert type here
+            ) as ListBlockChildrenResponse;
             
             const processedBlocks: BlockObjectResponse[] = [];
             for (const block of response.results as BlockObjectResponse[]) { 
@@ -103,26 +120,66 @@ async function fetchAllBlocks(notionClient: NotionClient, queue: PQueue, blockId
                 hashManifest[block.id] = blockHash;
                 (block as any).contentHash = blockHash; 
 
+                // --- Start Embedding Logic for Text-Based Blocks ---
+                let textToEmbed: string | null = null;
+                const blockType = (block as any).type;
+                const textBlockTypes = ['paragraph', 'heading_1', 'heading_2', 'heading_3', 'bulleted_list_item', 'numbered_list_item', 'to_do', 'quote', 'callout'];
+
+                if (textBlockTypes.includes(blockType)) {
+                  const richTextContent = (block as any)[blockType]?.rich_text;
+                  if (richTextContent) {
+                    textToEmbed = getPlainTextFromRichText(richTextContent);
+                  }
+                }
+                // Add other block types if needed, e.g., table cells, code captions (careful with token limits)
+
+                if (textToEmbed && textToEmbed.trim().length > 0 && openaiClient && pineconeClient && pineconeIndexName) {
+                  try {
+                    console.log(`[Embeddings] Generating embedding for block ${block.id} (type: ${blockType})`);
+                    const embeddingResponse = await openaiClient.embeddings.create({
+                      model: OPENAI_EMBEDDING_MODEL,
+                      input: textToEmbed.substring(0, 8000), // Truncate to avoid exceeding token limits (approx)
+                    });
+                    const embedding = embeddingResponse.data[0]?.embedding;
+                    if (embedding) {
+                      recordsToUpsertToPinecone.push({
+                        id: `${currentSnapshotId}:${block.id}`, // Unique ID for Pinecone: snapshotId:blockId
+                        values: embedding,
+                        metadata: {
+                          snapshotId: currentSnapshotId,
+                          itemId: block.id,
+                          itemType: 'block_text',
+                          blockType: blockType,
+                          originalText: textToEmbed.substring(0, 500), // Store a snippet for context
+                          blockParentId: blockId // The parent_id of this block (page or another block)
+                        }
+                      });
+                    }
+                  } catch (embeddingError) {
+                    console.error(`[Embeddings] Failed to generate or store embedding for block ${block.id}:`, embeddingError);
+                  }
+                }
+                // --- End Embedding Logic ---
+
                 if (block.has_children) { 
                     console.log(`[fetchAllBlocks] Block ${block.id} has children, fetching recursively...`);
-                    const childrenBlocks = await fetchAllBlocks(notionClient, queue, block.id, hashManifest);
-                    (block as any).children = childrenBlocks; // Assign fetched children to the block
-                    processedBlocks.push(block); // block now includes its children and hash
+                    const childrenBlocks = await fetchAllBlocks(notionClient, queue, block.id, hashManifest, currentSnapshotId);
+                    (block as any).children = childrenBlocks;
+                    processedBlocks.push(block);
                 } else {
                     processedBlocks.push(block);
                 }
             }
             
-            allBlocks = [...allBlocks, ...processedBlocks]; // Use spread syntax
+            allBlocks = [...allBlocks, ...processedBlocks];
             nextCursor = response.next_cursor;
-            console.log(`[fetchAllBlocks] Fetched and processed ${processedBlocks.length} blocks for ${blockId}, has_more: ${!!nextCursor}`);
         } catch (error) {
             console.error(`[fetchAllBlocks] Error fetching blocks for ${blockId}, cursor: ${nextCursor}:`, error);
             nextCursor = null; 
         }
     } while (nextCursor);
 
-    console.log(`[fetchAllBlocks] Finished fetching ${allBlocks.length} total blocks (including nested) for parent: ${blockId}`);
+    console.log(`[fetchAllBlocks] Finished fetching ${allBlocks.length} total blocks for parent: ${blockId}`);
     return allBlocks;
 }
 
@@ -169,7 +226,7 @@ async function fetchAllDatabaseRows(notionClient: NotionClient, queue: PQueue, d
             hashManifest[rowPage.id] = pageHash;
             (rowPage as any).contentHash = pageHash; // Add hash to the page object
 
-            const blocks = await fetchAllBlocks(notionClient, queue, rowPage.id, hashManifest);
+            const blocks = await fetchAllBlocks(notionClient, queue, rowPage.id, hashManifest, rowPage.id);
             rowsWithBlocksAndHashes.push({ ...rowPage, blocks: blocks });
             console.log(`[fetchAllDatabaseRows]   Fetched and hashed ${blocks.length} blocks for row ${rowPage.id}`);
         } catch (processError) {
@@ -428,7 +485,7 @@ functions.cloudEvent('snapshotWorker', async (cloudEvent: functions.CloudEvent<P
             const pageHash = computeSha256(pageString);
             hashManifest[pageItem.id] = pageHash;
             
-            const blocks = await fetchAllBlocks(notion, pQueue, pageItem.id, hashManifest); 
+            const blocks = await fetchAllBlocks(notion, pQueue, pageItem.id, hashManifest, snapshotId); 
             detailedItems.push({ ...pageItem, contentHash: pageHash, blocks: blocks });
         } else if (item.object === 'database') {
             const dbItem = item as DatabaseObjectResponse;
@@ -457,7 +514,30 @@ functions.cloudEvent('snapshotWorker', async (cloudEvent: functions.CloudEvent<P
         },
         items: detailedItems 
     };
-    console.log(`[${userId}] Notion data fetch processing complete (content fetching placeholders).`);
+    console.log(`[${userId}] Notion data fetch processing complete.`);
+
+    // --- Upsert embeddings to Pinecone ---
+    if (openaiClient && pineconeClient && pineconeIndexName && recordsToUpsertToPinecone.length > 0) {
+      console.log(`[${userId}] Preparing to upsert ${recordsToUpsertToPinecone.length} embeddings to Pinecone for snapshot ${snapshotId}...`);
+      try {
+        const index = pineconeClient.index(pineconeIndexName); // Target the index
+        // Upsert in batches if necessary (Pinecone has limits, e.g., 100 vectors per upsert or 2MB payload)
+        // For simplicity here, upserting all at once. Production code should batch.
+        const batchSize = 100;
+        for (let i = 0; i < recordsToUpsertToPinecone.length; i += batchSize) {
+          const batch = recordsToUpsertToPinecone.slice(i, i + batchSize);
+          await index.upsert(batch);
+          console.log(`[${userId}] Upserted batch ${i/batchSize + 1} to Pinecone.`);
+        }
+        console.log(`[${userId}] Pinecone upsert completed for snapshot ${snapshotId}.`);
+      } catch (pineconeError) {
+        console.error(`[${userId}] Failed to upsert embeddings to Pinecone for snapshot ${snapshotId}:`, pineconeError);
+        // Decide if this should be a fatal error for the snapshot or just a logged warning.
+        // For now, log and continue creating the main snapshot file.
+      }
+    }
+    recordsToUpsertToPinecone = []; // Clear the array regardless of success or failure for this run
+    // --- End Pinecone Upsert ---
 
     const jsonData = JSON.stringify(finalSnapshotData, null, 2);
     const compressedData = await gzipAsync(Buffer.from(jsonData, 'utf-8'));
