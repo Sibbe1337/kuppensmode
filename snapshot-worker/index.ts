@@ -53,6 +53,18 @@ interface PubSubCloudEventData {
   message: PubSubMessage;
 }
 
+// Define the new structure for hashManifest entries
+export interface HashManifestEntry {
+  hash: string;
+  type: 'page' | 'database' | 'block';
+  name?: string; 
+  blockType?: string; 
+  parentId?: string; 
+  hasTitleEmbedding?: boolean;
+  hasDescriptionEmbedding?: boolean;
+  totalChunks?: number;
+}
+
 // --- Helper Functions ---
 
 // Helper to compute SHA-256 hash
@@ -83,9 +95,9 @@ async function getUserNotionAccessToken(userId: string): Promise<string | null> 
 }
 
 // Helper function to get plain text from Notion rich text arrays
-function getPlainTextFromRichText(richTextArray: any[]): string {
+function getPlainTextFromRichText(richTextArray: any[] | undefined | null): string {
   if (!richTextArray || !Array.isArray(richTextArray)) return '';
-  return richTextArray.map(rt => rt.plain_text || '').join('\n'); // Join with newline for better readability if logged
+  return richTextArray.map(rt => rt.plain_text || '').join('\n');
 }
 
 // Array to collect records for Pinecone upsert
@@ -126,8 +138,8 @@ async function withRetry<T>(fn: () => Promise<T>, retries = 3, delayMs = 1000, o
 async function fetchAllBlocks(
   notionClient: NotionClient, 
   queue: PQueue, 
-  blockId: string, 
-  hashManifest: Record<string, string>,
+  parentId: string, // Renamed from blockId for clarity, this is the ID of the page/block these blocks belong to
+  hashManifest: Record<string, HashManifestEntry>,
   currentSnapshotId: string
 ): Promise<BlockObjectResponse[]> {
     let allBlocks: BlockObjectResponse[] = [];
@@ -137,7 +149,7 @@ async function fetchAllBlocks(
         try {
             const response = await queue.add(async () => 
                 notionClient.blocks.children.list({ 
-                    block_id: blockId, 
+                    block_id: parentId, // Use parentId to fetch children of this parent
                     start_cursor: nextCursor || undefined,
                     page_size: 100 
                 })
@@ -148,18 +160,21 @@ async function fetchAllBlocks(
                 const { last_edited_time, last_edited_by, created_time, created_by, ...hashableBlockContent } = block;
                 const blockString = JSON.stringify(hashableBlockContent);
                 const blockHash = computeSha256(blockString);
-                hashManifest[block.id] = blockHash;
-                (block as any).contentHash = blockHash; 
+                
+                const currentBlockType = (block as any).type;
+                let blockTextSnippet = '';
+                // Attempt to get text from common rich text property patterns
+                const richTextProperty = (block as any)[currentBlockType]?.rich_text || (block as any)[currentBlockType]?.text;
+                if (richTextProperty) {
+                  blockTextSnippet = getPlainTextFromRichText(richTextProperty).substring(0, 100);
+                }
+
+                let totalChunksForThisBlock = 0; // Initialize
 
                 let textToEmbed: string | null = null;
-                const blockType = (block as any).type;
                 const textBlockTypes = ['paragraph', 'heading_1', 'heading_2', 'heading_3', 'bulleted_list_item', 'numbered_list_item', 'to_do', 'quote', 'callout'];
-
-                if (textBlockTypes.includes(blockType)) {
-                  const richTextContent = (block as any)[blockType]?.rich_text;
-                  if (richTextContent) {
-                    textToEmbed = getPlainTextFromRichText(richTextContent).trim();
-                  }
+                if (textBlockTypes.includes(currentBlockType) && richTextProperty) {
+                    textToEmbed = getPlainTextFromRichText(richTextProperty).trim();
                 }
 
                 if (textToEmbed && textToEmbed.length > 0 && openaiClient && pineconeClient && pineconeIndexName && tokenizer) {
@@ -177,6 +192,8 @@ async function fetchAllBlocks(
                   } else if (tokens.length > 0) { 
                     textChunks.push(textToEmbed);
                   }
+
+                  totalChunksForThisBlock = textChunks.length; // Store the number of chunks created
 
                   for (let chunkIndex = 0; chunkIndex < textChunks.length; chunkIndex++) {
                     const chunk = textChunks[chunkIndex];
@@ -196,11 +213,11 @@ async function fetchAllBlocks(
                             snapshotId: currentSnapshotId,
                             itemId: block.id, 
                             itemType: 'block_chunk',
-                            blockType: blockType,
+                            blockType: currentBlockType,
                             chunkSequence: chunkIndex,
-                            totalChunks: textChunks.length,
+                            totalChunks: totalChunksForThisBlock,
                             originalTextSnippet: chunk.substring(0, 200),
-                            blockParentId: blockId 
+                            blockParentId: parentId 
                           }
                         });
                       }
@@ -210,18 +227,26 @@ async function fetchAllBlocks(
                   }
                 }
 
+                hashManifest[block.id] = {
+                  hash: blockHash,
+                  type: 'block',
+                  name: blockTextSnippet || currentBlockType, 
+                  blockType: currentBlockType,
+                  parentId: parentId,
+                  totalChunks: totalChunksForThisBlock > 0 ? totalChunksForThisBlock : undefined
+                };
+                (block as any).contentHash = blockHash; 
+
                 if (block.has_children) { 
                     const childrenBlocks = await fetchAllBlocks(notionClient, queue, block.id, hashManifest, currentSnapshotId);
                     (block as any).children = childrenBlocks;
-                    processedBlocks.push(block);
-                } else {
-                    processedBlocks.push(block);
                 }
+                processedBlocks.push(block);
             }
             allBlocks = [...allBlocks, ...processedBlocks];
             nextCursor = response.next_cursor;
         } catch (error) {
-            console.error(`[fetchAllBlocks] Error fetching blocks for ${blockId}, cursor: ${nextCursor}:`, error);
+            console.error(`[fetchAllBlocks] Error fetching blocks for parent ${parentId}, cursor: ${nextCursor}:`, error);
             nextCursor = null; 
         }
     } while (nextCursor);
@@ -232,7 +257,7 @@ async function fetchAllDatabaseRows(
   notionClient: NotionClient, 
   queue: PQueue, 
   databaseId: string, 
-  hashManifest: Record<string, string>,
+  hashManifest: Record<string, HashManifestEntry>,
   currentSnapshotId: string
 ): Promise<(PageObjectResponse & { blocks?: BlockObjectResponse[], contentHash?: string })[]> {
     let allRows: PageObjectResponse[] = [];
@@ -267,56 +292,59 @@ async function fetchAllDatabaseRows(
         console.log(`[fetchAllDatabaseRows] Processing row (page): ${rowPage.id}`);
         try {
             const { last_edited_time, last_edited_by, created_time, created_by, ...pageRest } = rowPage;
-            const hashablePageContent: any = { ...pageRest }; // Cast to any or create a modifiable copy
-            
+            const hashablePageContent: any = { ...pageRest };
             if (hashablePageContent.parent?.type === 'database_id' && hashablePageContent.parent.database_id === databaseId) {
                 delete hashablePageContent.parent; 
             }
             const pageString = JSON.stringify(hashablePageContent);
-            const pageHash = computeSha256(pageString);
-            hashManifest[rowPage.id] = pageHash;
-            (rowPage as any).contentHash = pageHash; // Add hash to the page object
+            const pageHashVal = computeSha256(pageString);
 
-            // --- Start Embedding Logic for Page Titles within Databases ---
-            if (openaiClient && pineconeClient && pineconeIndexName && tokenizer) {
-                let pageTitleText: string | null = null;
-                const titleProperty = Object.values(rowPage.properties).find(prop => prop.type === 'title');
-                if (titleProperty && (titleProperty as any).title) {
-                    pageTitleText = getPlainTextFromRichText((titleProperty as any).title).trim();
-                }
+            let pageTitleText = 'Untitled Page in DB';
+            const titleProperty = Object.values(rowPage.properties).find(prop => prop.type === 'title');
+            if (titleProperty && 'title' in titleProperty && titleProperty.title) {
+                pageTitleText = getPlainTextFromRichText(titleProperty.title).trim();
+            }
 
-                if (pageTitleText && pageTitleText.length > 0) {
-                    try {
-                        const tokens = tokenizer.encode(pageTitleText);
-                        const truncatedTokens = tokens.slice(0, MAX_CHUNK_TOKENS);
-                        const textForEmbedding = new TextDecoder().decode(tokenizer.decode(truncatedTokens));
-
-                        if (textForEmbedding.trim().length > 0) {
-                            const embeddingResponse = await withRetry(() => openaiClient!.embeddings.create({
-                                model: OPENAI_EMBEDDING_MODEL,
-                                input: textForEmbedding,
-                            }), 3, 1000, `OpenAI embedding for DB page title ${rowPage.id}`);
-                            const embedding = embeddingResponse.data[0]?.embedding;
-                            if (embedding) {
-                                recordsToUpsertToPinecone.push({
-                                    id: `${currentSnapshotId}:${rowPage.id}:title`,
-                                    values: embedding,
-                                    metadata: {
-                                        snapshotId: currentSnapshotId,
-                                        itemId: rowPage.id,
-                                        itemType: 'page_title',
-                                        originalText: pageTitleText.substring(0, 200),
-                                        parentId: databaseId // The DB this page belongs to
-                                    }
-                                });
-                            }
+            let hasTitleEmb = false;
+            if (openaiClient && pageTitleText && pageTitleText.length > 0) {
+                try {
+                    const tokens = tokenizer.encode(pageTitleText);
+                    const truncatedTokens = tokens.slice(0, MAX_CHUNK_TOKENS);
+                    const textForEmbedding = new TextDecoder().decode(tokenizer.decode(truncatedTokens));
+                    if (textForEmbedding.trim().length > 0) {
+                        const embeddingResponse = await withRetry(() => openaiClient!.embeddings.create({
+                            model: OPENAI_EMBEDDING_MODEL,
+                            input: textForEmbedding,
+                        }), 3, 1000, `OpenAI embedding for DB page title ${rowPage.id}`);
+                        const embedding = embeddingResponse.data[0]?.embedding;
+                        if (embedding) {
+                            recordsToUpsertToPinecone.push({
+                                id: `${currentSnapshotId}:${rowPage.id}:title`,
+                                values: embedding,
+                                metadata: {
+                                    snapshotId: currentSnapshotId,
+                                    itemId: rowPage.id,
+                                    itemType: 'page_title',
+                                    originalText: pageTitleText.substring(0, 200),
+                                    parentId: databaseId // The DB this page belongs to
+                                }
+                            });
+                            hasTitleEmb = true;
                         }
-                    } catch (embeddingError) {
-                        console.error(`[Embeddings] Failed permanently for DB page title ${rowPage.id}:`, embeddingError);
                     }
+                } catch (embeddingError) {
+                    console.error(`[Embeddings] Failed permanently for DB page title ${rowPage.id}:`, embeddingError);
                 }
             }
-            // --- End Embedding Logic for Page Titles within Databases ---
+
+            hashManifest[rowPage.id] = {
+              hash: pageHashVal,
+              type: 'page',
+              name: pageTitleText || 'Untitled Page in DB',
+              parentId: databaseId,
+              hasTitleEmbedding: hasTitleEmb
+            };
+            (rowPage as any).contentHash = pageHashVal;
 
             // Pass currentSnapshotId to fetchAllBlocks for blocks within these pages
             const blocks = await fetchAllBlocks(notionClient, queue, rowPage.id, hashManifest, currentSnapshotId);
@@ -513,7 +541,7 @@ functions.cloudEvent('snapshotWorker', async (cloudEvent: functions.CloudEvent<P
 
   const { userId } = job;
   const snapshotId = `snap_${userId}_${new Date().toISOString().replace(/[:.]/g, '-')}`;
-  const hashManifest: Record<string, string> = {}; // Initialize hashManifest
+  const hashManifest: Record<string, HashManifestEntry> = {}; // Initialize hashManifest
 
   if (posthogClient) {
     posthogClient.capture({
@@ -571,37 +599,79 @@ functions.cloudEvent('snapshotWorker', async (cloudEvent: functions.CloudEvent<P
     for (const item of allFetchedItems) {
         console.log(`[${userId}] Processing item: ${item.id} (${item.object}) for snapshot ${snapshotId}`);
         
-        // --- Start Embedding Logic for Page/Database Titles/Descriptions ---
-        if (openaiClient && pineconeClient && pineconeIndexName && tokenizer) {
-            let itemTitleText: string | null = null;
-            let itemDescriptionText: string | null = null;
-            let itemTypeTextForEmbedding: 'page_title' | 'database_title' | 'database_description' | null = null;
+        let itemName: string | undefined;
+        let itemParentId: string | undefined;
+        let itemHash: string;
+        let itemTitleTextForEmbedding: string | null = null;
+        let itemDescriptionTextForEmbedding: string | null = null;
+        let itemTypeTextForEmbedding: 'page_title' | 'database_title' | 'database_description' | null = null;
+        let itemHasTitleEmbedding = false;
+        let itemHasDescriptionEmbedding = false;
 
-            if (item.object === 'page') {
-                const pageItem = item as PageObjectResponse;
-                const titleProperty = Object.values(pageItem.properties).find(prop => prop.type === 'title');
-                if (titleProperty && (titleProperty as any).title) {
-                    itemTitleText = getPlainTextFromRichText((titleProperty as any).title).trim();
-                    itemTypeTextForEmbedding = 'page_title';
-                }
-            } else if (item.object === 'database') {
-                const dbItem = item as DatabaseObjectResponse;
-                if (dbItem.title) { // title is a rich text array
-                    itemTitleText = getPlainTextFromRichText(dbItem.title).trim();
-                    itemTypeTextForEmbedding = 'database_title';
-                }
-                if (dbItem.description) { // description is also a rich text array
-                    itemDescriptionText = getPlainTextFromRichText(dbItem.description).trim();
-                    // We will handle embedding this separately if itemTitleText also exists
-                }
+        if (item.object === 'page') {
+            const pageItem = item; // Already correctly typed as PageObjectResponse due to discriminated union
+            const { last_edited_time, last_edited_by, created_time, created_by, ...hashablePageContent } = pageItem;
+            const pageString = JSON.stringify(hashablePageContent);
+            itemHash = computeSha256(pageString);
+            
+            const titleProperty = Object.values(pageItem.properties).find(prop => prop.type === 'title');
+            if (titleProperty && 'title' in titleProperty && titleProperty.title) {
+                itemName = getPlainTextFromRichText(titleProperty.title).trim();
             }
+            itemTitleTextForEmbedding = itemName || null; // Assign for embedding
+            if (itemTitleTextForEmbedding) itemTypeTextForEmbedding = 'page_title';
 
-            if (itemTitleText && itemTitleText.trim().length > 0 && itemTypeTextForEmbedding) {
+            if (pageItem.parent?.type === 'page_id') itemParentId = pageItem.parent.page_id;
+            else if (pageItem.parent?.type === 'database_id') itemParentId = pageItem.parent.database_id;
+            else if (pageItem.parent?.type === 'workspace') itemParentId = 'workspace';
+
+            hashManifest[pageItem.id] = { hash: itemHash, type: 'page', name: itemName || 'Untitled Page', parentId: itemParentId, hasTitleEmbedding: itemHasTitleEmbedding };
+            (pageItem as any).contentHash = itemHash;
+            
+            const blocks = await fetchAllBlocks(notion, pQueue, pageItem.id, hashManifest, snapshotId); 
+            detailedItems.push({ ...pageItem, blocks: blocks });
+
+        } else if (item.object === 'database') {
+            const dbItem = item; // Correctly typed as DatabaseObjectResponse
+            const { last_edited_time, last_edited_by, created_time, created_by, ...hashableDbContent } = dbItem;
+            const dbString = JSON.stringify(hashableDbContent);
+            itemHash = computeSha256(dbString);
+
+            if (dbItem.title) itemName = getPlainTextFromRichText(dbItem.title).trim();
+            itemTitleTextForEmbedding = itemName || null;
+            if (itemTitleTextForEmbedding) itemTypeTextForEmbedding = 'database_title';
+
+            if (dbItem.description) itemDescriptionTextForEmbedding = getPlainTextFromRichText(dbItem.description).trim() || null;
+            
+            if (dbItem.parent?.type === 'page_id') itemParentId = dbItem.parent.page_id;
+            else if (dbItem.parent?.type === 'workspace') itemParentId = 'workspace';
+
+            hashManifest[dbItem.id] = { 
+                hash: itemHash, 
+                type: 'database', 
+                name: itemName || 'Untitled Database', 
+                parentId: itemParentId, 
+                hasTitleEmbedding: itemHasTitleEmbedding, 
+                hasDescriptionEmbedding: itemHasDescriptionEmbedding 
+            };
+            (dbItem as any).contentHash = itemHash;
+            
+            const rows = await fetchAllDatabaseRows(notion, pQueue, dbItem.id, hashManifest, snapshotId);
+            detailedItems.push({ ...dbItem, rows: rows });
+        } else {
+            // Should not happen due to prior filtering of allFetchedItems
+            console.warn(`[SnapshotWorker] Unexpected item type in allFetchedItems:`, (item as any)?.object);
+            detailedItems.push(item); // Add raw item if type is unknown
+            continue; // Skip embedding for unknown items
+        }
+
+        // --- Embedding Logic (now uses itemTitleTextForEmbedding, itemDescriptionTextForEmbedding) ---
+        if (openaiClient && pineconeClient && pineconeIndexName && tokenizer) {
+            if (itemTitleTextForEmbedding && itemTitleTextForEmbedding.trim().length > 0 && itemTypeTextForEmbedding) {
                 try {
-                    const tokens = tokenizer.encode(itemTitleText);
+                    const tokens = tokenizer.encode(itemTitleTextForEmbedding);
                     const truncatedTokens = tokens.slice(0, MAX_CHUNK_TOKENS);
                     const textForEmbedding = new TextDecoder().decode(tokenizer.decode(truncatedTokens));
-
                     if (textForEmbedding.trim().length > 0) {
                         const embeddingResponse = await withRetry(() => openaiClient!.embeddings.create({
                             model: OPENAI_EMBEDDING_MODEL,
@@ -610,27 +680,20 @@ functions.cloudEvent('snapshotWorker', async (cloudEvent: functions.CloudEvent<P
                         const embedding = embeddingResponse.data[0]?.embedding;
                         if (embedding) {
                             recordsToUpsertToPinecone.push({
-                                id: `${snapshotId}:${item.id}:title`, 
+                                id: `${snapshotId}:${item.id}:title`,
                                 values: embedding,
-                                metadata: {
-                                    snapshotId: snapshotId,
-                                    itemId: item.id,
-                                    itemType: itemTypeTextForEmbedding,
-                                    originalText: itemTitleText.substring(0, 200)
-                                }
+                                metadata: { snapshotId, itemId: item.id, itemType: itemTypeTextForEmbedding, originalText: textForEmbedding.substring(0, 200) }
                             });
+                            itemHasTitleEmbedding = true;
                         }
                     }
-                } catch (embeddingError) {
-                    console.error(`[Embeddings] Failed for ${itemTypeTextForEmbedding} ${item.id}:`, embeddingError);
-                }
+                } catch (embeddingError) { console.error(`[Embeddings] Failed for ${itemTypeTextForEmbedding} ${item.id}:`, embeddingError); }
             }
-            if (itemDescriptionText && itemDescriptionText.trim().length > 0 && item.object === 'database') {
+            if (itemDescriptionTextForEmbedding && itemDescriptionTextForEmbedding.trim().length > 0 && item.object === 'database') {
                  try {
-                    const tokens = tokenizer.encode(itemDescriptionText);
+                    const tokens = tokenizer.encode(itemDescriptionTextForEmbedding);
                     const truncatedTokens = tokens.slice(0, MAX_CHUNK_TOKENS);
                     const textForEmbedding = new TextDecoder().decode(tokenizer.decode(truncatedTokens));
-                    
                     if (textForEmbedding.trim().length > 0) {
                         const embeddingResponse = await withRetry(() => openaiClient!.embeddings.create({
                             model: OPENAI_EMBEDDING_MODEL,
@@ -641,46 +704,13 @@ functions.cloudEvent('snapshotWorker', async (cloudEvent: functions.CloudEvent<P
                             recordsToUpsertToPinecone.push({
                                 id: `${snapshotId}:${item.id}:description`,
                                 values: embedding,
-                                metadata: {
-                                    snapshotId: snapshotId,
-                                    itemId: item.id,
-                                    itemType: 'database_description',
-                                    originalText: itemDescriptionText.substring(0, 200)
-                                }
+                                metadata: { snapshotId, itemId: item.id, itemType: 'database_description', originalText: textForEmbedding.substring(0, 200) }
                             });
+                            itemHasDescriptionEmbedding = true;
                         }
                     }
-                } catch (embeddingError) {
-                    console.error(`[Embeddings] Failed for database_description ${item.id}:`, embeddingError);
-                }
+                } catch (embeddingError) { console.error(`[Embeddings] Failed for database_description ${item.id}:`, embeddingError); }
             }
-        }
-        // --- End Embedding Logic for Page/Database Titles/Descriptions ---
-
-        if (item.object === 'page') {
-            const pageItem = item as PageObjectResponse;
-            console.log(`[${userId}]   Item is a page. Fetching blocks...`);
-            const { last_edited_time, last_edited_by, created_time, created_by, ...hashablePageContent } = pageItem;
-            const pageString = JSON.stringify(hashablePageContent);
-            const pageHash = computeSha256(pageString);
-            hashManifest[pageItem.id] = pageHash;
-            
-            const blocks = await fetchAllBlocks(notion, pQueue, pageItem.id, hashManifest, snapshotId); 
-            detailedItems.push({ ...pageItem, contentHash: pageHash, blocks: blocks });
-        } else if (item.object === 'database') {
-            const dbItem = item as DatabaseObjectResponse;
-            console.log(`[${userId}]   Item is a database. Fetching rows...`);
-            const { last_edited_time, last_edited_by, created_time, created_by, ...hashableDbContent } = dbItem;
-            const dbString = JSON.stringify(hashableDbContent);
-            const dbHash = computeSha256(dbString);
-            hashManifest[dbItem.id] = dbHash;
-
-            const rows = await fetchAllDatabaseRows(notion, pQueue, dbItem.id, hashManifest, snapshotId); 
-            detailedItems.push({ ...dbItem, contentHash: dbHash, rows: rows }); 
-        } else {
-            // This case should ideally not be reached if initial search results are filtered
-            console.log(`[${userId}]   Skipping item of type ${(item as any).object}`);
-            detailedItems.push(item); 
         }
     }
 
@@ -826,7 +856,7 @@ functions.cloudEvent('snapshotWorker', async (cloudEvent: functions.CloudEvent<P
             if (previousManifestExists) {
                 const [compressedOldManifestData] = await previousManifestFile.download();
                 const oldManifestJsonData = (await promisify(require('zlib').gunzip)(compressedOldManifestData)).toString();
-                const oldManifest: Record<string, string> = JSON.parse(oldManifestJsonData);
+                const oldManifest: Record<string, HashManifestEntry> = JSON.parse(oldManifestJsonData);
 
                 let addedCount = 0;
                 let removedCount = 0;
@@ -835,8 +865,8 @@ functions.cloudEvent('snapshotWorker', async (cloudEvent: functions.CloudEvent<P
                 const allKeys = new Set([...Object.keys(hashManifest), ...Object.keys(oldManifest)]);
 
                 allKeys.forEach(key => {
-                    const newHash = hashManifest[key];
-                    const oldHash = oldManifest[key];
+                    const newHash = hashManifest[key].hash;
+                    const oldHash = oldManifest[key].hash;
                     if (newHash && !oldHash) {
                         addedCount++;
                     } else if (!newHash && oldHash) {

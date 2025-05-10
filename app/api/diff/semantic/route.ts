@@ -3,9 +3,21 @@ import { auth } from '@clerk/nextjs/server';
 import { db } from '@/lib/firestore'; // Firestore admin instance
 import { Storage } from '@google-cloud/storage'; // GCS client
 import { gunzipSync } from 'zlib'; // Node.js built-in zlib for decompression
-import { Pinecone } from '@pinecone-database/pinecone';
+import { Pinecone, type RecordMetadata, type PineconeRecord } from '@pinecone-database/pinecone';
 
 export const runtime = 'nodejs';
+
+// Define HashManifestEntry structure (should match snapshot-worker)
+interface HashManifestEntry {
+  hash: string;
+  type: 'page' | 'database' | 'block';
+  name?: string; 
+  blockType?: string; 
+  parentId?: string; 
+  hasTitleEmbedding?: boolean;
+  hasDescriptionEmbedding?: boolean;
+  totalChunks?: number;
+}
 
 interface SemanticDiffRequest {
   userId: string; // Should be derived from auth, not passed by client ideally
@@ -17,9 +29,10 @@ interface SemanticDiffRequest {
 // Define the type for a single changed item detail
 type ChangedItemDetail = {
   id: string;
-  name?: string;
-  type?: string;
-  changeType: 'hash_only_similar' | 'semantic_divergence' | 'hash_match_content_semantically_different_ERROR' | 'pending_semantic_check';
+  name?: string;         // Add name from manifest
+  itemType?: string;       // Add type from manifest (page, database, block)
+  blockType?: string;    // Add blockType if applicable
+  changeType: 'hash_only_similar' | 'semantic_divergence' | 'pending_semantic_check' | 'no_embeddings_found' | 'structural_change';
   similarityScore?: number;
 };
 
@@ -56,7 +69,7 @@ if (pineconeApiKey && pineconeIndexName) {
   console.warn("[API Semantic Diff] Pinecone API Key or Index Name not set. Semantic diff will be limited.");
 }
 
-async function downloadAndParseManifest(gcsPath: string): Promise<Record<string, string>> {
+async function downloadAndParseManifest(gcsPath: string): Promise<Record<string, HashManifestEntry>> {
   if (!BUCKET_NAME) {
     throw new Error("GCS_BUCKET_NAME environment variable not set.");
   }
@@ -70,77 +83,81 @@ async function downloadAndParseManifest(gcsPath: string): Promise<Record<string,
   const file = storage.bucket(BUCKET_NAME).file(filePath);
   const [compressedBuffer] = await file.download();
   const decompressedBuffer = gunzipSync(compressedBuffer);
-  return JSON.parse(decompressedBuffer.toString('utf-8'));
+  return JSON.parse(decompressedBuffer.toString('utf-8')) as Record<string, HashManifestEntry>;
 }
 
-// Helper to get all possible vector IDs for an item from a snapshot
-// This is a simplified assumption. Real logic might need to query metadata or know chunk counts.
-async function getItemVectorIdsForSnapshot(itemId: string, snapshotId: string): Promise<string[]> {
-  // This is highly dependent on how IDs were constructed and if we know the number of chunks.
-  // For now, let's assume a title and potentially up to N chunks (e.g., 10 for an example).
-  // A more robust way would be to query Pinecone metadata for vectors matching itemId and snapshotId.
-  const ids: string[] = [];
-  ids.push(`${snapshotId}:${itemId}:title`); // For page/db titles
-  ids.push(`${snapshotId}:${itemId}:description`); // For db descriptions
-  for (let i = 0; i < 10; i++) { // Assuming max 10 chunks for simplicity here
-    ids.push(`${snapshotId}:${itemId}:chunk:${i}`);
-  }
-  return ids;
+// Helper to average an array of embeddings
+function averageEmbeddings(embeddings: number[][]): number[] | undefined {
+  if (!embeddings || embeddings.length === 0) return undefined;
+  const dimension = embeddings[0].length;
+  if (dimension === 0) return undefined;
+
+  const sum = new Array(dimension).fill(0);
+  embeddings.forEach(vec => {
+    vec.forEach((val, i) => sum[i] += val);
+  });
+  return sum.map(val => val / embeddings.length);
 }
+
+// Helper function for dot product
+function dotProduct(vecA: number[], vecB: number[]): number {
+  if (vecA.length !== vecB.length) {
+    throw new Error("Vectors must be of the same length for dot product.");
+  }
+  return vecA.reduce((sum, val, i) => sum + val * vecB[i], 0);
+}
+
+// Helper function for vector magnitude
+function magnitude(vec: number[]): number {
+  return Math.sqrt(vec.reduce((sum, val) => sum + val * val, 0));
+}
+
+// Helper function for cosine similarity
+function cosineSimilarity(vecA: number[], vecB: number[]): number {
+  if (!vecA || !vecB || vecA.length === 0 || vecB.length === 0) return 0; // Or handle error
+  const product = dotProduct(vecA, vecB);
+  const magA = magnitude(vecA);
+  const magB = magnitude(vecB);
+  if (magA === 0 || magB === 0) return 0; // Avoid division by zero
+  return product / (magA * magB);
+}
+
+// Define similarity thresholds
+const SEMANTIC_SIMILARITY_THRESHOLD_HIGH = 0.95; // If > this, consider very similar despite hash change
+const SEMANTIC_SIMILARITY_THRESHOLD_LOW = 0.85;  // If < this, consider significantly different
+                                             // Between LOW and HIGH could be 'moderately similar' or just 'changed'
 
 export async function POST(request: Request) {
   const { userId: authenticatedUserId } = await auth();
-  if (!authenticatedUserId) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  if (!authenticatedUserId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
     const body: SemanticDiffRequest = await request.json();
     const { snapshotIdFrom, snapshotIdTo } = body;
+    if (!snapshotIdFrom || !snapshotIdTo || !BUCKET_NAME) return NextResponse.json({ error: 'Config error' }, { status: 400 });
 
-    if (!snapshotIdFrom || !snapshotIdTo || !BUCKET_NAME) {
-      return NextResponse.json({ error: 'Missing snapshot IDs or GCS bucket configuration' }, { status: 400 });
-    }
-
-    console.log(`[API Semantic Diff] User: ${authenticatedUserId}, From: ${snapshotIdFrom}, To: ${snapshotIdTo}`);
-
-    // Step 1: Fetch snapshot metadata (manifest paths) from Firestore
+    // Fetch manifests
     const userSnapshotsRef = db.collection('users').doc(authenticatedUserId).collection('snapshots');
     const fromSnapshotDoc = await userSnapshotsRef.doc(snapshotIdFrom).get();
     const toSnapshotDoc = await userSnapshotsRef.doc(snapshotIdTo).get();
-
-    if (!fromSnapshotDoc.exists || !toSnapshotDoc.exists) {
-      return NextResponse.json({ error: 'One or both snapshots not found' }, { status: 404 });
-    }
+    if (!fromSnapshotDoc.exists || !toSnapshotDoc.exists) return NextResponse.json({ error: 'Snapshots not found' }, { status: 404 });
     const fromSnapshotData = fromSnapshotDoc.data();
     const toSnapshotData = toSnapshotDoc.data();
-
-    if (!fromSnapshotData?.manifestPath || !toSnapshotData?.manifestPath) {
-      return NextResponse.json({ error: 'Manifest path missing for one or both snapshots' }, { status: 500 });
-    }
-
-    // Step 2: Download and parse manifests
+    if (!fromSnapshotData?.manifestPath || !toSnapshotData?.manifestPath) return NextResponse.json({ error: 'Manifests missing' }, { status: 500 });
     const manifestFrom = await downloadAndParseManifest(fromSnapshotData.manifestPath);
     const manifestTo = await downloadAndParseManifest(toSnapshotData.manifestPath);
 
-    // Step 3: Compare manifests
-    const addedItems: {id: string}[] = [];
-    const deletedItems: {id: string}[] = [];
-    const potentiallyChangedItems: { id: string; hashFrom: string; hashTo: string }[] = [];
-
+    // Basic diff from manifests
+    const addedItems: any[] = [];
+    const deletedItems: any[] = [];
+    const potentiallyChangedItems: { id: string; fromEntry: HashManifestEntry; toEntry: HashManifestEntry }[] = [];
     const allItemIds = new Set([...Object.keys(manifestFrom), ...Object.keys(manifestTo)]);
-
     for (const itemId of allItemIds) {
-      const hashFrom = manifestFrom[itemId];
-      const hashTo = manifestTo[itemId];
-
-      if (hashTo && !hashFrom) {
-        addedItems.push({ id: itemId });
-      } else if (hashFrom && !hashTo) {
-        deletedItems.push({ id: itemId });
-      } else if (hashFrom && hashTo && hashFrom !== hashTo) {
-        potentiallyChangedItems.push({ id: itemId, hashFrom, hashTo });
-      }
+      const entryFrom = manifestFrom[itemId];
+      const entryTo = manifestTo[itemId];
+      if (entryTo && !entryFrom) addedItems.push({ id: itemId, name: entryTo.name, type: entryTo.type, blockType: entryTo.blockType });
+      else if (entryFrom && !entryTo) deletedItems.push({ id: itemId, name: entryFrom.name, type: entryFrom.type, blockType: entryFrom.blockType });
+      else if (entryFrom && entryTo && entryFrom.hash !== entryTo.hash) potentiallyChangedItems.push({ id: itemId, fromEntry: entryFrom, toEntry: entryTo });
     }
 
     let semanticallySimilarCount = 0;
@@ -149,41 +166,104 @@ export async function POST(request: Request) {
 
     if (pinecone && pineconeIndexName) {
       const pineconeIdx = pinecone.index(pineconeIndexName);
-      for (const item of potentiallyChangedItems) {
-        console.log(`[Semantic Diff] Checking item ${item.id} for semantic changes.`);
-        const vectorIdsFrom = await getItemVectorIdsForSnapshot(item.id, snapshotIdFrom);
-        const vectorIdsTo = await getItemVectorIdsForSnapshot(item.id, snapshotIdTo);
+      for (const changed of potentiallyChangedItems) {
+        const { id: itemId, fromEntry, toEntry } = changed;
+        let itemSimilarity = 0;
+        let itemChangeType: ChangedItemDetail['changeType'] = 'pending_semantic_check';
+        let comparedSomething = false;
+        let debugComparisonType = 'none';
 
-        // Fetch vectors - this can be batched for multiple items for efficiency
-        let vectorsFromResponse, vectorsToResponse;
-        if (vectorIdsFrom.length > 0) {
-          vectorsFromResponse = await pineconeIdx.fetch(vectorIdsFrom);
-        }
-        if (vectorIdsTo.length > 0) {
-          vectorsToResponse = await pineconeIdx.fetch(vectorIdsTo);
-        }
-        
-        // TODO: Process fetched vectors (vectorsFromResponse.records, vectorsToResponse.records)
-        // This would involve: 
-        // 1. Aligning corresponding chunks/parts of an item if it was chunked.
-        // 2. Calculating cosine similarity between corresponding vector pairs.
-        // 3. Aggregating similarity scores if multiple chunks per item.
-        // 4. Deciding if overall item is semantically similar or changed based on a threshold.
+        try {
+          let idsToFetchFromItem: string[] = [];
+          let idsToFetchToItem: string[] = [];
 
-        // Placeholder logic for now:
-        console.log(`[Semantic Diff] Placeholder: Item ${item.id} has hash change. Semantic check pending.`);
-        changedItemDetailsOutput.push({
-          id: item.id,
-          changeType: 'pending_semantic_check', // Mark as pending real check
-        });
+          // Construct IDs based on item type from manifest
+          if (fromEntry.type === 'page' || fromEntry.type === 'database') {
+            if (fromEntry.hasTitleEmbedding) idsToFetchFromItem.push(`${snapshotIdFrom}:${itemId}:title`);
+            if (fromEntry.type === 'database' && fromEntry.hasDescriptionEmbedding) idsToFetchFromItem.push(`${snapshotIdFrom}:${itemId}:description`);
+          }
+          if (toEntry.type === 'page' || toEntry.type === 'database') {
+            if (toEntry.hasTitleEmbedding) idsToFetchToItem.push(`${snapshotIdTo}:${itemId}:title`);
+            if (toEntry.type === 'database' && toEntry.hasDescriptionEmbedding) idsToFetchToItem.push(`${snapshotIdTo}:${itemId}:description`);
+          }
+          
+          // If the item itself is a block, fetch all its chunks based on totalChunks from manifest
+          if (fromEntry.type === 'block' && fromEntry.totalChunks && fromEntry.totalChunks > 0) {
+            for (let i = 0; i < fromEntry.totalChunks; i++) idsToFetchFromItem.push(`${snapshotIdFrom}:${itemId}:chunk:${i}`);
+          }
+          if (toEntry.type === 'block' && toEntry.totalChunks && toEntry.totalChunks > 0) {
+            for (let i = 0; i < toEntry.totalChunks; i++) idsToFetchToItem.push(`${snapshotIdTo}:${itemId}:chunk:${i}`);
+          }
+          
+          const allIdsToFetch = [...new Set([...idsToFetchFromItem, ...idsToFetchToItem])];
+          let fetchedVectorsMap: Record<string, PineconeRecord> = {};
+          if (allIdsToFetch.length > 0) {
+            const fetchResp = await pineconeIdx.fetch(allIdsToFetch);
+            if (fetchResp.records) fetchedVectorsMap = fetchResp.records;
+          }
+
+          // Extract and prepare vectors for comparison
+          let vecsFrom: number[][] = [];
+          let vecsTo: number[][] = [];
+          
+          if (fromEntry.type === 'page' || fromEntry.type === 'database') {
+            const titleVec = fetchedVectorsMap[`${snapshotIdFrom}:${itemId}:title`]?.values;
+            if (titleVec) vecsFrom.push(titleVec);
+            if (fromEntry.type === 'database') {
+              const descVec = fetchedVectorsMap[`${snapshotIdFrom}:${itemId}:description`]?.values;
+              if (descVec) vecsFrom.push(descVec); // If both title and desc exist, they'll be averaged
+            }
+          } else if (fromEntry.type === 'block' && fromEntry.totalChunks && fromEntry.totalChunks > 0) {
+            for (let i = 0; i < fromEntry.totalChunks; i++) {
+              const chunkVec = fetchedVectorsMap[`${snapshotIdFrom}:${itemId}:chunk:${i}`]?.values;
+              if (chunkVec) vecsFrom.push(chunkVec);
+            }
+          }
+
+          if (toEntry.type === 'page' || toEntry.type === 'database') {
+            const titleVec = fetchedVectorsMap[`${snapshotIdTo}:${itemId}:title`]?.values;
+            if (titleVec) vecsTo.push(titleVec);
+            if (toEntry.type === 'database') {
+              const descVec = fetchedVectorsMap[`${snapshotIdTo}:${itemId}:description`]?.values;
+              if (descVec) vecsTo.push(descVec);
+            }
+          } else if (toEntry.type === 'block' && toEntry.totalChunks && toEntry.totalChunks > 0) {
+            for (let i = 0; i < toEntry.totalChunks; i++) {
+              const chunkVec = fetchedVectorsMap[`${snapshotIdTo}:${itemId}:chunk:${i}`]?.values;
+              if (chunkVec) vecsTo.push(chunkVec);
+            }
+          }
+          
+          // Perform Comparison (using averaged embeddings if multiple were collected for an item type)
+          if (vecsFrom.length > 0 && vecsTo.length > 0) {
+            const avgVecFrom = averageEmbeddings(vecsFrom);
+            const avgVecTo = averageEmbeddings(vecsTo);
+            if (avgVecFrom && avgVecTo) {
+              itemSimilarity = cosineSimilarity(avgVecFrom, avgVecTo);
+              comparedSomething = true;
+              debugComparisonType = fromEntry.type; 
+            }
+          }
+
+          if (comparedSomething) {
+            if (itemSimilarity >= SEMANTIC_SIMILARITY_THRESHOLD_HIGH) itemChangeType = 'hash_only_similar';
+            else if (itemSimilarity < SEMANTIC_SIMILARITY_THRESHOLD_LOW) itemChangeType = 'semantic_divergence';
+            else itemChangeType = 'semantic_divergence'; 
+
+            if (itemChangeType === 'hash_only_similar') semanticallySimilarCount++;
+            else semanticallyChangedCount++;
+          } else {
+            itemChangeType = 'no_embeddings_found';
+          }
+        } catch (e) {
+          console.error(`[Semantic Diff] Error processing item ${itemId} (${fromEntry.type}):`, e);
+          itemChangeType = 'pending_semantic_check';
+        }
+        changedItemDetailsOutput.push({ id: itemId, name: fromEntry.name, itemType: fromEntry.type, blockType: fromEntry.blockType, changeType: itemChangeType, similarityScore: comparedSomething ? parseFloat(itemSimilarity.toFixed(4)) : undefined });
       }
     } else {
-      // Pinecone not configured, mark all hash changes as just contentHashChanged without semantic info
-      potentiallyChangedItems.forEach(item => {
-        changedItemDetailsOutput.push({
-          id: item.id,
-          changeType: 'hash_only_similar', // Or a specific 'semantic_check_unavailable'
-        });
+      potentiallyChangedItems.forEach(changed => {
+        changedItemDetailsOutput.push({ id: changed.id, name: changed.fromEntry.name, itemType: changed.fromEntry.type, blockType: changed.fromEntry.blockType, changeType: 'hash_only_similar' });
       });
     }
     
@@ -191,22 +271,20 @@ export async function POST(request: Request) {
       summary: {
         added: addedItems.length,
         deleted: deletedItems.length,
-        contentHashChanged: potentiallyChangedItems.length, // Total items with hash diff
-        semanticallySimilar: semanticallySimilarCount, // Will be updated by TODO logic
-        semanticallyChanged: semanticallyChangedCount, // Will be updated by TODO logic
+        contentHashChanged: potentiallyChangedItems.length,
+        semanticallySimilar: semanticallySimilarCount,
+        semanticallyChanged: semanticallyChangedCount,
       },
       details: {
-        addedItems: addedItems.map(i => ({id: i.id, name: `Item ${i.id}`})), // Add placeholder names
-        deletedItems: deletedItems.map(i => ({id: i.id, name: `Item ${i.id}`})),
+        addedItems: addedItems.map(i => ({id: i.id, name: i.name, type: i.type, blockType: i.blockType})),
+        deletedItems: deletedItems.map(i => ({id: i.id, name: i.name, type: i.type, blockType: i.blockType})),
         changedItems: changedItemDetailsOutput,
       },
       message: pinecone && pineconeIndexName 
-        ? "Hash comparison complete. Semantic analysis placeholders in effect."
+        ? "Semantic diff analysis performed."
         : "Hash comparison complete. Pinecone not configured; semantic analysis skipped."
     };
-
     return NextResponse.json(result);
-
   } catch (error: any) {
     console.error("[API Semantic Diff] Error:", error);
     return NextResponse.json({ error: "Failed to process semantic diff.", details: error.message }, { status: 500 });
