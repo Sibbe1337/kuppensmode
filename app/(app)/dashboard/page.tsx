@@ -10,7 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useSWRConfig } from 'swr';
 import { Loader2, Plus } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import OnboardingTour from "@/components/OnboardingTour";
+import Tour from "@/components/Tour";
 import posthog from 'posthog-js';
 import { useQuota } from '@/hooks/useQuota';
 import type { Snapshot } from "@/types";
@@ -18,6 +18,9 @@ import UpgradeModal from '@/components/modals/UpgradeModal';
 import { useSearchParams, useRouter } from 'next/navigation';
 import PreviewSheet from "@/components/dashboard/PreviewSheet";
 import RestoreWizard from "@/components/dashboard/RestoreWizard";
+import useSWR from 'swr';
+import { fetcher } from '@/lib/fetcher';
+import { EmptyState } from "@/components/ui/EmptyState";
 
 export default function DashboardPage() {
   const searchParams = useSearchParams();
@@ -33,6 +36,9 @@ export default function DashboardPage() {
   const [isToastPreviewSheetOpen, setIsToastPreviewSheetOpen] = useState(false);
   const [snapshotForRestoreToast, setSnapshotForRestoreToast] = useState<Snapshot | null>(null);
   const [isRestoreWizardOpenFromToast, setIsRestoreWizardOpenFromToast] = useState(false);
+
+  // Fetch snapshots data
+  const { data: snapshots, error: snapshotsError, isLoading: isLoadingSnapshots } = useSWR<Snapshot[]>('/api/snapshots', fetcher);
 
   useEffect(() => {
     const checkoutStatus = searchParams.get('checkout');
@@ -87,7 +93,8 @@ export default function DashboardPage() {
         return;
     }
     if (isOverSnapshotLimit) {
-        setIsUpgradeModalOpen(true);
+        // setIsUpgradeModalOpen(true); // Old behavior
+        router.push('/pricing?reason=limit'); // New behavior: route to pricing page
         return;
     }
     setIsCreatingSnapshot(true);
@@ -135,7 +142,7 @@ export default function DashboardPage() {
 
       mutate('/api/snapshots'); 
       mutate('/api/user/quota'); 
-      posthog.capture('snapshot_initiated');
+      posthog.capture('snapshot_start', { snapshot_id_optimistic: newSnapshotId });
 
       // Updated toast with actions
       toast({
@@ -200,9 +207,35 @@ export default function DashboardPage() {
 
           <ActivationChecklist /> 
 
-          <SnapshotsTable />
+          {/* Conditional rendering for snapshots */}
+          {isLoadingSnapshots && (
+            <div className="flex justify-center items-center py-10">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          )}
+          {snapshotsError && (
+            <div className="text-center py-10 px-4 border border-dashed border-destructive rounded-lg text-destructive">
+              <p className="text-xl font-semibold mb-1">Failed to load snapshots</p>
+              <p className="text-sm">{snapshotsError.message || "Could not fetch snapshot data."}</p>
+            </div>
+          )}
+          {snapshots && snapshots.length === 0 && !isLoadingSnapshots && !snapshotsError && (
+            <EmptyState
+              title="No snapshots yet"
+              description="Create your first backup in ~60 sec and sleep better tonight."
+              illustration="/assets/empty-backup.svg" // Make sure this asset exists
+            >
+              <Button onClick={handleCreateSnapshot} className="mt-6">
+                <Plus className="mr-2 h-4 w-4" />
+                Take my first snapshot
+              </Button>
+            </EmptyState>
+          )}
+          {snapshots && snapshots.length > 0 && !isLoadingSnapshots && !snapshotsError && (
+            <SnapshotsTable snapshots={snapshots} />
+          )}
 
-          <OnboardingTour /> 
+          <Tour />
         </div>
       </SignedIn>
       <SignedOut>

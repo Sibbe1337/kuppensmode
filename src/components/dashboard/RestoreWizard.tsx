@@ -26,6 +26,7 @@ import { fetcher } from "@/lib/fetcher";
 import useSWR from 'swr';
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
+import NotionPageSearchCombobox, { NotionPageInfo } from './NotionPageSearchCombobox';
 
 interface RestoreWizardProps {
   snapshot: Snapshot | null;
@@ -95,8 +96,9 @@ const RestoreWizard: React.FC<RestoreWizardProps> = ({ snapshot, open, onOpenCha
   const { lastEvent, isConnected } = useRestoreProgress(currentRestoreId ?? undefined); // *** UNCOMMENTED THIS HOOK ***
 
   const [copiedId, setCopiedId] = useState(false);
-  const [restoreTargetType, setRestoreTargetType] = useState<'new_page' | 'specific_page' | 'in_place'>('new_page'); // Default to safe option
-  const [targetParentPageId, setTargetParentPageId] = useState<string | null>(null); // For specific page selection later
+  const [restoreTargetType, setRestoreTargetType] = useState<'new_page' | 'specific_page' | 'in_place'>('new_page');
+  const [targetParentPageId, setTargetParentPageId] = useState<string | null>(null);
+  const [targetParentPageTitle, setTargetParentPageTitle] = useState<string | null>(null);
 
   // Use the helper function to clean the ID for the URL
   const cleanSnapshotId = snapshot ? getCleanSnapshotId(snapshot.id) : null;
@@ -164,8 +166,9 @@ const RestoreWizard: React.FC<RestoreWizardProps> = ({ snapshot, open, onOpenCha
       setStatusMessage("Getting things ready...");
       setCurrentRestoreId(null);
       restoreStartTimeRef.current = null;
-      setRestoreTargetType('new_page'); // Reset to default on open
+      setRestoreTargetType('new_page');
       setTargetParentPageId(null);
+      setTargetParentPageTitle(null);
     } else {
       // Reset when dialog closes
       setIsRestoreInProgress(false);
@@ -238,7 +241,6 @@ const RestoreWizard: React.FC<RestoreWizardProps> = ({ snapshot, open, onOpenCha
   const handleBeginRestore = async () => {
     if (!snapshot || currentRestoreId) return;
 
-    // Since we removed item selection, we pass null for targets (full restore)
     const selectedIdsArray: string[] = []; 
     console.log("Attempting to initiate restore for snapshot:", snapshot.id, "(Full Restore - No Targets Selected)");
     
@@ -247,22 +249,29 @@ const RestoreWizard: React.FC<RestoreWizardProps> = ({ snapshot, open, onOpenCha
     setStatusMessage("Initiating restore..."); 
     setIsRestoreInProgress(true);
     restoreStartTimeRef.current = Date.now();
-    posthog.capture('restore_started', { snapshot_id: snapshot.id, target_count: selectedIdsArray.length, restore_target_type: restoreTargetType });
+    
+    let effectiveTargetParentPageId: string | null = targetParentPageId;
 
-    let effectiveTargetParentPageId: string | null = null;
-    if (restoreTargetType === 'specific_page') {
-        // TODO: Get ID from page picker UI once implemented
-        // effectiveTargetParentPageId = targetParentPageId; 
-        console.warn("Restore to specific page selected, but page picker not implemented. Defaulting to null parent.");
-         effectiveTargetParentPageId = null; // Fallback for now
-    } else if (restoreTargetType === 'new_page') {
-        // Backend logic will need to handle creating a new wrapper page if this option is chosen
-        // For now, sending null might behave like 'in_place' depending on worker logic
-         console.log("Restore target type: new_page (passing null parent for now)");
+    // PostHog capture BEFORE potentially lengthy API calls or modifications
+    posthog.capture('restore_started', { 
+        snapshot_id: snapshot.id, 
+        target_count: selectedIdsArray.length, 
+        restore_target_type: restoreTargetType,
+        ...(restoreTargetType === 'specific_page' && effectiveTargetParentPageId && { target_parent_page_id: effectiveTargetParentPageId })
+    });
+
+    if (restoreTargetType === 'new_page') {
+         console.log("Restore target type: new_page (passing null parent)");
          effectiveTargetParentPageId = null; 
-    } else { // 'in_place'
+    } else if (restoreTargetType === 'in_place') {
          console.log("Restore target type: in_place (passing null parent)");
          effectiveTargetParentPageId = null; 
+    } else if (restoreTargetType === 'specific_page' && !effectiveTargetParentPageId) {
+        // If specific page is chosen but no page ID is set (e.g. user didn't select one)
+        // It might be better to prevent proceeding or default, for now, let it pass as null as per previous logic
+        // Or, disable "Next" button in Step 2 if this is not set.
+        console.warn("Restore target type: specific_page, but no targetParentPageId selected. Defaulting to null parent.");
+        effectiveTargetParentPageId = null; 
     }
 
     try {
@@ -271,8 +280,8 @@ const RestoreWizard: React.FC<RestoreWizardProps> = ({ snapshot, open, onOpenCha
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           snapshotId: snapshot.id, 
-          targets: selectedIdsArray, // Use derived selected IDs
-          targetParentPageId: effectiveTargetParentPageId // Pass the determined parent ID
+          targets: selectedIdsArray, 
+          targetParentPageId: effectiveTargetParentPageId 
         }),
       });
 
@@ -375,7 +384,13 @@ const RestoreWizard: React.FC<RestoreWizardProps> = ({ snapshot, open, onOpenCha
               <Label className='text-sm font-medium'>Restore Location:</Label>
               <RadioGroup 
                 value={restoreTargetType}
-                onValueChange={(value) => setRestoreTargetType(value as any)} 
+                onValueChange={(value) => {
+                    setRestoreTargetType(value as any);
+                    if (value !== 'specific_page') {
+                        setTargetParentPageId(null); // Clear if not specific page
+                        setTargetParentPageTitle(null);
+                    }
+                }} 
                 className="mt-2 space-y-2"
               >
                 <div className="flex items-center space-x-2">
@@ -385,13 +400,26 @@ const RestoreWizard: React.FC<RestoreWizardProps> = ({ snapshot, open, onOpenCha
                     <p className='text-xs text-muted-foreground'>Creates a new page in your Notion root containing the restored items.</p>
                   </Label>
                 </div>
-                 {/* TODO: Implement Page Picker UI */}
-                 <div className="flex items-center space-x-2 opacity-50 cursor-not-allowed"> 
-                   <RadioGroupItem value="specific_page" id="target-specific" disabled />
-                   <Label htmlFor="target-specific" className="text-sm font-normal">
-                     Restore into a specific existing page...
-                     <p className='text-xs text-muted-foreground'>Select a page... (Coming Soon)</p>
-                   </Label>
+                 
+                 <div className="flex items-start space-x-2"> 
+                   <RadioGroupItem value="specific_page" id="target-specific" />
+                   <div className="flex-grow">
+                     <Label htmlFor="target-specific" className="text-sm font-normal cursor-pointer">
+                       Restore into a specific existing page...
+                       <p className='text-xs text-muted-foreground'>Select a page you own to restore the content into.</p>
+                     </Label>
+                     {restoreTargetType === 'specific_page' && (
+                        <div className="mt-2">
+                            <NotionPageSearchCombobox 
+                                selectedPageId={targetParentPageId}
+                                onPageSelect={(page) => {
+                                    setTargetParentPageId(page?.id || null);
+                                    setTargetParentPageTitle(page?.title || null);
+                                }}
+                            />
+                        </div>
+                     )}
+                   </div>
                  </div>
                  <div className="flex items-center space-x-2 opacity-50 cursor-not-allowed"> 
                    <RadioGroupItem value="in_place" id="target-inplace" disabled />
@@ -472,7 +500,7 @@ const RestoreWizard: React.FC<RestoreWizardProps> = ({ snapshot, open, onOpenCha
                   {currentStep < 3 && (
                     <Button 
                       onClick={goToNextStep}
-                      disabled={isRestoreInProgress}
+                      disabled={isRestoreInProgress || (currentStep === 2 && restoreTargetType === 'specific_page' && !targetParentPageId)}
                     >
                       Next
                     </Button>

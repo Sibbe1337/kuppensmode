@@ -83,6 +83,23 @@ export async function POST(request: Request) {
 
   const restoreId = uuid();
 
+  // Create an initial Firestore document for this restore job
+  const restoreDocRef = db.collection('users').doc(userId).collection('restores').doc(restoreId);
+  try {
+    await restoreDocRef.set({
+      snapshotId: snapshotId,
+      requestedAt: FieldValue.serverTimestamp(),
+      status: 'initiated',
+      targetParentPageId: targetParentPageId ?? null,
+      // restoreRootPageId and restoreUrl will be populated by the worker upon successful completion
+    });
+    console.log(`Initial restore document ${restoreId} created for user: ${userId}`);
+  } catch (dbError) {
+    console.error(`Failed to create initial restore document for ${restoreId}:`, dbError);
+    // Decide if this should be a fatal error. For now, log and continue to queue the job.
+    // If the frontend relies on this doc existing, this might need to be rethought.
+  }
+
   console.log(`Queueing restore job: ${restoreId} for user: ${userId}, snapshot: ${snapshotId}, targetParent: ${targetParentPageId ?? 'Default'}`);
 
   // Construct the job payload

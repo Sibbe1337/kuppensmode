@@ -13,6 +13,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { Progress } from "@/components/ui/progress";
 
 const QuotaProgressButton: React.FC = () => {
   const { quota, isLoading: isQuotaLoading, isError: isQuotaError } = useQuota();
@@ -37,15 +38,30 @@ const QuotaProgressButton: React.FC = () => {
   let buttonClasses = ""; // Use classes for destructive/warning states
 
   if (isFull && isStarter) {
-    buttonContent = "Upgrade";
-    tooltipContent = `Limit reached! ${tooltipContent}. Upgrade for more.`;
+    buttonContent = (
+      <div className="flex items-center">
+        <Zap className="h-4 w-4 mr-1.5" />
+        Upgrade
+      </div>
+    );
+    tooltipContent = `Limit reached! ${snapshotsUsed}/${snapshotsLimit} backups. Upgrade for more.`;
     buttonClasses = "bg-destructive hover:bg-destructive/90 text-destructive-foreground";
   } else if (isAlmostFull && isStarter) {
-    buttonContent = "Upgrade";
-    tooltipContent = `Almost full! ${tooltipContent}. Consider upgrading.`;
+    buttonContent = (
+      <div className="flex items-center">
+        <Zap className="h-4 w-4 mr-1.5" />
+        Upgrade
+      </div>
+    );
+    tooltipContent = `Almost full! ${snapshotsUsed}/${snapshotsLimit} backups. Consider upgrading.`;
     buttonClasses = "bg-orange-500 hover:bg-orange-600 text-white border-orange-500";
   } else {
-    buttonContent = `${snapshotsUsed}/${snapshotsLimit}`;
+    buttonContent = (
+      <div className="flex flex-col items-center w-full px-1">
+        <Progress value={usagePercent} className="h-2 w-full" />
+        <span className="text-xs mt-0.5">{`${snapshotsUsed}/${snapshotsLimit} backups`}</span>
+      </div>
+    );
   }
 
   return (
@@ -54,15 +70,15 @@ const QuotaProgressButton: React.FC = () => {
         <Tooltip>
           <TooltipTrigger asChild>
             <Button 
-              variant="outline" // Base variant
-              size="sm"
+              variant="outline" 
+              size={ (isFull && isStarter) || (isAlmostFull && isStarter) ? "sm" : "default" }
               className={cn(
-                "fixed top-4 right-4 md:right-6 h-10 rounded-md z-50 shadow-lg",
-                buttonClasses // Apply conditional classes
+                "fixed top-4 right-4 md:right-6 rounded-md z-50 shadow-lg",
+                (isFull && isStarter) || (isAlmostFull && isStarter) ? "h-10" : "h-auto py-2 px-3",
+                buttonClasses 
               )}
               onClick={() => setIsUpgradeModalOpen(true)}
             >
-              {(isFull && isStarter) || (isAlmostFull && isStarter) ? <Zap className="h-4 w-4 mr-1.5" /> : null}
               {buttonContent}
             </Button>
           </TooltipTrigger>

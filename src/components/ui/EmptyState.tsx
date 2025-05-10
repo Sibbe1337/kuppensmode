@@ -5,6 +5,7 @@ interface EmptyStateProps {
   title: string;
   description?: string;
   icon?: React.ReactNode;
+  illustration?: string;
   className?: string;
   children?: React.ReactNode; // For adding buttons or other elements
 }
@@ -22,13 +23,18 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
   title,
   description,
   icon = <PlaceholderIllustration />,
+  illustration,
   className,
   children,
 }) => {
   return (
     <div className={cn("flex flex-col items-center justify-center text-center p-8 md:p-12 border border-dashed rounded-lg", className)}>
       <div className="mb-4">
-        {icon}
+        {illustration ? (
+          <img src={illustration} alt={title} className="h-32 w-32 mx-auto mb-2" />
+        ) : (
+          icon
+        )}
       </div>
       <h3 className="text-lg font-semibold text-foreground mb-1">{title}</h3>
       {description && (

@@ -6,6 +6,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { ClerkProvider } from '@clerk/nextjs';
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { PostHogProvider } from "@/components/PostHogProvider";
+import SiteBanner from "@/components/SiteBanner";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -34,6 +35,7 @@ export default function RootLayout({
               disableTransitionOnChange
             >
               <ErrorBoundary>
+                <SiteBanner />
                 {children} 
                 <Toaster />
               </ErrorBoundary>

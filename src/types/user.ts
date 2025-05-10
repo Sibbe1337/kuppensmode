@@ -31,5 +31,7 @@ export interface Snapshot {
   id: string; 
   timestamp: string; // ISO date string
   sizeKB: number;
-  status: string;
+  status: string; // This is for the backup status itself
+  latestRestoreUrl?: string; // URL of the latest successful restore in Notion
+  latestRestoreStatus?: 'pending' | 'initiated' | 'completed' | 'failed' | string; // Status of the latest restore attempt
 } 

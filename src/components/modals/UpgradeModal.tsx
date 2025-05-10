@@ -18,6 +18,7 @@ import { loadStripe } from '@stripe/stripe-js';
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 
 interface PlanFromApi {
   id: string; 
@@ -52,6 +53,7 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onOpenChange, trigg
   const { toast } = useToast();
   const [isRedirecting, setIsRedirecting] = useState<string | null>(null);
   const [billingCycle, setBillingCycle] = useState<'month' | 'year'>('month');
+  const [teamSeats, setTeamSeats] = useState(1);
 
   useEffect(() => {
     console.log("UpgradeModal: isOpen prop changed to:", isOpen);
@@ -66,8 +68,8 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onOpenChange, trigg
     }
   });
 
-  const handleUpgrade = async (priceId: string, planName: string) => {
-    console.log(`UpgradeModal: handleUpgrade CALLED for plan: ${planName}, priceId: ${priceId}`);
+  const handleUpgrade = async (priceId: string, planName: string, seats?: number) => {
+    console.log(`UpgradeModal: handleUpgrade CALLED for plan: ${planName}, priceId: ${priceId}, seats: ${seats}`);
     setIsRedirecting(priceId);
     
     if (!stripePromise) {
@@ -82,7 +84,7 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onOpenChange, trigg
       const response = await fetch('/api/billing/checkout-session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ priceId }),
+        body: JSON.stringify({ priceId, ...(seats && seats > 0 && { seats }) }),
       });
 
       console.log("UpgradeModal: checkout-session API response status:", response.status);
@@ -183,7 +185,8 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onOpenChange, trigg
               }
               
               // Determine if this is the "Most Popular" - example logic
-              const isMostPopular = productName === 'Pro'; // Or based on a metadata flag
+              const isMostPopular = productName === 'Pro'; 
+              const isTeamsPlan = productName.toLowerCase() === 'teams';
 
               return (
                 <div key={priceForCurrentCycle.productId || priceForCurrentCycle.id} 
@@ -199,6 +202,24 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onOpenChange, trigg
                     {billingCycle === 'year' ? `Billed as $${(parseFloat(priceForCurrentCycle.price.substring(1)) * 12).toFixed(2)} per year` : 'Billed monthly'}
                   </p>
                   
+                  {/* Seat Picker for Teams Plan */}
+                  {isTeamsPlan && (
+                    <div className="my-3 space-y-1.5">
+                      <Label htmlFor={`seats-picker-${priceForCurrentCycle.id}`} className="text-sm font-medium">
+                        Number of Seats (1-20):
+                      </Label>
+                      <Input 
+                        id={`seats-picker-${priceForCurrentCycle.id}`}
+                        type="number" 
+                        min={1} 
+                        max={20} 
+                        value={teamSeats} 
+                        onChange={(e) => setTeamSeats(Math.max(1, Math.min(20, parseInt(e.target.value) || 1)))}
+                        className="w-full"
+                      />
+                    </div>
+                  )}
+                  
                   <ul className="mt-3 mb-6 space-y-2 text-sm text-muted-foreground flex-grow">
                     {priceForCurrentCycle.features.slice(0, 3).map(feature => (
                        <li key={feature} className="flex items-center">
@@ -211,7 +232,7 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onOpenChange, trigg
                   <Button 
                     variant={isMostPopular ? 'default' : 'outline'}
                     className="mt-auto w-full py-3 text-base"
-                    onClick={() => handleUpgrade(priceForCurrentCycle.id, priceForCurrentCycle.nickname || priceForCurrentCycle.name)}
+                    onClick={() => handleUpgrade(priceForCurrentCycle.id, priceForCurrentCycle.nickname || priceForCurrentCycle.name, isTeamsPlan ? teamSeats : undefined)}
                     disabled={isRedirecting === priceForCurrentCycle.id}
                   >
                     {isRedirecting === priceForCurrentCycle.id ? <Loader2 className="h-4 w-4 mr-2 animate-spin"/> : <Zap className="h-4 w-4 mr-2" />}

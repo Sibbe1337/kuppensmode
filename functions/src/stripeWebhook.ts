@@ -3,44 +3,99 @@ import Stripe from 'stripe';
 import { getSecret } from './lib/secrets';
 import { db } from './lib/firestore';
 import { Timestamp } from '@google-cloud/firestore';
+const PostHog = require('posthog-node');
 
-// Define a type for expected user data structure (simplified)
-interface UserUpdateData {
-  plan: 'free' | 'paid';
-  stripeCustomerId?: string;
-  stripeSubscriptionId?: string;
-  planActivatedAt?: Timestamp;
+// Define DEFAULT_USER_QUOTA locally for robustness in Cloud Function environment
+// Matches structure from notion-lifeline/src/config/defaults.ts
+interface UserQuota {
+  planName: string;
+  planId: string; // Conceptual planId, e.g., "free", "paid_monthly_team"
+  snapshotsUsed: number; // This should ideally be preserved or reset carefully on downgrade
+  snapshotsLimit: number;
+}
+
+const DEFAULT_USER_QUOTA: UserQuota = {
+  planName: "Free Tier",
+  planId: "free",
+  snapshotsUsed: 0, // Resetting to 0 on downgrade, or could fetch existing if needed
+  snapshotsLimit: 5,
+};
+// End DEFAULT_USER_QUOTA definition
+
+// Define a type for the billing document
+interface BillingInfo {
+  stripeCustomerId: string;
+  stripeSubscriptionId: string;
+  planId: string | null; // Stripe Product ID or a conceptual plan ID
+  priceId: string | null; // Stripe Price ID
+  currentPeriodStart: Timestamp | null;
+  currentPeriodEnd: Timestamp | null;
+  status: Stripe.Subscription.Status | string; // Stripe subscription status
+  seats?: number;
+  cancelAtPeriodEnd: boolean | null;
+  canceledAt: Timestamp | null;
+  endedAt: Timestamp | null;
 }
 
 let stripeClient: Stripe | null = null;
 let webhookSecret: string | null = null;
+let posthogClient: InstanceType<typeof PostHog> | null = null; // Correctly type PostHog client instance
 
 /**
- * Initializes Stripe client and webhook secret if not already done.
+ * Initializes Stripe client, webhook secret, and PostHog client.
  */
-async function initializeStripe(): Promise<void> {
-  if (stripeClient && webhookSecret) return;
+async function initializeClients(): Promise<void> {
+  if (stripeClient && webhookSecret && posthogClient) return;
 
-  console.log('Initializing Stripe client and webhook secret...');
+  console.log('Initializing Stripe and PostHog clients...');
   try {
-    const [secretKey, whSecret] = await Promise.all([
+    const [secretKey, whSecret, phApiKey, phHost] = await Promise.all([
       getSecret('STRIPE_SECRET_KEY'),
-      getSecret('STRIPE_WEBHOOK_SECRET')
+      getSecret('STRIPE_WEBHOOK_SECRET'),
+      getSecret('POSTHOG_API_KEY'), // Assuming PostHog API key is in secrets
+      Promise.resolve(process.env.POSTHOG_HOST || 'https://app.posthog.com') // Get PostHog host
     ]);
 
     if (!secretKey) throw new Error('STRIPE_SECRET_KEY not found.');
     if (!whSecret) throw new Error('STRIPE_WEBHOOK_SECRET not found.');
+    if (!phApiKey) console.warn('POSTHOG_API_KEY not found. PostHog events disabled.');
 
     stripeClient = new Stripe(secretKey, { apiVersion: '2024-06-20', typescript: true });
     webhookSecret = whSecret;
     console.log('Stripe client and webhook secret initialized.');
+
+    if (phApiKey && PostHog) { // Check if PostHog was successfully required
+      posthogClient = new PostHog(phApiKey, { host: phHost });
+      console.log('PostHog client initialized.');
+    }
+
   } catch (error) {
-    console.error('Stripe initialization failed:', error);
-    // Prevent function execution if Stripe isn't configured
+    console.error('Client initialization failed:', error);
     stripeClient = null;
     webhookSecret = null;
+    posthogClient = null; // Ensure it's null on error
     throw error; 
   }
+}
+
+// Helper function to get plan name from Stripe Product ID (conceptual)
+// This might involve fetching Product details from Stripe or having a mapping
+async function getPlanNameFromProductId(productId: string | null): Promise<string> {
+    if (!productId) return "Unknown Plan";
+    // Example: Fetch product from Stripe
+    // if (stripeClient && productId) {
+    //   try {
+    //     const product = await stripeClient.products.retrieve(productId);
+    //     return product.name || "Unnamed Plan";
+    //   } catch (e) {
+    //     console.error(`Failed to retrieve product ${productId}`, e);
+    //     return "Unknown Plan";
+    //   }
+    // }
+    // For now, using a simple mapping or returning the ID
+    if (productId === process.env.STRIPE_PRO_PLAN_PRODUCT_ID) return "Pro Plan";
+    if (productId === process.env.STRIPE_TEAMS_PLAN_PRODUCT_ID) return "Teams Plan";
+    return productId; // Fallback to product ID
 }
 
 /**
@@ -50,7 +105,7 @@ export const stripeWebhook = http('stripeWebhook', async (req: Request, res: Res
   console.log('Stripe webhook received...');
   
   try {
-    await initializeStripe();
+    await initializeClients();
     if (!stripeClient || !webhookSecret) {
       throw new Error('Stripe client or secret not initialized.');
     }
@@ -95,30 +150,178 @@ export const stripeWebhook = http('stripeWebhook', async (req: Request, res: Res
 
       if (!userId) {
         console.error('Webhook Error: Missing client_reference_id (userId) in checkout session', session.id);
-        // Return 200 OK to Stripe to prevent retries for this specific issue
-        res.status(200).send('Webhook Error: Missing user identifier'); 
-        return;
+        return res.status(200).send('Webhook Error: Missing user identifier'); 
       }
-
-      console.log(`Updating Firestore for user: ${userId}`);
+      if (!stripeSubscriptionId || !stripeCustomerId) {
+        console.error('Webhook Error: Missing subscription ID or customer ID in checkout session', session.id);
+        return res.status(400).send('Webhook Error: Missing subscription or customer ID');
+      }
+      
       try {
-        const userRef = db.collection('users').doc(userId);
-        const updateData: UserUpdateData = {
-          plan: 'paid',
-          planActivatedAt: Timestamp.now(),
-          ...(stripeCustomerId && { stripeCustomerId }),
-          ...(stripeSubscriptionId && { stripeSubscriptionId }),
+        // Retrieve the full subscription to get all details
+        const subscription = await stripeClient.subscriptions.retrieve(stripeSubscriptionId, { expand: ['items.data.price.product'] });
+        const price = subscription.items.data[0]?.price;
+        const product = price?.product as Stripe.Product;
+
+        const billingData: BillingInfo = {
+          stripeCustomerId: stripeCustomerId,
+          stripeSubscriptionId: subscription.id,
+          planId: typeof product === 'string' ? product : product?.id || null,
+          priceId: price?.id || null,
+          currentPeriodStart: Timestamp.fromMillis(subscription.current_period_start * 1000),
+          currentPeriodEnd: Timestamp.fromMillis(subscription.current_period_end * 1000),
+          status: subscription.status,
+          seats: subscription.items.data[0]?.quantity,
+          cancelAtPeriodEnd: subscription.cancel_at_period_end,
+          canceledAt: subscription.canceled_at ? Timestamp.fromMillis(subscription.canceled_at * 1000) : null,
+          endedAt: subscription.ended_at ? Timestamp.fromMillis(subscription.ended_at * 1000) : null,
         };
-        await userRef.set(updateData, { merge: true });
-        console.log(`User ${userId} plan updated to paid.`);
-      } catch (dbError) {
-        console.error(`Firestore update failed for user ${userId}:`, dbError);
-        // Indicate server error, Stripe will retry
-        res.status(500).send('Database update failed'); 
-        return;
+
+        const userRef = db.collection('users').doc(userId);
+        // Update billing sub-document and top-level convenience fields
+        const planName = product?.name || (typeof product === 'string' ? product : 'Unknown Plan');
+        await userRef.set({ 
+            billing: billingData,
+            stripeCustomerId: stripeCustomerId, // Keep top-level for convenience
+            stripeSubscriptionId: subscription.id, // Keep top-level for convenience
+            plan: planName, // Conceptual plan name for quick display
+            planId: billingData.planId, // Stripe Product ID
+            planActivatedAt: Timestamp.now(), // Reset activation date on new subscription
+            // quota may be set by a separate mechanism or based on planId later
+        }, { merge: true });
+        console.log(`User ${userId} billing info and plan updated after checkout.`);
+
+      } catch (dbOrStripeError) {
+        console.error(`Error processing checkout for user ${userId}:`, dbOrStripeError);
+        return res.status(500).send('Error processing checkout completion.'); 
+      }
+    } 
+    // Handle subscription updates
+    else if (event.type === 'customer.subscription.updated') {
+      const subscription = event.data.object as Stripe.Subscription;
+      const userId = subscription.metadata?.userId;
+      const stripeCustomerId = typeof subscription.customer === 'string' ? subscription.customer : subscription.customer?.id;
+
+      if (!userId) {
+        console.warn('Webhook Warning: Missing userId in subscription metadata for update.', subscription.id);
+        // Potentially lookup user by stripeCustomerId if necessary, but metadata is preferred
+        return res.status(200).send('Warning: Missing user identifier in subscription metadata.');
+      }
+      if (!stripeCustomerId) {
+        console.error('Webhook Error: Missing customer ID in subscription update', subscription.id);
+        return res.status(400).send('Webhook Error: Missing customer ID in subscription update');
+      }
+      
+      console.log(`Processing customer.subscription.updated for user ${userId}, subscription ${subscription.id}`);
+      try {
+        // Expand price and product information if not already expanded or to ensure freshness
+        const fullSubscription = await stripeClient.subscriptions.retrieve(subscription.id, { expand: ['items.data.price.product'] });
+        const price = fullSubscription.items.data[0]?.price;
+        const product = price?.product as Stripe.Product;
+
+        const billingData: BillingInfo = {
+          stripeCustomerId: stripeCustomerId,
+          stripeSubscriptionId: fullSubscription.id,
+          planId: typeof product === 'string' ? product : product?.id || null,
+          priceId: price?.id || null,
+          currentPeriodStart: Timestamp.fromMillis(fullSubscription.current_period_start * 1000),
+          currentPeriodEnd: Timestamp.fromMillis(fullSubscription.current_period_end * 1000),
+          status: fullSubscription.status,
+          seats: fullSubscription.items.data[0]?.quantity,
+          cancelAtPeriodEnd: fullSubscription.cancel_at_period_end,
+          canceledAt: fullSubscription.canceled_at ? Timestamp.fromMillis(fullSubscription.canceled_at * 1000) : null,
+          endedAt: fullSubscription.ended_at ? Timestamp.fromMillis(fullSubscription.ended_at * 1000) : null,
+        };
+        
+        const userRef = db.collection('users').doc(userId);
+        const planName = product?.name || (typeof product === 'string' ? product : 'Unknown Plan');
+        const updatePayload: any = {
+            billing: billingData,
+            plan: planName,
+            planId: billingData.planId,
+        };
+
+        // If subscription is canceled or ended, or will cancel at period end and period has ended
+        const now = Date.now();
+        const hasEnded = fullSubscription.status === 'canceled' || fullSubscription.status === 'unpaid' || (fullSubscription.ended_at && fullSubscription.ended_at * 1000 <= now);
+        const willEnd = fullSubscription.cancel_at_period_end && fullSubscription.current_period_end * 1000 <= now;
+
+        if (hasEnded || willEnd) {
+            console.log(`Subscription ${fullSubscription.id} for user ${userId} is considered ended/canceled. Downgrading quota.`);
+            updatePayload.quota = DEFAULT_USER_QUOTA;
+            updatePayload.plan = DEFAULT_USER_QUOTA.planName; // Reflect free plan name
+            updatePayload.planId = DEFAULT_USER_QUOTA.planId; // Reflect free plan conceptual ID
+
+            if (posthogClient) {
+                posthogClient.capture({
+                    distinctId: userId,
+                    event: 'plan_downgrade',
+                    properties: {
+                        stripeSubscriptionId: fullSubscription.id,
+                        previousPlanId: billingData.planId, // The plan they were on
+                        reason: `subscription_status_${fullSubscription.status}`
+                    }
+                });
+            }
+        } else {
+           // TODO: If plan changed, update quota based on the new planId
+           // This would require a mapping from planId to quota limits
+           console.log(`Subscription ${fullSubscription.id} for user ${userId} updated. Status: ${fullSubscription.status}. Quota may need adjustment based on new plan.`);
+        }
+        
+        await userRef.set(updatePayload, { merge: true });
+        console.log(`User ${userId} billing info updated. Status: ${fullSubscription.status}`);
+
+      } catch (dbOrStripeError) {
+        console.error(`Error processing subscription update for user ${userId}:`, dbOrStripeError);
+        return res.status(500).send('Error processing subscription update.');
       }
     }
-    // TODO: Handle other potential events like subscription cancellations (`customer.subscription.deleted`)
+    // Handle subscription deletions
+    else if (event.type === 'customer.subscription.deleted') {
+      const subscription = event.data.object as Stripe.Subscription;
+      const userId = subscription.metadata?.userId;
+      
+      if (!userId) {
+        console.warn('Webhook Warning: Missing userId in subscription metadata for delete.', subscription.id);
+        return res.status(200).send('Warning: Missing user identifier in subscription metadata.');
+      }
+
+      console.log(`Processing customer.subscription.deleted for user ${userId}, subscription ${subscription.id}`);
+      try {
+        const userRef = db.collection('users').doc(userId);
+        // Update billing status and downgrade quota
+        // The subscription object itself might be minimal, focus on marking as deleted and downgrading.
+        const billingUpdate = {
+            status: 'deleted', // Or use subscription.status if it's 'canceled'
+            endedAt: subscription.ended_at ? Timestamp.fromMillis(subscription.ended_at * 1000) : Timestamp.now(),
+        };
+
+        await userRef.set({ 
+            billing: billingUpdate, // Merge with existing billing info to update status
+            quota: DEFAULT_USER_QUOTA,
+            plan: DEFAULT_USER_QUOTA.planName,
+            planId: DEFAULT_USER_QUOTA.planId,
+        }, { merge: true });
+
+        if (posthogClient) {
+            posthogClient.capture({
+                distinctId: userId,
+                event: 'plan_downgrade',
+                properties: {
+                    stripeSubscriptionId: subscription.id,
+                    reason: 'subscription_deleted'
+                }
+            });
+            await posthogClient.shutdownAsync(); // Ensure event is sent before function terminates
+        }
+        console.log(`User ${userId} downgraded due to subscription deletion.`);
+
+      } catch (dbError) {
+        console.error(`Error processing subscription deletion for user ${userId}:`, dbError);
+        return res.status(500).send('Error processing subscription deletion.');
+      }
+    }
     else {
       console.log(`Unhandled event type: ${event.type}`);
     }

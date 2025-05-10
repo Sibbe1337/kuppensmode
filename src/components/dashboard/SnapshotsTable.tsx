@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useMemo } from 'react';
-import useSWR, { useSWRConfig } from 'swr';
+import { useSWRConfig } from 'swr';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge"; // Keep for status pill, can customize
 import RestoreWizard from './RestoreWizard';
@@ -9,7 +9,7 @@ import UpgradeModal from '@/components/modals/UpgradeModal';
 import type { Snapshot } from "@/types";
 import { fetcher } from "@/lib/fetcher";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AlertCircle, Inbox, Zap, MoreHorizontal, Plus, CheckCircle, Loader2, Copy, Download, Eye, RotateCcw, Trash2 } from 'lucide-react';
+import { AlertCircle, Inbox, Zap, MoreHorizontal, Plus, CheckCircle, Loader2, Copy, Download, Eye, RotateCcw, Trash2, ExternalLink } from 'lucide-react';
 import { EmptyState } from "@/components/ui/EmptyState";
 import { timeAgo } from "@/lib/utils"; // Keep for "Latest backup: X ago"
 import { useQuota } from '@/hooks/useQuota';
@@ -24,6 +24,13 @@ import { useToast } from "@/hooks/use-toast";
 import dayjs from 'dayjs'; // Import dayjs
 import { filesize } from 'filesize'; // Import filesize
 import { cn } from "@/lib/utils";
+
+// Define Props for SnapshotsTable
+interface SnapshotsTableProps {
+  snapshots: Snapshot[];
+  // If you need isLoading or error state passed down for more granular control inside table, add them here
+  // For now, assuming DashboardPage handles the primary loading/error/empty states before rendering this table
+}
 
 // IconButton component as suggested
 const IconButton: React.FC<{
@@ -70,12 +77,7 @@ const StatusPill: React.FC<{ status: string }> = ({ status }) => {
   return <Badge variant="destructive" className="text-xs">{status}</Badge>; // For Failed or other statuses
 };
 
-
-const SnapshotsTable = () => {
-  const { data: snapshots, error, isLoading } = useSWR<Snapshot[]>('/api/snapshots', fetcher, {
-      revalidateOnFocus: false,
-      onError: (err) => { console.error('SWR onError:', err); }, 
-  });
+const SnapshotsTable: React.FC<SnapshotsTableProps> = ({ snapshots }) => {
   const { quota, isLoading: isQuotaLoading } = useQuota();
   const [selectedSnapshot, setSelectedSnapshot] = useState<Snapshot | null>(null);
   const [isWizardOpen, setIsWizardOpen] = useState(false);
@@ -108,19 +110,7 @@ const SnapshotsTable = () => {
     window.open(`/api/snapshots/${snapshotId}/download`, '_blank');
   };
 
-  const triggerNewSnapshotFromEmptyState = async () => {
-    try {
-      await fetch('/api/snapshots/create', { method: 'POST' });
-      toast({ title: "Snapshot Started", description: "Your first backup is in progress!"});
-      globalMutate('/api/snapshots');
-      globalMutate('/api/user/quota');
-    } catch (err) {
-      console.error("Error creating snapshot from empty state", err);
-      toast({ title: "Error", description: "Could not start snapshot.", variant: "destructive" });
-    }
-  };
-
-  if (isLoading || (snapshots === undefined && !error)) { // Handle initial undefined state for snapshots
+  if (isQuotaLoading) {
     return (
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
         {[...Array(3)].map((_, i) => (
@@ -130,31 +120,6 @@ const SnapshotsTable = () => {
     );
   }
 
-  if (error) {
-     return (
-      <div className="flex flex-col items-center justify-center py-10 border border-dashed border-destructive rounded-lg text-destructive">
-        <AlertCircle className="h-8 w-8 mb-2" />
-        <p className="text-xl font-semibold mb-1">Failed to load snapshots</p>
-        <p className="text-sm">{error.message || "Could not fetch data from the server."}</p>
-      </div>
-    );
-  }
-
-  if (snapshots && snapshots.length === 0) {
-    return (
-      <EmptyState 
-        title="No Snapshots Yet!"
-        description="Create your first backup, then click Preview to inspect or Restore when needed."
-        icon={<Inbox className="h-16 w-16 text-gray-300 dark:text-gray-600" />} 
-      >
-        <Button onClick={triggerNewSnapshotFromEmptyState} className="mt-6">
-          <Plus className="mr-2 h-4 w-4" /> Create First Snapshot
-        </Button>
-      </EmptyState>
-    );
-  }
-  
-  // Main card grid display
   return (
     <div className="space-y-4">
       {timeSinceLastBackup && (
@@ -189,6 +154,12 @@ const SnapshotsTable = () => {
                 <IconButton icon={Eye} tooltip="Preview" onClick={() => handlePreviewClick(snap)} />
                 <IconButton icon={Download} tooltip="Download Raw File" href={`/api/snapshots/${snap.id}/download`} />
                 <IconButton icon={RotateCcw} tooltip="Restore Snapshot" onClick={() => handleRestoreClick(snap)} />
+                <IconButton 
+                  icon={ExternalLink} 
+                  tooltip={snap.latestRestoreStatus === 'completed' && snap.latestRestoreUrl ? "Open Restored Page in Notion" : "Link available when restore finishes"} 
+                  href={snap.latestRestoreStatus === 'completed' && snap.latestRestoreUrl ? snap.latestRestoreUrl : undefined}
+                  disabled={snap.latestRestoreStatus !== 'completed' || !snap.latestRestoreUrl}
+                />
                 {/* TODO: Add Delete IconButton later */}
               </div>
             </li>
