@@ -1,317 +1,169 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
-import { SignedIn, SignedOut, SignInButton } from "@clerk/nextjs";
-import { Button } from "@/components/ui/button";
-import SnapshotsTable from "@/components/dashboard/SnapshotsTable"; 
-import QuotaProgressButton from "@/components/dashboard/QuotaProgressButton";
-import ActivationChecklist from "@/components/dashboard/ActivationChecklist"; 
-import { useToast } from "@/hooks/use-toast"; 
-import { useSWRConfig } from 'swr';
-import { Loader2, Plus, Info } from 'lucide-react';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import Tour from "@/components/Tour";
-import posthog from 'posthog-js';
-import { useQuota } from '@/hooks/useQuota';
-import type { Snapshot } from "@/types";
-import UpgradeModal from '@/components/modals/UpgradeModal';
-import { useSearchParams, useRouter } from 'next/navigation';
-import PreviewSheet from "@/components/dashboard/PreviewSheet";
-import RestoreWizard from "@/components/dashboard/RestoreWizard";
+import React from 'react';
 import useSWR from 'swr';
 import apiClient from '@/lib/apiClient';
-import { useSandbox, setSandboxMode } from '@/hooks/useSandbox';
-import { Badge } from '@/components/ui/badge';
-import { EmptyState } from "@/components/ui/EmptyState";
-import { useUserSettings } from "@/hooks/useUserSettings";
-import CancellationSurveyModal from "@/components/modals/CancellationSurveyModal";
-import Link from 'next/link';
+import KpiCard, { KpiCardProps } from '@/components/dashboard/KpiCard';
+import ComparisonEngine from '@/components/dashboard/ComparisonEngine';
+import LatestAnalysis from '@/components/dashboard/LatestAnalysis';
+import ActivityLog from '@/components/dashboard/ActivityLog';
+import StatusBadge from '@/components/layout/StatusBadge';
+import { Skeleton } from "@/components/ui/skeleton";
+import { AlertTriangle, Loader2 } from 'lucide-react';
+import type { Snapshot } from "@/types";
+import ComparisonEngineBar from '@/components/dashboard/ComparisonEngineBar';
 
-export default function DashboardPage() {
-  const searchParams = useSearchParams();
-  const router = useRouter();
+// Define types for the expected API responses (can be moved to @/types)
+interface KpiData extends Omit<KpiCardProps, 'slotRight' | 'className'> {}
 
-  console.log("DashboardPage INITIAL RENDER searchParams:", searchParams.toString());
+interface ComparisonData {
+  fromSnapshot: { id: string; label: string };
+  toSnapshot: { id: string; label: string };
+  availableSnapshots: { id: string; label: string }[];
+  analysisComplete: boolean;
+  confidenceScore: number;
+  added: number;
+  modified: number;
+  removed: number;
+  viewDetailsUrl?: string;
+}
 
-  const { toast } = useToast();
-  const { mutate } = useSWRConfig();
-  const [isCreatingSnapshot, setIsCreatingSnapshot] = useState(false);
-  const { quota, isLoading: isQuotaLoading, isError: isQuotaError, mutateQuota } = useQuota();
-  const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
-  const [previewSnapshotIdForToast, setPreviewSnapshotIdForToast] = useState<string | null>(null);
-  const [isToastPreviewSheetOpen, setIsToastPreviewSheetOpen] = useState(false);
-  const [snapshotForRestoreToast, setSnapshotForRestoreToast] = useState<Snapshot | null>(null);
-  const [isRestoreWizardOpenFromToast, setIsRestoreWizardOpenFromToast] = useState(false);
-  const { settings: userSettings, mutateSettings: mutateUserSettings } = useUserSettings();
-  const [isCancellationSurveyModalOpen, setIsCancellationSurveyModalOpen] = useState(false);
+interface AiInsight {
+  id: string;
+  text: string;
+  iconName: string; // We'll map this to an icon component if needed
+}
+interface LatestData {
+  similarityScore: number;
+  confidenceText: string;
+  systemStatusText: string;
+  aiInsights: AiInsight[];
+}
 
-  const { data: snapshots, error: snapshotsError, isLoading: isLoadingSnapshots } = useSWR<Snapshot[]>(
-    '/api/snapshots',
-    apiClient
+// Re-add dummyChanges for ActivityLog until a real endpoint is available
+const dummyChanges = [
+  { id: 'c1', description: 'Updated Project Plan with new milestones.', date: '2025-05-10T08:30:00Z', snapshotId: 'snap123' },
+  { id: 'c2', description: 'Client Feedback document archived.', date: '2025-05-09T17:00:00Z', snapshotId: 'snap122' },
+];
+
+// Placeholder for Circular Gauge for Monthly Usage
+const MonthlyUsageGauge: React.FC<{ value: number; limit: number; warning?: boolean }> = ({ value, limit, warning }) => {
+  const percentage = limit > 0 ? Math.min(100, (value / limit) * 100) : 0;
+  return (
+    <div className="flex flex-col items-center justify-center w-28 h-28">
+      <div className="relative w-20 h-20">
+        {/* Basic circle for placeholder */}
+        <svg viewBox="0 0 36 36" className="w-full h-full">
+            <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" strokeWidth="2" className="stroke-slate-200 dark:stroke-slate-700"/>
+            <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" strokeWidth="2" strokeDasharray={`${percentage}, 100`} className="stroke-primary" transform="rotate(-90 18 18)"/>
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+            <span className="text-xl font-bold text-foreground">{percentage.toFixed(0)}%</span>
+        </div>
+      </div>
+      <span className="text-xs text-muted-foreground mt-1">{value} of {limit} used</span>
+      {warning && <span className="text-xs text-yellow-500 mt-0.5">Warning</span>}
+    </div>
   );
+};
 
-  useEffect(() => {
-    if (searchParams.get('sandbox') === '1') {
-      setSandboxMode(true);
-      posthog.capture('sandbox_demo_started');
-      // Optional: remove the query param from URL after setting the flag
-      // router.replace('/dashboard', { scroll: false }); 
-    }
-  }, [searchParams, router]);
+export default function DashboardPage() { // Renamed function to DashboardPage
+  const { data: kpis, error: kpisError, isLoading: kpisLoading } = useSWR<KpiData[]>('/api/analytics/kpis', apiClient);
+  const { data: compareData, error: compareError, isLoading: compareLoading } = useSWR<ComparisonData>('/api/analytics/compare', apiClient);
+  const { data: latestData, error: latestError, isLoading: latestLoading } = useSWR<LatestData>('/api/analytics/latest', apiClient);
+  const { data: snapshotsData, error: snapshotsError, isLoading: snapshotsLoading } = useSWR<Snapshot[]>('/api/snapshots', apiClient);
+  const { data: quotaData, error: quotaError, isLoading: quotaLoading } = useSWR<any>('/api/user/quota', apiClient);
 
-  const isSandbox = useSandbox();
+  const monthlyUsageData = quotaData ? // Renamed from dummyMonthlyUsage to avoid confusion
+    { value: quotaData.snapshotsUsed, limit: quotaData.snapshotsLimit, warning: quotaData.snapshotsUsed / quotaData.snapshotsLimit >= 0.85 } :
+    { value: 0, limit: 0, warning: false };
 
-  useEffect(() => {
-    const checkoutStatus = searchParams.get('checkout');
-    const sessionId = searchParams.get('session_id');
-    if (checkoutStatus === 'success' && sessionId) {
-      toast({ title: "Payment Successful!", description: "Finalizing your subscription..." });
-      apiClient<{success: boolean, planName?: string, error?: string}>(`/api/billing/verify-checkout-session?session_id=${sessionId}`)
-        .then(data => {
-          if (data.success) {
-            toast({ title: "Subscription Activated!", description: `You are now on the ${data.planName || 'selected'} plan.` });
-            mutateQuota(); 
-            mutate('/api/user/settings'); 
-          } else {
-            throw new Error(data.error || 'Verification step failed (data.success false).');
-          }
-        })
-        .catch((err: any) => {
-          toast({ title: "Error Finalizing Subscription", description: err.message, variant: "destructive" });
-        })
-        .finally(() => {
-          // router.replace('/dashboard', { scroll: false }); 
-        });
-    } else if (checkoutStatus === 'cancel') {
-      toast({ title: "Checkout Canceled", description: "Your upgrade process was canceled." });
-      // router.replace('/dashboard', { scroll: false });
-    }
-  }, [searchParams, router, toast, mutateQuota, mutate]);
+  const activityLogSnapshots = snapshotsData?.map(snap => ({
+    id: snap.id,
+    name: snap.snapshotIdActual || snap.id, 
+    date: snap.timestamp, 
+    sizeKb: snap.sizeKB,
+  })) || [];
 
-  useEffect(() => {
-    if (userSettings?.flags?.needsCancellationSurvey) {
-      console.log("DashboardPage: needsCancellationSurvey flag is true. Opening modal.");
-      setIsCancellationSurveyModalOpen(true);
-      apiClient<{success: boolean}>('/api/user/flags/clear', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ flagName: 'needsCancellationSurvey' }),
-      })
-      .then(data => {
-        if (data.success) {
-          console.log("DashboardPage: Cleared needsCancellationSurvey flag.");
-        } else {
-          console.error("DashboardPage: Failed to clear needsCancellationSurvey flag.");
-        }
-      })
-      .catch((err: any) => console.error("DashboardPage: Error clearing needsCancellationSurvey flag:", err));
-    }
-  }, [userSettings]);
-
-  const isOverSnapshotLimit = !isSandbox && !isQuotaLoading && !isQuotaError && quota ? quota.snapshotsUsed >= quota.snapshotsLimit : false;
-
-  const handleCreateSnapshot = async () => {
-    if (!isSandbox && (isQuotaLoading || isQuotaError)) {
-        toast({ title: "Error", description: "Could not verify snapshot quota. Please try again.", variant: "destructive" });
-        return;
-    }
-    if (!isSandbox && isOverSnapshotLimit) {
-        router.push('/pricing?reason=limit');
-        return;
-    }
-    setIsCreatingSnapshot(true);
-
-    const tempIdString: string = `optimistic_snap_${Date.now()}`;
-    const tempSnapshot: Partial<Snapshot> = {
-        id: tempIdString,
-        snapshotIdActual: tempIdString,
-        status: 'Pending',
-        sizeKB: 0,
-        timestamp: new Date().toISOString(),
-    };
-
-    const tableElement = document.querySelector('.snapshots-table'); 
-    if (tableElement) {
-        tableElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-
-    mutate('/api/snapshots', 
-      (currentData: Snapshot[] = []) => [tempSnapshot as Snapshot, ...currentData], 
-      { revalidate: false }
+  if (kpisLoading || compareLoading || latestLoading || snapshotsLoading || quotaLoading) {
+    return (
+      <main className="container mx-auto py-8 px-4">
+        <div className="mb-8">
+          <Skeleton className="h-8 w-1/2 mb-2" />
+          <Skeleton className="h-4 w-3/4" />
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-8">
+          {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-32 rounded-lg" />)}
+        </div>
+        <div className="flex flex-col lg:flex-row gap-6 md:gap-8 mb-8">
+          <Skeleton className="flex-1 h-96 rounded-lg" />
+          <Skeleton className="w-full lg:w-auto lg:max-w-xs xl:max-w-sm h-96 rounded-lg hidden sm:block" />
+        </div>
+        <Skeleton className="h-64 w-full rounded-lg" />
+      </main>
     );
-
-    toast({ 
-      title: "Backup Started", 
-      description: isSandbox ? "Demo snapshot in progress..." : "Your snapshot is in progress. You can continue working.", 
-      duration: 7000 
-    });
-
-    if (isSandbox) {
-      posthog.capture('snapshot_start', { demo: true, snapshot_id_optimistic: tempIdString });
-      try {
-        // Call the demo API to get a snapshotId and a dummy diffSummary
-        const response = await apiClient<{snapshotId: string, diffSummary: any, success: boolean}>(
-          '/api/snapshots/create', { method: 'POST' } // apiClient handles demo routing
-        );
-
-        // Simulate delay for snapshot completion
-        await new Promise(resolve => setTimeout(resolve, 1500)); 
-        
-        mutate('/api/snapshots',
-          (currentData: Snapshot[] = []) => currentData.map(s => 
-            s.id === tempIdString ? { 
-              ...s, 
-              snapshotIdActual: response.snapshotId, // Use ID from demo API if different
-              status: 'Completed', 
-              sizeKB: Math.floor(Math.random() * 500 + 50), 
-              diffSummary: response.diffSummary // Add the diff summary
-            } as Snapshot : s
-          ),
-          false 
-        );
-        toast({ title: "Demo Snapshot Saved!", description: "A new demo snapshot with changes has been simulated."});
-      } catch (error) {
-        console.error("Error in demo snapshot creation:", error);
-        toast({ title: "Demo Error", description: "Could not simulate snapshot creation.", variant: "destructive" });
-        // Revert optimistic update if demo API call failed
-        mutate('/api/snapshots', (currentData: Snapshot[] = []) => currentData.filter(s => s.id !== tempIdString), false);
-      } finally {
-        setIsCreatingSnapshot(false);
-      }
-      return;
-    }
-
-    try {
-      await apiClient<{snapshotId?: string, success: boolean, message: string}>('/api/snapshots/create', { method: 'POST' }); 
-      const newSnapshotId: string = tempIdString;
-
-      mutate('/api/snapshots'); 
-      mutateQuota(); 
-      posthog.capture('snapshot_start', { snapshot_id_optimistic: newSnapshotId });
-
-      toast({
-        title: "Snapshot Saved!",
-        description: "Your Notion workspace backup is complete.",
-        duration: 10000,
-        action: (
-          <div className="flex flex-col gap-2 items-stretch">
-            <Button variant="outline" size="sm" onClick={() => {
-              setPreviewSnapshotIdForToast(newSnapshotId);
-              setIsToastPreviewSheetOpen(true);
-            }}>
-              👁 Preview
-            </Button>
-            <Button variant="default" size="sm" onClick={() => {
-              setSnapshotForRestoreToast({ 
-                id: newSnapshotId, 
-                snapshotIdActual: newSnapshotId, 
-                timestamp: tempSnapshot.timestamp!,
-                sizeKB: 0, 
-                status: 'Completed' 
-              });
-              setIsRestoreWizardOpenFromToast(true);
-            }}>
-              Restore
-            </Button>
-          </div>
-        ),
-      });
-
-    } catch (error: any) {
-      console.error("Error creating snapshot:", error);
-      toast({ title: "Snapshot Error", description: error.data?.error || error.message || "Could not initiate creation.", variant: "destructive" });
-      mutate('/api/snapshots', 
-          (currentData: Snapshot[] = []) => currentData.filter(snap => snap.id !== tempIdString),
-          false
-      );
-      if(error.data?.errorCode !== 'SNAPSHOT_LIMIT_REACHED') {
-        mutateQuota();
-      }
-    } finally {
-      setIsCreatingSnapshot(false);
-    }
-  };
+  }
+  
+  if (kpisError || compareError || latestError || snapshotsError || quotaError) {
+    return (
+        <main className="container mx-auto py-8 px-4 flex flex-col items-center justify-center min-h-[calc(100vh-200px)]">
+            <AlertTriangle className="h-12 w-12 text-destructive mb-4" />
+            <h2 className="text-xl font-semibold text-destructive mb-2">Oops! Something went wrong.</h2>
+            <p className="text-muted-foreground">We couldn't load all dashboard data. Please try again later.</p>
+        </main>
+    );
+  }
 
   return (
-    <>
-      <SignedIn>
-        {!isSandbox && <QuotaProgressButton />}
+    <main className="container mx-auto py-8 px-4">
+      <div className="mb-8">
+        <h1 className="text-2xl md:text-3xl font-bold text-foreground">PageLifeline Dashboard</h1>
+        <p className="text-muted-foreground">Insights and analytics for your workspace</p>
+      </div>
 
-        <div className="relative space-y-6">
-          <div className="flex justify-between items-center gap-4">
-            <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-semibold">Recent Snapshots</h1>
-              {isSandbox && <Badge variant="outline" className="border-yellow-500 text-yellow-600"><Info className="h-3 w-3 mr-1" />Demo Mode</Badge>}
-            </div>
-            <Button 
-              onClick={handleCreateSnapshot} 
-              disabled={isCreatingSnapshot || (!isSandbox && (isQuotaLoading || isOverSnapshotLimit || isQuotaError))}
-              variant="default"
-              size="lg"
-            >
-              {isCreatingSnapshot ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
-              New Snapshot
-            </Button>
-          </div>
-
-          {!isSandbox && <ActivationChecklist />}
-
-          {isSandbox && (
-            <div className="p-3 bg-blue-50 border border-blue-200 rounded-md text-sm text-blue-700 dark:bg-blue-900/30 dark:border-blue-700 dark:text-blue-300">
-              <Info className="inline h-4 w-4 mr-1.5 -mt-0.5" />
-              You are in Demo Mode. Data is mocked and actions are simulated. 
-              <Link href="/dashboard/settings" className="font-semibold underline hover:text-blue-600 dark:hover:text-blue-200 ml-1" onClick={() => setSandboxMode(false)}>
-                Connect your real Notion workspace
-              </Link> 
-              to use live features.
-            </div>
-          )}
-
-          {isLoadingSnapshots && (
-            <div className="flex justify-center items-center py-10">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-            </div>
-          )}
-          {snapshotsError && !isSandbox && (
-            <div className="text-center py-10 px-4 border border-dashed border-destructive rounded-lg text-destructive">
-              <p className="text-xl font-semibold mb-1">Failed to load snapshots</p>
-              <p className="text-sm">{snapshotsError.message || "Could not fetch snapshot data."}</p>
-            </div>
-          )}
-          {snapshots && snapshots.length === 0 && !isLoadingSnapshots && (!snapshotsError || isSandbox) && (
-            <EmptyState
-              title={isSandbox ? "Demo Snapshots Area" : "No snapshots yet"}
-              description={isSandbox ? "This is where your snapshots would appear. Try creating a demo snapshot!" : "Create your first backup..."}
-              illustration="/assets/empty-backup.svg"
-            >
-              <Button onClick={handleCreateSnapshot} className="mt-6">
-                <Plus className="mr-2 h-4 w-4" />
-                {isSandbox ? "Try Demo Snapshot" : "Take my first snapshot"}
-              </Button>
-            </EmptyState>
-          )}
-          {snapshots && snapshots.length > 0 && !isLoadingSnapshots && (!snapshotsError || isSandbox) && (
-            <SnapshotsTable snapshots={snapshots} />
-          )}
-
-          {!isSandbox && <Tour />}
-          <CancellationSurveyModal 
-            isOpen={isCancellationSurveyModalOpen} 
-            onOpenChange={setIsCancellationSurveyModalOpen} 
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-8">
+        {kpis?.map((kpi, index) => (
+          <KpiCard 
+            key={index} 
+            title={kpi.title} 
+            value={kpi.value} 
+            delta={kpi.delta} 
+            subtitle={kpi.subtitle} 
+            gradientPreset={kpi.gradientPreset as any}
           />
+        ))}
+        {quotaData && (
+            <KpiCard 
+                title="Monthly Usage" 
+                value={`${(monthlyUsageData.value / (monthlyUsageData.limit || 1) * 100).toFixed(0)}%`} 
+                subtitle="Snapshot storage and processing" 
+                gradientPreset="cyan" 
+                slotRight={<MonthlyUsageGauge value={monthlyUsageData.value} limit={monthlyUsageData.limit || 1} warning={monthlyUsageData.warning} />}
+            />
+        )}
+      </div>
+
+      <div className="flex flex-col lg:flex-row gap-6 md:gap-8 mb-8">
+        <div className="flex-1 min-w-0">
+          <ComparisonEngineBar snapshots={snapshotsData || []} initialCompareData={compareData} />
         </div>
-      </SignedIn>
-      <SignedOut>
-        <div className="flex flex-col items-center justify-center h-full">
-          <h1 className="text-3xl mb-4">Welcome to Notion Lifeline</h1>
-          <p className="mb-8">Please sign in to manage your Notion snapshots.</p>
-          <SignInButton mode="modal">
-            <Button variant="secondary">Sign In</Button>
-          </SignInButton>
+        <div className="w-full lg:w-auto lg:max-w-xs xl:max-w-sm hidden sm:block lg:ml-4">
+          {latestData && <LatestAnalysis /* Pass latestData props here */ />}
+          {!latestData && !latestLoading && <div className="p-4 text-center text-muted-foreground">Latest analysis unavailable.</div>}
         </div>
-      </SignedOut>
-      <PreviewSheet snapshotId={previewSnapshotIdForToast} open={isToastPreviewSheetOpen} onOpenChange={setIsToastPreviewSheetOpen} />
-      <RestoreWizard snapshot={snapshotForRestoreToast} open={isRestoreWizardOpenFromToast} onOpenChange={setIsRestoreWizardOpenFromToast} onClose={() => setIsRestoreWizardOpenFromToast(false)} />
-    </>
+      </div>
+
+      <div className="mt-8">
+        <ActivityLog snapshots={activityLogSnapshots} changes={dummyChanges} />
+      </div>
+
+      <footer className="mt-12 pt-6 border-t border-border/30 text-center">
+        <div className="text-sm text-muted-foreground flex items-center justify-center">
+          <span>Last updated: {new Date().toLocaleDateString('en-US', {month: 'long', day: 'numeric', year: 'numeric'})} &mdash; {new Date().toLocaleTimeString('en-US', {hour: '2-digit', minute:'2-digit'})}</span>
+          <span className="mx-2">|</span>
+          <StatusBadge />
+        </div>
+      </footer>
+    </main>
   );
 } 

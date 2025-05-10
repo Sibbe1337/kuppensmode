@@ -1,0 +1,28 @@
+{
+  "name": "diff-worker",
+  "version": "0.0.1",
+  "private": true,
+  "main": "lib/index.js",
+  "scripts": {
+    "build": "tsc",
+    "gcp-build": "npm run build",
+    "start": "functions-framework --target=diffWorker --port=8082"
+  },
+  "dependencies": {
+    "@google-cloud/firestore": "^7.0.0",
+    "@google-cloud/functions-framework": "^3.0.0",
+    "@google-cloud/storage": "^7.0.0",
+    "@pinecone-database/pinecone": "^2.0.0",
+    "openai": "^4.0.0",
+    "tiktoken": "^1.0.0",
+    "uuid": "^11.1.0",
+    "zlib": "^1.0.5"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "typescript": "^5"
+  },
+  "engines": {
+    "node": "20"
+  }
+}
