@@ -7,4 +7,7 @@ export interface KpisResponse {
 }
 
 export const useKpis = () =>
-  useSWR<KpisResponse>('/api/analytics/kpis', apiClient); 
+  useSWR<KpisResponse>('/api/analytics/kpis', apiClient, {
+    errorRetryCount: 2,          // Bail early
+    errorRetryInterval: 10000,  // 10s back-off
+  }); 

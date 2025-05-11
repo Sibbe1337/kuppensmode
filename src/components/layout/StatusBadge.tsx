@@ -15,7 +15,7 @@ interface StatusData {
 }
 
 const StatusBadge: React.FC = () => {
-  const { data, error, isLoading } = useSWR<StatusData>('/api/status', apiClient, {
+  const { data, error, isLoading } = useSWR<StatusData>('/status', apiClient, {
     refreshInterval: 300000, 
     revalidateOnFocus: true,
   });

@@ -39,7 +39,7 @@ Here's the breakdown:
         *   Task: Call `/api/diff/run`, poll status, fetch results, and display summary counts. (✅ **Done** - `ComparisonEngineBar.tsx` implements this. Display labels refined.)
         *   Task: UI to display detailed semantic diff results (from `SemanticDiffResult.details`). (✅ **Done** - `app/(app)/comparison/[jobId]/page.tsx` displays results, including change type tooltips).
 
-*   **Phase 3: LLM-Powered Analysis & Chat Interface**
+*   **Phase 3: LLM-Powered Analysis & Chat Interface** (✅ **COMPLETED**)
     *   **L1.6: Enhance Semantic Diff API for LLM Analysis** (✅ **Done**)
         *   Task: Modify `/api/diff/semantic` (logic moved to `diff-worker`) to take the structured summary and relevant text snippets of changed items. (✅ Done - Worker uses its computed diff)
         *   Task: Construct a detailed prompt for an LLM (e.g., GPT-4) to generate a natural language summary of the changes. (✅ Done - Implemented in `diff-worker/src/openaiUtils.ts`)
@@ -48,14 +48,14 @@ Here's the breakdown:
         *   Task: Display the LLM-generated natural language summary in the diff UI. (✅ Done - Displayed in `Alert` on `app/(app)/comparison/[jobId]/page.tsx`, PostHog event added)
     *   **L1.8: "Ask a Question" Chat API (`/api/ai/ask-diff/route.ts` - enhance or new)**
         *   Task: API endpoint accepts `snapshotIdFrom`, `snapshotIdTo`, `userId`, and a natural language `question`. (✅ **Done** - `app/api/ai/ask-diff/route.ts` created and accepts these)
-        *   Task: Backend logic: (🚧 **In Progress** - Initial implementation in place)
+        *   Task: Backend logic: (✅ **Done** - Initial implementation in place)
             *   Use the question to perform a semantic search (vector query) against the embeddings of the *content* within the diff range (from `snapshotIdFrom` to `snapshotIdTo`). (✅ Done - Queries Pinecone using question embedding, filters by snapshot IDs)
             *   Retrieve relevant text chunks/embeddings. (✅ Done - Retrieves text from Pinecone match metadata)
             *   Construct a prompt for an LLM including the user's question and the retrieved context. (✅ Done)
             *   Return the LLM's answer. (✅ Done)
-    *   **L1.9: Chat UI for Diff Analysis**
-        *   Task: Implement a chat interface where users can ask questions about the changes between two snapshots.
-        *   Task: UI to call the "Ask a Question" API and display responses.
+    *   **L1.9: Chat UI for Diff Analysis** (✅ **Done**)
+        *   Task: Implement a chat interface where users can ask questions about the changes between two snapshots. (✅ **Done** - `DiffChatAssistant.tsx` component created)
+        *   Task: UI to call the "Ask a Question" API and display responses. (✅ **Done** - Integrated into `comparison/[jobId]/page.tsx`)
 
 ---
 
