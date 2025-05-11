@@ -9,7 +9,7 @@ import {
   S3ClientConfig
 } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
-import type { StorageAdapter } from './StorageAdapter.js';
+import type { StorageAdapter } from './StorageAdapter';
 import { Readable } from 'node:stream';
 
 export interface S3AdapterOptions {
