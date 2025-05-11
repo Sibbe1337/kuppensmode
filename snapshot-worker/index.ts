@@ -728,20 +728,21 @@ functions.cloudEvent('snapshotWorker', async (cloudEvent: functions.CloudEvent<P
 
     // --- Upsert embeddings to Pinecone --- (Updated with retry and batching)
     if (openaiClient && pineconeClient && pineconeIndexName && recordsToUpsertToPinecone.length > 0) {
-      console.log(`[${userId}] Preparing to upsert ${recordsToUpsertToPinecone.length} embeddings to Pinecone for snapshot ${snapshotId}...`);
+      console.log(`[${userId}] Preparing to upsert ${recordsToUpsertToPinecone.length} embeddings to Pinecone for snapshot ${snapshotId} into namespace '${userId}'...`);
       try {
-        const index = pineconeClient.index(pineconeIndexName); 
-        const batchSize = 50; // Reduced batch size for Pinecone, common recommendation is < 100 or by payload size
+        const index = pineconeClient.index(pineconeIndexName);
+        const namespacedIndex = index.namespace(userId); // Get namespaced index object
+
+        const batchSize = 50;
         for (let i = 0; i < recordsToUpsertToPinecone.length; i += batchSize) {
           const batch = recordsToUpsertToPinecone.slice(i, i + batchSize);
-          await withRetry(() => index.upsert(batch), 3, 1000, `Pinecone upsert batch ${Math.floor(i/batchSize) + 1}`);
-          console.log(`[${userId}] Upserted batch ${Math.floor(i/batchSize) + 1} to Pinecone.`);
+          // Call upsert on the namespacedIndex object
+          await withRetry(() => namespacedIndex.upsert(batch), 3, 1000, `Pinecone upsert batch ${Math.floor(i/batchSize) + 1} for user ${userId} in namespace ${userId}`);
+          console.log(`[${userId}] Upserted batch ${Math.floor(i/batchSize) + 1} to Pinecone namespace '${userId}'.`);
         }
-        console.log(`[${userId}] Pinecone upsert completed for snapshot ${snapshotId}.`);
+        console.log(`[${userId}] Pinecone upsert completed for snapshot ${snapshotId} into namespace '${userId}'.`);
       } catch (pineconeError) {
-        console.error(`[${userId}] Failed to upsert embeddings to Pinecone for snapshot ${snapshotId}:`, pineconeError);
-        // Decide if this should be a fatal error for the snapshot or just a logged warning.
-        // For now, log and continue creating the main snapshot file.
+        console.error(`[${userId}] Failed to upsert embeddings to Pinecone for snapshot ${snapshotId} into namespace '${userId}':`, pineconeError);
       }
     }
     recordsToUpsertToPinecone = [];

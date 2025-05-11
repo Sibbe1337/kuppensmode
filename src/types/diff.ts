@@ -42,6 +42,9 @@ export interface SemanticDiffResult {
     deletedItems: { id: string; name?: string; type?: string; blockType?: string }[];
     changedItems: ChangedItemDetail[];
   };
+  llmSummary?: string;          // New: LLM-generated summary
+  llmModel?: string;            // New: Model used for summary
+  llmTokens?: number;           // New: Tokens used for summary
   error?: string;
   message?: string;
   createdAt?: string | object; // ISO string or Firestore Timestamp

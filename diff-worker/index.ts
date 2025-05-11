@@ -7,6 +7,7 @@ import OpenAI from 'openai';
 import { gunzipSync } from 'zlib';
 import { get_encoding, Tiktoken } from 'tiktoken';
 import { v4 as uuidv4 } from 'uuid'; // Though diffJobId comes from payload
+import { generateDiffSummary, initOpenAIUtils } from './src/openaiUtils'; // Import new util
 
 console.log("[DiffWorker] Cold start.");
 
@@ -19,6 +20,7 @@ let openaiClient: OpenAI | null = null;
 if (process.env.OPENAI_API_KEY) {
   openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   console.log("[DiffWorker] OpenAI client initialized.");
+  initOpenAIUtils(openaiClient); // Initialize the util with the client
 } else {
   console.warn("[DiffWorker] OPENAI_API_KEY not set. Embedding-related features may fail.");
 }
@@ -87,6 +89,9 @@ interface SemanticDiffResult {
   message?: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
+  llmSummary?: string;
+  llmModel?: string;
+  llmTokens?: number;
 }
 
 // --- HELPER FUNCTIONS (Copied from /api/diff/semantic/route.ts) ---
@@ -319,8 +324,49 @@ functions.cloudEvent('diffWorker', async (cloudEvent: CloudEvent<MessagePublishe
       createdAt: (await resultsRef.get()).data()?.createdAt || Timestamp.now(), // Preserve original createdAt
       updatedAt: Timestamp.now(),
     };
+
+    // Initialize OpenAI Client (if not already initialized globally/lazily)
+    if (!openaiClient && process.env.OPENAI_API_KEY) {
+      openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+      console.log("[DiffWorker] OpenAI client initialized.");
+      initOpenAIUtils(openaiClient); // Initialize the util with the client
+    } else if (!process.env.OPENAI_API_KEY) {
+      console.warn("[DiffWorker] OPENAI_API_KEY not set. LLM summary will be skipped.");
+    } else if (openaiClient) {
+      initOpenAIUtils(openaiClient); // Ensure util is init'd if client already exists
+    }
+
+    // --- Add LLM Summary --- 
+    if (openaiClient && finalResult) { // Ensure client and result exist
+      console.log(`[DiffWorker] Job ${diffJobId}: Attempting to generate LLM summary.`);
+      try {
+        const { text, tokens, modelUsed } = await generateDiffSummary(finalResult);
+        finalResult.llmSummary = text;
+        finalResult.llmModel   = modelUsed;
+        finalResult.llmTokens  = tokens;
+        console.log(`[DiffWorker] Job ${diffJobId}: LLM summary generated. Model: ${modelUsed}, Tokens: ${tokens}`);
+      } catch (err) {
+        console.error(`[DiffWorker] Job ${diffJobId}: GPT summary generation failed`, err);
+        // Keep diff result but without llmSummary - it will be saved without these fields
+        finalResult.llmSummary = "Automated summary generation failed."; // Add a placeholder error
+        finalResult.llmModel = "none";
+        finalResult.llmTokens = 0;
+      }
+    } else if (!finalResult) {
+      console.error(`[DiffWorker] Job ${diffJobId}: Result object was null, cannot generate LLM summary or save.`);
+      // Handle this critical error appropriately, maybe update job status to error
+      await resultsRef.set({ status: 'error', error: 'Internal error: Diff result was null before LLM summary.', updatedAt: Timestamp.now() }, { merge: true });
+      return; // Exit early
+    } else {
+      console.warn(`[DiffWorker] Job ${diffJobId}: OpenAI client not available or API key not set – skipping LLM summary.`);
+      finalResult.llmSummary = "Automated summary not available (OpenAI not configured).";
+      finalResult.llmModel = "none";
+      finalResult.llmTokens = 0;
+    }
+    // --- End Add LLM Summary ---
+
     await resultsRef.set(finalResult); // Overwrite with final result
-    console.log(`[DiffWorker] Successfully processed and stored diff job ${diffJobId}`);
+    console.log(`[DiffWorker] Successfully processed and stored diff job ${diffJobId} with LLM summary status.`);
 
   } catch (error: any) {
     console.error(`[DiffWorker] Error processing job ${jobPayload.diffJobId}:`, error);

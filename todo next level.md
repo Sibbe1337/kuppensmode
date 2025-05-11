@@ -7,40 +7,45 @@ Here's the breakdown:
 **Epic L1: AI-powered "Smart Snapshot" & semantic diff engine**
 *Goal: Give users ChatGPT-style answers about what changed in their workspace.*
 
-*   **Phase 1: Core Embedding & Storage**
+*   **Phase 1: Core Embedding & Storage** (✅ **COMPLETED**)
     *   **L1.1: Setup Vector Database (Pinecone)**
-        *   Task: Create/configure Pinecone account and index. (➡️ **Partially Done** - Code expects env vars, setup is DevOps)
-        *   Task: Securely store Pinecone API key and environment details. (➡️ **Partially Done** - Code expects env vars/secrets, setup is DevOps)
+        *   Task: Create/configure Pinecone account and index. (✅ **Done**)
+        *   Task: Securely store Pinecone API key and environment details. (✅ **Done** - Vercel env vars `PINECONE_API_KEY`, `PINECONE_INDEX_NAME`, `OPENAI_API_KEY` assumed set)
     *   **L1.2: Integrate Embedding Generation in Snapshot Worker (`snapshot-worker/index.ts`)**
-        *   Task: Add `@langchain/openai` (or direct OpenAI SDK) and Pinecone client SDK to `snapshot-worker/package.json`. (✅ **Done** - `openai`, `pinecone-database/pinecone`, `tiktoken` added)
-        *   Task: Modify worker to initialize OpenAI and Pinecone clients using stored API keys. (✅ **Done**)
+        *   Task: Add `@langchain/openai` (or direct OpenAI SDK) and Pinecone client SDK to `snapshot-worker/package.json`. (✅ **Done**)
+        *   Task: Modify worker to initialize OpenAI and Pinecone clients using stored API keys. (✅ **Done** - Includes lazy init for build and uses correct env var names)
         *   Task: For each significant text block within a page/database row encountered during snapshot:
-            *   Generate a text embedding using an OpenAI model (e.g., `text-embedding-ada-002` or newer).
-            *   Consider data chunking strategies for large blocks to fit embedding model context windows and improve relevance.
-        *   Task: Upsert embeddings to the Pinecone index, including metadata: `vector`, `original_text_snippet`, `pageId`, `blockId` (if applicable), `userId`, `snapshotId`. Ensure namespacing by `userId` in Pinecone.
+            *   Generate a text embedding using an OpenAI model (e.g., `text-embedding-3-small`). (✅ **Done**)
+            *   Consider data chunking strategies for large blocks to fit embedding model context windows and improve relevance. (✅ **Done** - `MAX_CHUNK_TOKENS`, overlap implemented)
+        *   Task: Upsert embeddings to the Pinecone index, including metadata: `vector`, `original_text_snippet`, `pageId`, `blockId` (if applicable), `userId`, `snapshotId`. Ensure namespacing by `userId` in Pinecone. (✅ **Done** - Namespacing by `userId` implemented)
     *   **L1.3: Basic Diff Data Structure**
-        *   Task: Define Firestore structure for storing a basic diff summary (if not using M4's `diffSummary` directly for this, or if more detail is needed). This might store references to changed item IDs that have new embeddings.
+        *   Task: Define Firestore structure for storing a basic diff summary (if not using M4's `diffSummary` directly for this, or if more detail is needed). (✅ **Done** - `diff-worker` stores `SemanticDiffResult` in Firestore)
 
-*   **Phase 2: Semantic Diff API & Basic UI**
-    *   **L1.4: Semantic Diff API (`/api/diff/semantic/route.ts` - new)**
-        *   Task: Create API endpoint accepting `snapshotIdFrom`, `snapshotIdTo`, `userId`. (✅ **Done**)
-        *   Task: Backend logic to:
-            *   Fetch hash manifests (from M4) for both snapshots. (✅ **Done** - Richer `HashManifestEntry` used).
-            *   Identify added/deleted/potentially changed items based on hash comparison. (✅ **Done**).
-            *   For potentially changed items, query Pinecone for their embeddings from both snapshots. (🚧 **In Progress** - Fetches based on type and `totalChunks` from manifest. Uses title, desc, or averaged chunks).
-            *   Perform vector similarity comparisons (e.g., cosine similarity) to confirm actual semantic changes vs. minor non-semantic hash changes. (🚧 **In Progress** - Cosine similarity implemented. Basic classification based on thresholds).
-            *   (Initial) Generate a structured summary of changes: counts of new/deleted/modified pages/blocks, list of significantly changed item IDs. (🚧 **In Progress** - API returns summary and some details).
+*   **Phase 2: Semantic Diff API & Basic UI** (✅ **Largely Done**)
+    *   **L1.4: Semantic Diff API (`/api/diff/*` routes & `diff-worker`)** (✅ **Done**)
+        *   Task: Create API endpoints: (✅ **Done**)
+            *   `/api/diff/run`: to queue a diff job (payload: `snapshotIdFrom`, `snapshotIdTo`). Publishes to Pub/Sub.
+            *   `/api/diff/status/[jobId]`: to poll job status from Firestore.
+            *   `/api/diff/results/[jobId]`: to fetch detailed `SemanticDiffResult` from Firestore.
+        *   Task: `diff-worker` logic: (✅ **Done**)
+            *   Consumes job from Pub/Sub.
+            *   Fetches hash manifests (from M4 - richer `HashManifestEntry` used).
+            *   Identifies added/deleted/potentially changed items based on hash comparison.
+            *   For potentially changed items, queries Pinecone for their embeddings from both snapshots (uses title, desc, or averaged chunks based on type and `totalChunks` from manifest).
+            *   Performs vector similarity comparisons (cosine similarity implemented).
+            *   Generates and stores `SemanticDiffResult` (summary & details) in Firestore.
     *   **L1.5: Basic Semantic Diff UI (New component in dashboard or snapshot details view)**
         *   Task: Frontend UI to select two snapshots for comparison. (✅ **Done** - `ComparisonEngineBar.tsx` has selectors).
-        *   Task: Call `/api/diff/semantic` (or `/api/diff/run` + polling) and display the structured summary. (🚧 **In Progress** - `ComparisonEngineBar.tsx` calls `/api/diff/run`, polls status, fetches results. Displays basic counts. Detailed semantic result display TBD).
+        *   Task: Call `/api/diff/run`, poll status, fetch results, and display summary counts. (✅ **Done** - `ComparisonEngineBar.tsx` implements this. Display labels refined.)
+        *   Task: UI to display detailed semantic diff results (from `SemanticDiffResult.details`). (✅ **Done** - `app/(app)/comparison/[jobId]/page.tsx` displays results, including change type tooltips).
 
 *   **Phase 3: LLM-Powered Analysis & Chat Interface**
-    *   **L1.6: Enhance Semantic Diff API for LLM Analysis**
-        *   Task: Modify `/api/diff/semantic` to take the structured summary and relevant text snippets of changed items.
-        *   Task: Construct a detailed prompt for an LLM (e.g., GPT-4) to generate a natural language summary of the changes.
-        *   Task: Return this LLM-generated summary.
-    *   **L1.7: UI for Natural Language Summary**
-        *   Task: Display the LLM-generated natural language summary in the diff UI.
+    *   **L1.6: Enhance Semantic Diff API for LLM Analysis** (✅ **Done**)
+        *   Task: Modify `/api/diff/semantic` (logic moved to `diff-worker`) to take the structured summary and relevant text snippets of changed items. (✅ Done - Worker uses its computed diff)
+        *   Task: Construct a detailed prompt for an LLM (e.g., GPT-4) to generate a natural language summary of the changes. (✅ Done - Implemented in `diff-worker/src/openaiUtils.ts`)
+        *   Task: Return this LLM-generated summary. (✅ Done - Stored in `SemanticDiffResult.llmSummary` by `diff-worker`)
+    *   **L1.7: UI for Natural Language Summary** (✅ **Done**)
+        *   Task: Display the LLM-generated natural language summary in the diff UI. (✅ Done - Displayed in `Alert` on `app/(app)/comparison/[jobId]/page.tsx`, PostHog event added)
     *   **L1.8: "Ask a Question" Chat API (`/api/ai/ask-diff/route.ts` - enhance or new)**
         *   Task: API endpoint accepts `snapshotIdFrom`, `snapshotIdTo`, `userId`, and a natural language `question`.
         *   Task: Backend logic:
@@ -292,3 +297,13 @@ UX Work-Items Required for the Upcoming Road-map
 Hand-off package: each item needs 🎨 Figma wireframes, 📝 micro-copy, and ✅ acceptance criteria before dev tickets start.
 
 Let me know if you need deeper specs or prioritization of these UX tasks!
+
+**Specific Tasks Recently Completed (User Request):**
+
+*   **Implement Real Logic for ONE Placeholder API (`/api/analytics/kpis/route.ts`):** (✅ **Done**)
+    *   Replaced placeholder API with logic to count user's total snapshots and get timestamp of the latest one from Firestore.
+    *   Created `src/hooks/useKpis.ts` SWR hook.
+    *   Updated dashboard page to use the hook and display this real data in a `KpiCard`.
+*   **Refine Frontend Data Mapping (`ComparisonEngineBar.tsx`):** (✅ **Done**)
+    *   Updated display labels in `ComparisonEngineBar.tsx` to "Confidence", "Added", "Modified", "Removed".
+    *   Ensured "Modified" count uses `contentHashChanged` from the diff summary.

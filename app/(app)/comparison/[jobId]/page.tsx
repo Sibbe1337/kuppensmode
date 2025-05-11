@@ -1,6 +1,6 @@
 "use client";
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import useSWR from 'swr';
 import apiClient from '@/lib/apiClient';
@@ -8,7 +8,7 @@ import type { SemanticDiffResult, ChangedItemDetail } from '@/types/diff';
 import {
   AlertTriangle, CheckCircle, Info, ChevronDown, ChevronRight, Eye,
   FilePlus, FileMinus, ArrowRightLeft, RefreshCw, ExternalLink,
-  FileText, Database, Blocks, HelpCircle
+  FileText, Database, Blocks, HelpCircle, Sparkles
 } from 'lucide-react';
 import {
   Card, CardContent, CardHeader, CardTitle, CardDescription
@@ -25,6 +25,8 @@ import { cn } from "@/lib/utils";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Loader2 } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { usePostHog } from 'posthog-js/react';
 
 const getChangeTypeBadgeVariant = (changeType: ChangedItemDetail['changeType']): "default" | "secondary" | "destructive" | "outline" => {
   switch (changeType) {
@@ -40,6 +42,15 @@ const getChangeTypeBadgeVariant = (changeType: ChangedItemDetail['changeType']):
   }
 };
 
+const changeTypeTooltips: Record<ChangedItemDetail['changeType'], string> = {
+  'hash_only_similar': "Content hash changed, but text is semantically very similar.",
+  'semantic_divergence': "Content hash changed, and text shows meaningful semantic differences.",
+  'pending_semantic_check': "Semantic analysis is pending or was not completed for this item.",
+  'no_embeddings_found': "Embeddings were not available, so semantic comparison could not be performed.",
+  'structural_change': "Likely a change in item type or significant structural alteration where semantic comparison isn't directly applicable.",
+  'error_in_processing': "An error occurred while trying to perform semantic analysis for this item."
+};
+
 const ItemTypeIcon = ({ type, blockType }: { type?: string, blockType?: string }) => {
   if (type === 'page') return <FileText className="h-4 w-4 mr-2 text-sky-500" />;
   if (type === 'database') return <Database className="h-4 w-4 mr-2 text-purple-500" />;
@@ -51,6 +62,7 @@ export default function ComparisonDetailsPage() {
   const params = useParams();
   const router = useRouter();
   const jobId = typeof params.jobId === 'string' ? params.jobId : null;
+  const posthog = usePostHog();
 
   const { data: diffResult, error, isLoading, mutate } = useSWR<SemanticDiffResult>(
     jobId ? `/api/diff/results/${jobId}` : null,
@@ -61,6 +73,16 @@ export default function ComparisonDetailsPage() {
       }
     }
   );
+
+  useEffect(() => {
+    if (diffResult?.llmSummary && jobId && posthog) {
+      posthog.capture('llm_diff_summary_viewed', {
+        jobId: jobId,
+        llmModel: diffResult.llmModel,
+        llmTokens: diffResult.llmTokens
+      });
+    }
+  }, [diffResult?.llmSummary, jobId, posthog, diffResult?.llmModel, diffResult?.llmTokens]);
 
   if (isLoading || !jobId && !error) {
     return (
@@ -99,7 +121,7 @@ export default function ComparisonDetailsPage() {
     );
   }
 
-  const { summary, details, snapshotIdFrom, snapshotIdTo, message, status, createdAt, updatedAt } = diffResult as SemanticDiffResult;
+  const { summary, details, snapshotIdFrom, snapshotIdTo, message, status, createdAt, updatedAt, llmSummary, llmModel, llmTokens } = diffResult as SemanticDiffResult;
 
   const isProcessing = status === 'processing' || status === 'pending';
 
@@ -157,6 +179,20 @@ export default function ComparisonDetailsPage() {
         </Card>
       )}
 
+      {/* Display LLM Summary if available and job is completed */}
+      {status === 'completed' && llmSummary && (
+        <Alert variant="default" className="space-y-2 border-blue-500/50 bg-blue-500/5 dark:bg-blue-500/10">
+          <AlertTitle className="flex items-center text-blue-700 dark:text-blue-300">
+            <Sparkles className="h-5 w-5 mr-2" />
+            AI-Generated Summary
+            {llmModel && <span className="ml-2 text-xs text-muted-foreground"> (Model: {llmModel})</span>}
+          </AlertTitle>
+          <AlertDescription className="whitespace-pre-line text-sm text-foreground/80">
+            {llmSummary}
+          </AlertDescription>
+        </Alert>
+      )}
+
       {isProcessing && (
         <div className="text-center py-10">
             <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto mb-4" />
@@ -165,16 +201,29 @@ export default function ComparisonDetailsPage() {
       )}
 
       {status === 'completed' && details && (
-        <Accordion type="single" collapsible className="w-full space-y-3" defaultValue='changed-items'>
-          {renderDetailSection("Changed Items", details.changedItems, (item: ChangedItemDetail) => (
-            <>
-              <TableCell><Badge variant={getChangeTypeBadgeVariant(item.changeType)} className="text-xs capitalize">{item.changeType.replace(/_/g, ' ')}</Badge></TableCell>
-              <TableCell>{item.similarityScore !== undefined ? `${(item.similarityScore * 100).toFixed(1)}%` : 'N/A'}</TableCell>
-            </>
-          ), ["Change Type", "Similarity"])}
-          {renderDetailSection("Added Items", details.addedItems)}
-          {renderDetailSection("Deleted Items", details.deletedItems)}
-        </Accordion>
+        <TooltipProvider>
+          <Accordion type="single" collapsible className="w-full space-y-3" defaultValue='changed-items'>
+            {renderDetailSection("Changed Items", details.changedItems, (item: ChangedItemDetail) => (
+              <>
+                <TableCell>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Badge variant={getChangeTypeBadgeVariant(item.changeType)} className="text-xs capitalize cursor-default">
+                        {item.changeType.replace(/_/g, ' ')}
+                      </Badge>
+                    </TooltipTrigger>
+                    <TooltipContent side="top">
+                      <p className="max-w-xs">{changeTypeTooltips[item.changeType] || 'No additional details.'}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TableCell>
+                <TableCell>{item.similarityScore !== undefined ? `${(item.similarityScore * 100).toFixed(1)}%` : 'N/A'}</TableCell>
+              </>
+            ), ["Change Type", "Similarity"])}
+            {renderDetailSection("Added Items", details.addedItems)}
+            {renderDetailSection("Deleted Items", details.deletedItems)}
+          </Accordion>
+        </TooltipProvider>
       )}
        <div className="mt-10 text-center">
           <Button variant="outline" asChild><Link href="/dashboard">Back to Dashboard</Link></Button>
