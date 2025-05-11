@@ -8,7 +8,7 @@ import {
   CopyObjectCommand
 } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
-import type { StorageAdapter } from './StorageAdapter.js'; // Using .js for robust module resolution
+import type { StorageAdapter } from './StorageAdapter'; // Removed .js extension
 import { Readable } from 'node:stream';
 
 // Re-using S3AdapterOptions for R2 as structure is identical for S3-compatible APIs
