@@ -1,12 +1,12 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import type { UserStorageProvider, StorageProviderType } from '@/types/storageProvider'; // Assuming path alias resolves
-import { Button } from '@/components/ui/button'; // Assuming path alias resolves
-// import { Input } from "@/components/ui/input";
-// import { Label } from "@/components/ui/label";
-// import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-// import { Switch } from "@/components/ui/switch";
+import type { UserStorageProvider, StorageProviderType } from '../../../types/storageProvider';
+import { Button } from '../../ui/button';
+import { Input } from "../../ui/input";
+import { Label } from "../../ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../ui/select";
+import { Switch } from "../../ui/switch";
 // import { Textarea } from "@/components/ui/textarea"; // For access keys if shown, though usually password fields
 
 interface StorageProviderModalProps {
@@ -107,41 +107,46 @@ export default function StorageProviderModal({
         <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-6">{isEditMode ? 'Edit' : 'Add New'} Storage Provider</h2>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <LabelMock htmlFor="type">Provider Type</LabelMock>
-            <SelectMock id="type" value={type} onChange={(e) => setType(e.target.value as StorageProviderType)} required>
-              <option value="s3">AWS S3</option>
-              <option value="r2">Cloudflare R2</option>
-            </SelectMock>
+            <Label htmlFor="type">Provider Type</Label>
+            <Select value={type} onValueChange={(value: string) => setType(value as StorageProviderType)} required>
+              <SelectTrigger id="type">
+                <SelectValue placeholder="Select provider type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="s3">AWS S3</SelectItem>
+                <SelectItem value="r2">Cloudflare R2</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <div>
-            <LabelMock htmlFor="bucket">Bucket Name</LabelMock>
-            <InputMock id="bucket" type="text" value={bucket} onChange={(e) => setBucket(e.target.value)} placeholder="your-bucket-name" required />
+            <Label htmlFor="bucket">Bucket Name</Label>
+            <Input id="bucket" type="text" value={bucket} onChange={(e) => setBucket(e.target.value)} placeholder="your-bucket-name" required />
           </div>
 
           {type === 's3' && (
             <div>
-              <LabelMock htmlFor="region">AWS Region</LabelMock>
-              <InputMock id="region" type="text" value={region} onChange={(e) => setRegion(e.target.value)} placeholder="e.g., us-east-1" required={type === 's3'} />
+              <Label htmlFor="region">AWS Region</Label>
+              <Input id="region" type="text" value={region} onChange={(e) => setRegion(e.target.value)} placeholder="e.g., us-east-1" required={type === 's3'} />
             </div>
           )}
 
           {type === 'r2' && (
             <div>
-              <LabelMock htmlFor="endpoint">R2 Endpoint URL</LabelMock>
-              <InputMock id="endpoint" type="url" value={endpoint} onChange={(e) => setEndpoint(e.target.value)} placeholder="https://<ACCOUNT_ID>.r2.cloudflarestorage.com" required={type === 'r2'} />
+              <Label htmlFor="endpoint">R2 Endpoint URL</Label>
+              <Input id="endpoint" type="url" value={endpoint} onChange={(e) => setEndpoint(e.target.value)} placeholder="https://<ACCOUNT_ID>.r2.cloudflarestorage.com" required={type === 'r2'} />
             </div>
           )}
           
           {!isEditMode && (
             <>
               <div>
-                <LabelMock htmlFor="accessKeyId">Access Key ID</LabelMock>
-                <InputMock id="accessKeyId" type="password" value={accessKeyId} onChange={(e) => setAccessKeyId(e.target.value)} placeholder="Provider Access Key ID" required={!isEditMode} />
+                <Label htmlFor="accessKeyId">Access Key ID</Label>
+                <Input id="accessKeyId" type="password" value={accessKeyId} onChange={(e) => setAccessKeyId(e.target.value)} placeholder="Provider Access Key ID" required={!isEditMode} />
               </div>
               <div>
-                <LabelMock htmlFor="secretAccessKey">Secret Access Key</LabelMock>
-                <InputMock id="secretAccessKey" type="password" value={secretAccessKey} onChange={(e) => setSecretAccessKey(e.target.value)} placeholder="Provider Secret Access Key" required={!isEditMode} />
+                <Label htmlFor="secretAccessKey">Secret Access Key</Label>
+                <Input id="secretAccessKey" type="password" value={secretAccessKey} onChange={(e) => setSecretAccessKey(e.target.value)} placeholder="Provider Secret Access Key" required={!isEditMode} />
               </div>
             </>
           )}
@@ -149,22 +154,27 @@ export default function StorageProviderModal({
 
           {type === 'r2' && (
              <div className="flex items-center space-x-2">
-                <SwitchMock id="forcePathStyle" checked={forcePathStyle} onCheckedChange={setForcePathStyle} />
-                <LabelMock htmlFor="forcePathStyle">Force Path Style (usually needed for R2)</LabelMock>
+                <Switch id="forcePathStyle" checked={forcePathStyle} onCheckedChange={setForcePathStyle} />
+                <Label htmlFor="forcePathStyle">Force Path Style (usually needed for R2)</Label>
             </div>
           )}
 
           <div>
-            <LabelMock htmlFor="replicationMode">Replication Mode</LabelMock>
-            <SelectMock id="replicationMode" value={replicationMode} onChange={(e) => setReplicationMode(e.target.value as 'mirror' | 'archive')}>
-              <option value="mirror">Mirror (Standard)</option>
-              <option value="archive">Archive (Cold Storage - future)</option>
-            </SelectMock>
+            <Label htmlFor="replicationMode">Replication Mode</Label>
+            <Select value={replicationMode} onValueChange={(value: string) => setReplicationMode(value as 'mirror' | 'archive')}>
+              <SelectTrigger id="replicationMode">
+                <SelectValue placeholder="Select replication mode" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="mirror">Mirror (Standard)</SelectItem>
+                <SelectItem value="archive">Archive (Cold Storage - future)</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="flex items-center space-x-2">
-            <SwitchMock id="isEnabled" checked={isEnabled} onCheckedChange={setIsEnabled} />
-            <LabelMock htmlFor="isEnabled">Enable this provider</LabelMock>
+            <Switch id="isEnabled" checked={isEnabled} onCheckedChange={setIsEnabled} />
+            <Label htmlFor="isEnabled">Enable this provider</Label>
           </div>
 
           <div className="flex justify-end space-x-3 pt-4">

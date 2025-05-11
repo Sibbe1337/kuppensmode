@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { db } from '@/lib/firebaseAdmin'; // PATH TO BE CONFIRMED BY USER - Linter error if alias not resolved
-import { encryptString } from '@/lib/kms';     // Linter error if alias not resolved
-import type { UserStorageProvider, StorageProviderType } from '@/types/storageProvider'; // Linter error if alias not resolved
+import { getDb } from '../../../../src/lib/firestore'; // Import the getter
+import { encryptString } from '../../../../src/lib/kms';
+import type { UserStorageProvider, StorageProviderType } from '../../../../src/types/storageProvider';
 import { nanoid } from 'nanoid';
 // Import types from @google-cloud/firestore since firebase-admin is not a direct dependency
 import { Timestamp, FieldValue, QueryDocumentSnapshot } from '@google-cloud/firestore';
+
+const db = getDb(); // Initialize db instance
 
 // POST /api/user/storage-configs - Create a new storage provider configuration
 export async function POST(request: Request) {
@@ -96,8 +98,8 @@ export async function GET(request: Request) {
       .get();
 
     const providers: Partial<UserStorageProvider>[] = [];
-    providersSnapshot.forEach((doc: QueryDocumentSnapshot<UserStorageProvider>) => { 
-      const data = doc.data();
+    providersSnapshot.forEach(doc => {
+      const data = doc.data() as UserStorageProvider;
       const { encryptedAccessKeyId, encryptedSecretAccessKey, ...safeData } = data;
       providers.push(safeData);
     });

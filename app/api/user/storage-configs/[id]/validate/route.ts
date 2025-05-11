@@ -1,12 +1,14 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { db } from '@/lib/firebaseAdmin'; // Assuming this path alias resolves
-import { decryptString } from '@/lib/kms'; // Assuming this path alias resolves
-import type { UserStorageProvider } from '@/types/storageProvider'; // Assuming this path alias resolves
-import { S3StorageAdapter } from '@/storage/S3StorageAdapter'; // Assuming this path alias resolves
-import { R2StorageAdapter } from '@/storage/R2StorageAdapter'; // Assuming this path alias resolves
+import { getDb } from '../../../../../../src/lib/firestore'; // Corrected path
+import { decryptString } from '../../../../../../src/lib/kms'; // Corrected path
+import type { UserStorageProvider } from '../../../../../../src/types/storageProvider'; // Corrected path
+import { S3StorageAdapter } from '../../../../../../src/storage/S3StorageAdapter'; // Corrected path
+import { R2StorageAdapter } from '../../../../../../src/storage/R2StorageAdapter'; // Corrected path
 import { FieldValue } from '@google-cloud/firestore';
 import { randomUUID } from 'crypto'; // Using crypto.randomUUID for modern Node.js
+
+const db = getDb(); // Initialize db instance
 
 interface RouteContext {
   params: {

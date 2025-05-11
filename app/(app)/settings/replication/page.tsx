@@ -1,11 +1,11 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useStorageConfigs } from '@/hooks/useStorageConfigs';
-import StorageProviderList from '@/components/settings/replication/StorageProviderList';
-import StorageProviderModal from '@/components/settings/replication/StorageProviderModal';
-import { Button } from '@/components/ui/button';
-import type { UserStorageProvider } from '@/types/storageProvider'; // For typing editingConfig
+import { useStorageConfigs } from '../../../../src/hooks/useStorageConfigs';
+import StorageProviderList from '../../../../src/components/settings/replication/StorageProviderList';
+import StorageProviderModal from '../../../../src/components/settings/replication/StorageProviderModal';
+import { Button } from '../../../../src/components/ui/button';
+import type { UserStorageProvider } from '../../../../src/types/storageProvider'; // For typing editingConfig
 
 export default function ReplicationSettingsPage() {
   const { configs, isLoading, isError, errorDetails, mutateConfigs } = useStorageConfigs();

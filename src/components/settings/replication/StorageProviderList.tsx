@@ -1,10 +1,10 @@
 'use client';
 
 import React from 'react';
-import type { UserStorageProvider } from '@/types/storageProvider';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge'; // Assuming you have a Badge component
-// import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import type { UserStorageProvider } from '../../../types/storageProvider';
+import { Button } from '../../ui/button';
+import { Badge } from '../../ui/badge';
+// import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../ui/table"; // Corrected path if used
 // import { MoreHorizontal, CheckCircle, XCircle, AlertTriangle, Zap } from "lucide-react"; // Example icons
 // import {
 //   DropdownMenu,

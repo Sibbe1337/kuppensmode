@@ -1,5 +1,5 @@
 import useSWR from 'swr';
-import type { UserStorageProvider } from '@/types/storageProvider'; // Assuming path alias resolves at runtime
+import type { UserStorageProvider } from '../types/storageProvider';
 
 const fetcher = async (url: string) => {
   const res = await fetch(url);

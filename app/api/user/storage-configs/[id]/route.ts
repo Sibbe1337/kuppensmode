@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { db } from '@/lib/firebaseAdmin'; // Assuming this path alias resolves
-import { encryptString, decryptString } from '@/lib/kms'; // Assuming this path alias resolves
-import type { UserStorageProvider } from '@/types/storageProvider'; // Assuming this path alias resolves
+import { getDb } from '../../../../../src/lib/firestore'; // Corrected path and import
+import { decryptString } from '../../../../../src/lib/kms'; // Corrected path, assuming encryptString is not needed here
+import type { UserStorageProvider } from '../../../../../src/types/storageProvider'; // Corrected path
 import { FieldValue } from '@google-cloud/firestore';
+
+const db = getDb(); // Initialize db instance
 
 interface RouteContext {
   params: {
