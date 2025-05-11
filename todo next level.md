@@ -47,12 +47,12 @@ Here's the breakdown:
     *   **L1.7: UI for Natural Language Summary** (✅ **Done**)
         *   Task: Display the LLM-generated natural language summary in the diff UI. (✅ Done - Displayed in `Alert` on `app/(app)/comparison/[jobId]/page.tsx`, PostHog event added)
     *   **L1.8: "Ask a Question" Chat API (`/api/ai/ask-diff/route.ts` - enhance or new)**
-        *   Task: API endpoint accepts `snapshotIdFrom`, `snapshotIdTo`, `userId`, and a natural language `question`.
-        *   Task: Backend logic:
-            *   Use the question to perform a semantic search (vector query) against the embeddings of the *content* within the diff range (from `snapshotIdFrom` to `snapshotIdTo`).
-            *   Retrieve relevant text chunks/embeddings.
-            *   Construct a prompt for an LLM including the user's question and the retrieved context.
-            *   Return the LLM's answer.
+        *   Task: API endpoint accepts `snapshotIdFrom`, `snapshotIdTo`, `userId`, and a natural language `question`. (✅ **Done** - `app/api/ai/ask-diff/route.ts` created and accepts these)
+        *   Task: Backend logic: (🚧 **In Progress** - Initial implementation in place)
+            *   Use the question to perform a semantic search (vector query) against the embeddings of the *content* within the diff range (from `snapshotIdFrom` to `snapshotIdTo`). (✅ Done - Queries Pinecone using question embedding, filters by snapshot IDs)
+            *   Retrieve relevant text chunks/embeddings. (✅ Done - Retrieves text from Pinecone match metadata)
+            *   Construct a prompt for an LLM including the user's question and the retrieved context. (✅ Done)
+            *   Return the LLM's answer. (✅ Done)
     *   **L1.9: Chat UI for Diff Analysis**
         *   Task: Implement a chat interface where users can ask questions about the changes between two snapshots.
         *   Task: UI to call the "Ask a Question" API and display responses.

@@ -27,6 +27,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Loader2 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { usePostHog } from 'posthog-js/react';
+import DiffChatAssistant from '@/components/dashboard/DiffChatAssistant';
 
 const getChangeTypeBadgeVariant = (changeType: ChangedItemDetail['changeType']): "default" | "secondary" | "destructive" | "outline" => {
   switch (changeType) {
@@ -191,6 +192,17 @@ export default function ComparisonDetailsPage() {
             {llmSummary}
           </AlertDescription>
         </Alert>
+      )}
+
+      {/* AI Chat Assistant - NEW */}
+      {status === 'completed' && snapshotIdFrom && snapshotIdTo && (
+        <div className="mt-6">
+          <DiffChatAssistant 
+            snapshotIdFrom={snapshotIdFrom} 
+            snapshotIdTo={snapshotIdTo} 
+            jobId={jobId || undefined} 
+          />
+        </div>
       )}
 
       {isProcessing && (
