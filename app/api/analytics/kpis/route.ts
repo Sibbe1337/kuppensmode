@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, NextRequest } from 'next/server';
 import { auth }         from '@clerk/nextjs/server';
 // import { Firestore }    from '@google-cloud/firestore'; // We'll use our lazy loader
 import { getDb } from '@/lib/firestore'; // Using our lazy loader
@@ -18,23 +18,43 @@ export const runtime = 'nodejs';          // ❗ we need full Node for Firestore
  *      latestSnapshotAt: number | null   // epoch ms, or Firestore Timestamp
  *    }
  */
-export async function GET() {
-  const db = getDb(); // Get instance here
-  const { userId } = await auth();
-  if (!userId) {
-    return NextResponse.json({ error : 'unauthorised' }, { status : 401 });
-  }
-
+export async function GET(_req: NextRequest) {
+  console.log('[KPIs API] Starting request');
+  
   try {
+    const session = await auth();
+    console.log('[KPIs API] Auth session:', { 
+      hasUserId: !!session?.userId,
+      userId: session?.userId 
+    });
+    
+    if (!session?.userId) {
+      console.log('[KPIs API] No userId in session, returning 401');
+      return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
+    }
+
+    const db = getDb();
+    console.log('[KPIs API] Firestore instance obtained');
+    
     // 1️⃣ total count ------------------------------------
-    console.log('[KPIs API] Attempting to get snapshot count for user:', userId);
-    const snapCol   = db.collection('users').doc(userId).collection('snapshots');
-    const countSnap = await snapCol.count().get();
-    const snapshotsTotal = countSnap.data().count || 0;
-    console.log('[KPIs API] Successfully got snapshot count:', snapshotsTotal);
+    console.log('[KPIs API] Attempting to get snapshot count for user:', session.userId);
+    const snapCol = db.collection('users').doc(session.userId).collection('snapshots');
+    
+    // Fallback to size() if count() fails
+    let snapshotsTotal = 0;
+    try {
+      const countSnap = await snapCol.count().get();
+      snapshotsTotal = countSnap.data().count || 0;
+      console.log('[KPIs API] Successfully got snapshot count:', snapshotsTotal);
+    } catch (countErr) {
+      console.warn('[KPIs API] Count query failed, falling back to size():', countErr);
+      const allDocs = await snapCol.get();
+      snapshotsTotal = allDocs.size;
+      console.log('[KPIs API] Fallback size count:', snapshotsTotal);
+    }
 
     // 2️⃣ timestamp of most-recent snapshot ---------------
-    console.log('[KPIs API] Attempting to get latest snapshot for user:', userId);
+    console.log('[KPIs API] Attempting to get latest snapshot for user:', session.userId);
     const latestQuery = await snapCol
       .where('status', '==', 'Completed')
       .orderBy('timestamp', 'desc')
