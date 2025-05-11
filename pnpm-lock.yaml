@@ -20,6 +20,9 @@ importers:
       '@google-cloud/firestore':
         specifier: ^7.11.0
         version: 7.11.0
+      '@google-cloud/kms':
+        specifier: ^5.0.1
+        version: 5.0.1
       '@google-cloud/pubsub':
         specifier: ^4.5.0
         version: 4.11.0
@@ -549,6 +552,10 @@ packages:
   '@google-cloud/firestore@7.11.0':
     resolution: {integrity: sha512-88uZ+jLsp1aVMj7gh3EKYH1aulTAMFAp8sH/v5a9w8q8iqSG27RiWLoxSAFr/XocZ9hGiWH1kEnBw+zl3xAgNA==}
     engines: {node: '>=14.0.0'}
+
+  '@google-cloud/kms@5.0.1':
+    resolution: {integrity: sha512-q72Sao+X+/DioGVlvzDzm6NTBAWuVJ3/OKccGQEfIszKyzLVkepSqi6ZSZtv9uPbM3CAe3QVFsEhGvrzRJmduA==}
+    engines: {node: '>=18'}
 
   '@google-cloud/paginator@5.0.2':
     resolution: {integrity: sha512-DJS3s0OVH4zFDB1PzjxAsHqJT6sKVbRwwML0ZBP9PbU7Yebtu/7SWMRzvO2J3nUi9pRNITCfu4LJeooM2w4pjg==}
@@ -5280,6 +5287,12 @@ snapshots:
       protobufjs: 7.5.0
     transitivePeerDependencies:
       - encoding
+      - supports-color
+
+  '@google-cloud/kms@5.0.1':
+    dependencies:
+      google-gax: 5.0.1-rc.1
+    transitivePeerDependencies:
       - supports-color
 
   '@google-cloud/paginator@5.0.2':

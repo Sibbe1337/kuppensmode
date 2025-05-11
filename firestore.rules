@@ -33,6 +33,22 @@
           }
         }
 
+        // Rules for user storage provider configurations
+        match /userStorageConfigs/{userId} {
+          // This top-level document for a user (if it were to exist) can be managed by the user.
+          // However, data is primarily in the subcollection.
+          allow read, write: if request.auth.uid == userId;
+
+          match /providers/{providerConfigId} {
+            // User can create, read, update, delete their own provider configurations
+            allow read, write: if request.auth.uid == userId;
+
+            // Allow admin/worker (with custom admin claim) to read provider configurations
+            // This is for the snapshot-worker to fetch credentials for replication.
+            allow get, list: if request.auth.uid == userId || request.auth.token.admin == true;
+          }
+        }
+
         // It's good practice to deny all other access by default if not explicitly allowed.
         // However, be careful with this if you have other top-level collections 
         // that need different access rules (e.g., public data, admin collections).

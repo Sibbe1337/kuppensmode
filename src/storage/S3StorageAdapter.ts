@@ -5,7 +5,8 @@ import {
   DeleteObjectCommand,
   ListObjectsV2Command,
   HeadObjectCommand,
-  CopyObjectCommand
+  CopyObjectCommand,
+  S3ClientConfig
 } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 import type { StorageAdapter } from './StorageAdapter';
@@ -14,23 +15,37 @@ import { Readable } from 'node:stream';
 export interface S3AdapterOptions {
   bucket: string;
   region?: string;
-  endpoint?: string; // allow custom (R2, MinIO)
-  forcePathStyle?: boolean; // true for R2 & some S3-compatible endpoints
+  endpoint?: string; 
+  forcePathStyle?: boolean; 
+  accessKeyId?: string;      // Optional explicit credentials
+  secretAccessKey?: string;  // Optional explicit credentials
+  client?: S3Client;         // Optional pre-configured S3 client
 }
 
 export class S3StorageAdapter implements StorageAdapter {
   private client: S3Client;
-  private bucket: string;
+  private bucketName: string; // Renamed from this.bucket to avoid confusion with opts.bucket
 
   constructor(opts: S3AdapterOptions) {
-    const { bucket, region, endpoint, forcePathStyle } = opts;
-    this.bucket = bucket;
+    const { bucket, region, endpoint, forcePathStyle, accessKeyId, secretAccessKey, client } = opts;
+    this.bucketName = bucket;
 
-    this.client = new S3Client({
-      region,
-      endpoint,
-      forcePathStyle,
-    });
+    if (client) {
+      this.client = client;
+    } else {
+      const clientConfig: S3ClientConfig = {
+        region,
+        endpoint,
+        forcePathStyle,
+      };
+      if (accessKeyId && secretAccessKey) {
+        clientConfig.credentials = {
+          accessKeyId,
+          secretAccessKey,
+        };
+      }
+      this.client = new S3Client(clientConfig);
+    }
   }
 
   /* ---------- helpers ---------- */
@@ -51,11 +66,10 @@ export class S3StorageAdapter implements StorageAdapter {
     const isBig = Buffer.isBuffer(data) ? data.length > 5 * 1024 ** 2 : false;
 
     if (isBig) {
-      // multipart upload for large files
       const upload = new Upload({
         client: this.client,
         params: {
-          Bucket: this.bucket,
+          Bucket: this.bucketName,
           Key: path,
           Body: data as any,
           Metadata: metadata,
@@ -65,7 +79,7 @@ export class S3StorageAdapter implements StorageAdapter {
     } else {
       await this.client.send(
         new PutObjectCommand({
-          Bucket: this.bucket,
+          Bucket: this.bucketName,
           Key: path,
           Body: data,
           Metadata: metadata,
@@ -76,48 +90,61 @@ export class S3StorageAdapter implements StorageAdapter {
 
   async read(path: string) {
     const { Body } = await this.client.send(
-      new GetObjectCommand({ Bucket: this.bucket, Key: path })
+      new GetObjectCommand({ Bucket: this.bucketName, Key: path })
     );
+    if (!Body) throw new Error('Empty response body from S3');
     return this.streamToBuffer(Body as Readable);
   }
 
   async list(prefix: string) {
     const { Contents = [] } = await this.client.send(
-      new ListObjectsV2Command({ Bucket: this.bucket, Prefix: prefix })
+      new ListObjectsV2Command({ Bucket: this.bucketName, Prefix: prefix })
     );
-    return Contents.map(obj => obj.Key!).filter(Boolean);
+    return Contents.map(obj => obj.Key!).filter(Boolean) as string[];
   }
 
   async delete(path: string) {
     await this.client.send(
-      new DeleteObjectCommand({ Bucket: this.bucket, Key: path })
+      new DeleteObjectCommand({ Bucket: this.bucketName, Key: path })
     );
   }
 
-  async exists(path: string) {
+  async exists(path: string): Promise<boolean> {
     try {
       await this.client.send(
-        new HeadObjectCommand({ Bucket: this.bucket, Key: path })
+        new HeadObjectCommand({ Bucket: this.bucketName, Key: path })
       );
       return true;
     } catch (err: any) {
-      return err?.$metadata?.httpStatusCode === 404 ? false : Promise.reject(err);
+      // More robust check for NotFound error from S3
+      if (err.name === 'NotFound' || err?.$metadata?.httpStatusCode === 404) {
+        return false;
+      }
+      throw err;
     }
   }
 
-  async getMetadata(path: string) {
-    const { Metadata } = await this.client.send(
-      new HeadObjectCommand({ Bucket: this.bucket, Key: path })
-    );
-    return Metadata ?? {};
+  async getMetadata(path: string): Promise<Record<string, any>> {
+    try {
+      const { Metadata } = await this.client.send(
+        new HeadObjectCommand({ Bucket: this.bucketName, Key: path })
+      );
+      return Metadata || {};
+    } catch (err: any) {
+      if (err.name === 'NotFound' || err?.$metadata?.httpStatusCode === 404) {
+        throw new Error(`Object not found at path: ${path}`);
+      }
+      throw err;
+    }
   }
 
-  async copy(src: string, dest: string) {
+  async copy(srcPath: string, destPath: string): Promise<void> {
+    const copySource = `${this.bucketName}/${encodeURIComponent(srcPath)}`;
     await this.client.send(
       new CopyObjectCommand({
-        Bucket: this.bucket,
-        CopySource: `${this.bucket}/${encodeURIComponent(src)}`,
-        Key: dest,
+        Bucket: this.bucketName,
+        CopySource: copySource,
+        Key: destPath,
       })
     );
   }
