@@ -55,15 +55,17 @@ export async function GET(_req: NextRequest) {
 
     // 2️⃣ timestamp of most-recent snapshot ---------------
     console.log('[KPIs API] Attempting to get latest snapshot for user:', session.userId);
-    const latestQuery = await snapCol
-      .where('status', '==', 'Completed')
-      .orderBy('timestamp', 'desc')
-      .limit(1)
-      .get();
-    console.log('[KPIs API] Latest snapshot query completed, empty:', latestQuery.empty);
-
     let latestSnapshotAt: number | null = null;
-    if (!latestQuery.empty) {
+    
+    try {
+      const latestQuery = await snapCol
+        .where('status', '==', 'Completed')
+        .orderBy('timestamp', 'desc')
+        .limit(1)
+        .get();
+      console.log('[KPIs API] Latest snapshot query completed, empty:', latestQuery.empty);
+
+      if (!latestQuery.empty) {
         const timestampData = latestQuery.docs[0]!.data().timestamp;
         console.log('[KPIs API] Raw timestamp data:', timestampData);
         // Firestore Timestamps might be objects { _seconds: ..., _nanoseconds: ... } or actual Timestamp instances
@@ -77,6 +79,33 @@ export async function GET(_req: NextRequest) {
         } else if (typeof timestampData === 'number') { // Already epoch ms
             latestSnapshotAt = timestampData;
         } 
+      }
+    } catch (queryErr: any) {
+      console.warn('[KPIs API] Latest snapshot query failed, falling back to simple query:', queryErr);
+      // Fallback: Get all completed snapshots and sort in memory
+      const allCompleted = await snapCol
+        .where('status', '==', 'Completed')
+        .get();
+      
+      if (!allCompleted.empty) {
+        const snapshots = allCompleted.docs
+          .map(doc => ({ timestamp: doc.data().timestamp }))
+          .filter(snap => snap.timestamp) // Filter out any without timestamp
+          .sort((a, b) => {
+            const timeA = a.timestamp?.toMillis?.() ?? a.timestamp?._seconds * 1000 ?? 0;
+            const timeB = b.timestamp?.toMillis?.() ?? b.timestamp?._seconds * 1000 ?? 0;
+            return timeB - timeA; // Descending order
+          });
+        
+        if (snapshots.length > 0) {
+          const latest = snapshots[0].timestamp;
+          if (latest?.toMillis) {
+            latestSnapshotAt = latest.toMillis();
+          } else if (latest?._seconds) {
+            latestSnapshotAt = latest._seconds * 1000 + (latest._nanoseconds / 1000000);
+          }
+        }
+      }
     }
 
     return NextResponse.json({ snapshotsTotal, latestSnapshotAt });
