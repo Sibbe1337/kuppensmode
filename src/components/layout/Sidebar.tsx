@@ -40,7 +40,7 @@ const Sidebar = () => {
               Dashboard
             </Link>
             <Link 
-              href="/analytics"
+              href="/dashboard"
               className="flex items-center gap-3 px-2 py-2 text-sm font-medium rounded-md hover:bg-muted hover:text-accent-foreground"
               passHref
             >

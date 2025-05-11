@@ -18,6 +18,8 @@ const StatusBadge: React.FC = () => {
   const { data, error, isLoading } = useSWR<StatusData>('/status', apiClient, {
     refreshInterval: 300000, 
     revalidateOnFocus: true,
+    errorRetryCount: 2,
+    errorRetryInterval: 10000
   });
 
   let dotColor = 'bg-gray-400';
