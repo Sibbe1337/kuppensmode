@@ -66,10 +66,10 @@ Here's the breakdown:
     *   Task: Define a TypeScript interface `StorageAdapter` with methods like `write(path, data, metadata)`, `read(path)`, `list(pathPrefix)`, `delete(path)`, `exists(path)`.
 *   **L2.2: Implement GCS Adapter (`GCSStorageAdapter.ts`)**
     *   Task: Refactor existing GCS logic in `snapshot-worker` (and potentially restore worker) to use the `StorageAdapter` interface, implemented by a `GCSStorageAdapter` class.
-*   **L2.3: Implement AWS S3 Adapter (`S3StorageAdapter.ts`)**
-    *   Task: Add AWS SDK for S3 to relevant worker(s) (`snapshot-worker`, restore worker).
-    *   Task: Create `S3StorageAdapter` class implementing `StorageAdapter`.
-    *   Task: Handle AWS credentials securely (e.g., user provides them, stored encrypted, or IAM roles if worker runs in AWS).
+*   **L2.3: Implement AWS S3 Adapter (`S3StorageAdapter.ts`)** (➡️ **In Progress**)
+    *   Task: Add AWS SDK for S3 to relevant worker(s) (`snapshot-worker`, restore worker). (✅ **Done**)
+    *   Task: Create `S3StorageAdapter` class implementing `StorageAdapter`. (✅ **Done** - `S3StorageAdapter.ts` and `testS3Adapter.ts` created)
+    *   Task: Handle AWS credentials securely (e.g., user provides them, stored encrypted, or IAM roles if worker runs in AWS). (Adapter ready for env var configuration as per plan)
 *   **L2.4: Implement Cloudflare R2 Adapter (`R2StorageAdapter.ts`)**
     *   Task: Add Cloudflare R2 SDK (or S3-compatible SDK if R2 supports it well) to worker(s).
     *   Task: Create `R2StorageAdapter` class.
