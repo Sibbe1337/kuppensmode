@@ -1,78 +1,84 @@
-import { NextResponse } from 'next/server';
-import { getAuth } from '@clerk/nextjs/server';
-import { getDb } from "@/lib/firestore"; // Changed to getDb
-// import { Firestore } from '@google-cloud/firestore'; // Removed direct import
-// import { storage } from '@/lib/gcs'; // TODO: Import GCS utility if needed for usage calculation
-import { DEFAULT_USER_QUOTA } from '@/config/defaults'; // Use correct alias
-import type { UserQuota } from '@/types/user';
+import { StorageAdapter } from './StorageAdapter';
+import {
+  S3Client,
+  PutObjectCommand,
+  HeadObjectCommand,
+} from '@aws-sdk/client-s3';
 
-//   // storageLimitMB: number; // Future
-// }
+/**
+ * Minimal S3 implementation that satisfies the StorageAdapter interface.
+ * Only `write` and `exists` are fully functional for now; the rest throw
+ * “Not implemented” so we can flesh them out incrementally.
+ */
+export class S3StorageAdapter implements StorageAdapter {
+  private readonly client: S3Client;
+  private readonly bucket: string;
 
-// Simple plan details - replace with more robust logic or DB lookup if needed
-// const PLAN_DETAILS = { // Original PLAN_DETAILS, for reference if UserQuota structure needs to be richer
-//   free: { name: "Free Tier", snapshotsLimit: 5, storageLimitMB: 100 },
-//   paid: { name: "Pro Plan", snapshotsLimit: 50, storageLimitMB: 1000 }, // Example paid plan
-// };
-
-// Adopting the simpler DEFAULT_QUOTA structure from your patch example
-// const DEFAULT_USER_QUOTA_DATA: UserQuota = { ... };
-
-export async function GET(request: Request) {
-  const db = getDb(); // Get instance here
-  const { userId } = getAuth(request as any);
-
-    if (!userId) {
-      return new NextResponse("Unauthorized", { status: 401 });
-    }
-    console.log(`Fetching quota for user: ${userId}`);
-  console.log("--- ENV VAR CHECK IN /api/user/quota/route.ts ---"); // Keep for now
-  console.log("GOOGLE_CLOUD_PROJECT:", process.env.GOOGLE_CLOUD_PROJECT); // Keep for now
-  console.log("GOOGLE_APPLICATION_CREDENTIALS:", process.env.GOOGLE_APPLICATION_CREDENTIALS); // Keep for now
-  console.log("---------------------------------------------------"); // Keep for now
-
-    const userDocRef = db.collection('users').doc(userId);
-
-  try {
-    const snap = await userDocRef.get();
-
-    if (!snap.exists) {
-      console.log(`User document ${userId} not found. Initializing with default quota.`);
-      await userDocRef.set(
-        { quota: DEFAULT_USER_QUOTA, createdAt: Date.now() }, // Use imported DEFAULT_USER_QUOTA
-        { merge: true }
-      );
-      return NextResponse.json(DEFAULT_USER_QUOTA);
-    }
-    
-    const data = snap.data();
-    if (!data || !data.quota) {
-      console.warn(`User document data or quota field for ${userId} is missing. Initializing quota.`);
-      await userDocRef.set(
-        { quota: DEFAULT_USER_QUOTA, createdAt: data?.createdAt ?? Date.now() },
-        { merge: true }
-      );
-      return NextResponse.json(DEFAULT_USER_QUOTA);
-    }
-
-    return NextResponse.json(data.quota as UserQuota); // Cast to UserQuota
-
-  } catch (error) {
-    console.error(`GET /api/user/quota error for user ${userId}:`, error);
-    if (error instanceof Error && 'code' in error && (error as any).code === 5) {
-        console.warn(`Firestore NOT_FOUND (code 5) for ${userId} during .get() in quota. Fallback set attempt...`);
-        try {
-            await userDocRef.set(
-                { quota: DEFAULT_USER_QUOTA, createdAt: Date.now() },
-                { merge: true }
-            );
-            console.log(`Fallback set successful for ${userId}.`);
-            return NextResponse.json(DEFAULT_USER_QUOTA, { status: 200 });
-        } catch (initErrorInCatch) {
-            console.error(`Failed to initialize user ${userId} after NOT_FOUND:`, initErrorInCatch);
-            return new NextResponse("Internal Server Error - Fallback init failed", { status: 500 });
-        }
-    }
-    return new NextResponse("Internal Server Error", { status: 500 });
+  constructor(params: {
+    region: string;
+    bucket: string;
+    credentials?: { accessKeyId: string; secretAccessKey: string };
+  }) {
+    this.bucket = params.bucket;
+    this.client = new S3Client({
+      region: params.region,
+      credentials: params.credentials,
+    });
   }
-} 
+
+  /** Uploads a file or buffer to the configured S3 bucket. */
+  async write(
+    path: string,
+    data: Buffer | Uint8Array | string,
+    metadata: Record<string, any> = {},
+  ): Promise<void> {
+    const body = typeof data === 'string' ? Buffer.from(data) : data;
+
+    await this.client.send(
+      new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: path,
+        Body: body,
+        Metadata: metadata,
+      }),
+    );
+  }
+
+  /** Checks whether a given object key exists in the bucket. */
+  async exists(path: string): Promise<boolean> {
+    try {
+      await this.client.send(
+        new HeadObjectCommand({ Bucket: this.bucket, Key: path }),
+      );
+      return true;
+    } catch (err: any) {
+      // The AWS SDK throws a 404-style error for missing objects.
+      if (err?.$metadata?.httpStatusCode === 404) return false;
+      throw err; // Bubble up non‑404 errors
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Stub implementations — satisfy interface but clearly signal “todo”.
+  // ---------------------------------------------------------------------------
+
+  async read(_path: string): Promise<Buffer> {
+    throw new Error('S3StorageAdapter.read() not implemented yet');
+  }
+
+  async list(_prefix: string): Promise<string[]> {
+    throw new Error('S3StorageAdapter.list() not implemented yet');
+  }
+
+  async delete(_path: string): Promise<void> {
+    throw new Error('S3StorageAdapter.delete() not implemented yet');
+  }
+
+  async getMetadata(_path: string): Promise<Record<string, any> | null> {
+    throw new Error('S3StorageAdapter.getMetadata() not implemented yet');
+  }
+
+  async copy(_srcPath: string, _destPath: string): Promise<void> {
+    throw new Error('S3StorageAdapter.copy() not implemented yet');
+  }
+}

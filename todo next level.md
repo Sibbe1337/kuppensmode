@@ -106,13 +106,17 @@ Here's the breakdown:
 **Epic L3: Desktop tray app for "panic button" restore**
 *Goal: Non-technical users click an OS-level icon to restore the latest good snapshot.*
 
-*   **L3.1: Electron App Setup & Basic Structure**
-    *   Task: Set up a new Electron project.
-    *   Task: Implement basic main process and renderer process structure.
-    *   Task: Design tray icon and menu.
-*   **L3.2: Authentication (OAuth with Clerk)**
-    *   Task: Implement Clerk OAuth flow within Electron to securely authenticate the user and obtain an access token.
-    *   Task: Securely store and manage the access token (e.g., using OS keychain).
+*   **L3.1: Electron App Setup & Basic Structure** (✅ **Done**)
+    *   Task: Set up a new Electron project. (✅ **Done** - Electron Forge + Vite + React + TS project scaffolded in `desktop-app/`)
+    *   Task: Implement basic main process and renderer process structure. (✅ **Done** - `main.ts`, `preload.ts`, `renderer.tsx` created)
+    *   Task: Design tray icon and menu. (✅ **Done** - Tray icon with context menu implemented, including 'Restore latest' & 'Quit')
+    *   Status: Basic Electron app with tray functionality is running.
+*   **L3.2: Authentication (OAuth with Clerk)** (➡️ **In Progress**)
+    *   Task: Implement Clerk OAuth flow within Electron to securely authenticate the user and obtain an access token. (✅ **Done** - Custom URI, PKCE flow, and token exchange working. User can sign in.)
+    *   Task: Securely store and manage the access token (e.g., using OS keychain). (🕒 **Next Up** - Implement `keytar` for token storage)
+    *   Task: Implement refresh token logic.
+    *   Task: Use stored tokens for authenticated API calls from Electron app.
+    *   Status: User can successfully authenticate via Clerk; token storage and usage in API calls pending.
 *   **L3.3: API Interaction**
     *   Task: Create a new API endpoint `/api/restore/latest-good` (or similar) that:
         *   Identifies the "latest good" snapshot for the authenticated user (requires definition of "good" - e.g., completed status, possibly based on diffs if L1 is advanced).

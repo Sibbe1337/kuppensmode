@@ -1,59 +1,127 @@
-import { R2StorageAdapter } from './R2StorageAdapter';
+import { R2StorageAdapter } from './R2StorageAdapter.js';
+import { randomBytes } from 'crypto';
 
-(async () => {
-  if (!process.env.R2_BUCKET || 
-      !process.env.R2_ENDPOINT || 
-      !process.env.R2_ACCESS_KEY_ID || 
-      !process.env.R2_SECRET_ACCESS_KEY) {
-    console.error('Missing R2 environment variables (R2_BUCKET, R2_ENDPOINT, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY)');
+async function testR2() {
+  const bucket = process.env.TEST_R2_BUCKET_NAME;
+  const region = process.env.TEST_R2_REGION || 'auto';
+  const endpoint = process.env.TEST_R2_ENDPOINT;
+  const accessKeyId = process.env.TEST_R2_ACCESS_KEY_ID;
+  const secretAccessKey = process.env.TEST_R2_SECRET_ACCESS_KEY;
+
+  if (!bucket || !endpoint || !accessKeyId || !secretAccessKey) {
+    console.error('Missing one or more required R2 environment variables.');
     process.exit(1);
   }
 
   const r2 = new R2StorageAdapter({
-    bucket: process.env.R2_BUCKET!,
-    endpoint: process.env.R2_ENDPOINT!,
-    accessKeyId: process.env.R2_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
-    region: process.env.R2_REGION || 'auto', // Optional: R2_REGION, defaults to 'auto'
-    forcePathStyle: process.env.R2_FORCE_PATH_STYLE ? process.env.R2_FORCE_PATH_STYLE === 'true' : undefined,
+    bucket,
+    region,
+    endpoint,
+    accessKeyId,
+    secretAccessKey,
+    forcePathStyle: true,
   });
 
-  const testFilePath = 'hello_r2.txt';
-  const testFileContent = 'R2 says hi 👋';
+  const testFileName = `test-r2-object-${randomBytes(8).toString('hex')}.txt`;
+  const testFileContent = 'Hello from R2StorageAdapter test!';
+  const testPath = `test-r2-adapter/${testFileName}`;
+
+  const testFileName2 = `test-r2-object-2-${randomBytes(8).toString('hex')}.txt`;
+  const testFileContent2 = 'Second test file content!';
+  const testPath2 = `test-r2-adapter/${testFileName2}`;
+
+  const testFileNameCopy = `test-r2-object-copy-${randomBytes(8).toString('hex')}.txt`;
+  const testPathCopy = `test-r2-adapter/${testFileNameCopy}`;
+  const customMetadata = { foo: 'bar', test: 'meta' };
+  const listPrefix = 'test-r2-adapter/';
 
   try {
-    console.log(`Attempting to write ${testFilePath} to bucket ${process.env.R2_BUCKET}...`);
-    await r2.write(testFilePath, testFileContent);
-    console.log('Write successful.');
+    console.log(`Testing R2StorageAdapter with bucket: ${bucket}, endpoint: ${endpoint}`);
+    console.log(`Using test file path: ${testPath}`);
 
-    console.log(`Checking existence of ${testFilePath}...`);
-    const exists = await r2.exists(testFilePath);
-    console.log('Exists?', exists);
-    if (!exists) throw new Error('File not found after write');
+    // 1. Check if file exists (should be false)
+    let exists = await r2.exists(testPath);
+    console.log(`File exists: ${exists}`);
+    if (exists) {
+      console.warn('Test file unexpectedly exists. Attempting to delete before proceeding...');
+      await r2.delete(testPath);
+      console.log('Placeholder delete called.');
+    }
 
-    console.log(`Reading contents of ${testFilePath}...`);
-    const contents = (await r2.read(testFilePath)).toString();
-    console.log('Contents:', contents);
-    if (contents !== testFileContent) throw new Error('File content mismatch');
+    // 2. Write the file (with metadata)
+    await r2.write(testPath, testFileContent, customMetadata);
+    console.log('File written successfully.');
 
-    console.log("Listing R2 files");
-    const list = await r2.list('');
-    console.log('List:', list);
-    if (!list.includes(testFilePath)) throw new Error('File not found in list');
+    // 2b. Write a second file for list testing
+    await r2.write(testPath2, testFileContent2);
+    console.log('Second file written successfully.');
 
-    console.log(`Deleting ${testFilePath}...`);
-    await r2.delete(testFilePath);
-    console.log('Delete successful.');
+    // 3. Read the file and verify content
+    const fileBuffer = await r2.read(testPath);
+    const contentRead = fileBuffer.toString();
+    if (contentRead !== testFileContent) {
+      throw new Error('Test failed: File content mismatch.');
+    }
+    console.log('File content verified successfully.');
 
-    console.log(`Checking existence of ${testFilePath} after delete...`);
-    const existsAfterDelete = await r2.exists(testFilePath);
-    console.log('Exists after delete?', existsAfterDelete);
-    if (existsAfterDelete) throw new Error('File still exists after delete');
+    // 3b. getMetadata for the first file
+    const metadata = await r2.getMetadata(testPath);
+    if (!metadata || metadata.foo !== customMetadata.foo || metadata.test !== customMetadata.test) {
+      throw new Error('Test failed: Metadata mismatch.');
+    }
+    console.log('Metadata verified successfully.');
 
-    console.log('\n✅ R2 Adapter smoke test passed!');
+    // 4. List files with prefix
+    let files = await r2.list(listPrefix);
+    if (!files.includes(testPath) || !files.includes(testPath2)) {
+      throw new Error('Test failed: List missing files.');
+    }
+    console.log('List content verified successfully.');
 
+    // 4b. Copy the first file to a new key
+    await r2.copy(testPath, testPathCopy);
+    const copyBuffer = await r2.read(testPathCopy);
+    const copyContent = copyBuffer.toString();
+    if (copyContent !== testFileContent) {
+      throw new Error('Test failed: Copied file content mismatch.');
+    }
+    const copyMetadata = await r2.getMetadata(testPathCopy);
+    if (!copyMetadata || copyMetadata.foo !== customMetadata.foo || copyMetadata.test !== customMetadata.test) {
+      throw new Error('Test failed: Copied file metadata mismatch.');
+    }
+    console.log('Copy content and metadata verified successfully.');
+
+    // 5. Check if first file exists (should be true)
+    exists = await r2.exists(testPath);
+    if (!exists) {
+      throw new Error('Test failed: File does not exist after write operation.');
+    }
+    console.log('Exists after write verified.');
+
+    // 6. Delete the files
+    await r2.delete(testPath);
+    await r2.delete(testPath2);
+    await r2.delete(testPathCopy);
+    console.log('Files deleted.');
+
+    // 7. Verify files no longer exist
+    exists = await r2.exists(testPath);
+    if (exists) throw new Error('Test failed: First file not deleted.');
+    exists = await r2.exists(testPath2);
+    if (exists) throw new Error('Test failed: Second file not deleted.');
+    exists = await r2.exists(testPathCopy);
+    if (exists) throw new Error('Test failed: Copied file not deleted.');
+    console.log('Files successfully verified as deleted.');
+
+    console.log('\nR2StorageAdapter full (exists, write, read, list, delete, getMetadata, copy) test completed successfully!');
   } catch (error) {
-    console.error('\n❌ R2 Adapter smoke test failed:', error);
+    console.error('\nError during R2StorageAdapter test:');
+    console.error(error);
     process.exit(1);
   }
-})(); 
+}
+
+testR2().catch(error => {
+  console.error('Unhandled error in testR2:', error);
+  process.exit(1);
+}); 

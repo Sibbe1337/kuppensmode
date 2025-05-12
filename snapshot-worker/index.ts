@@ -22,6 +22,7 @@ import { Pinecone } from '@pinecone-database/pinecone';
 import OpenAI from 'openai';
 import type { PineconeRecord } from '@pinecone-database/pinecone'; // For typing records
 import { get_encoding, Tiktoken } from 'tiktoken'; // Import Tiktoken class for the instance type
+import { decryptString } from '../src/lib/kms';
 
 const gzipAsync = promisify(gzip);
 
@@ -752,7 +753,7 @@ functions.cloudEvent('snapshotWorker', async (cloudEvent: functions.CloudEvent<P
     const compressedData = await gzipAsync(Buffer.from(jsonData, 'utf-8'));
     console.log(`[${userId}] Snapshot data compressed for snapshot ${snapshotId}.`);
 
-    // Store hashManifest.json.gz
+    // Store hashManifest.json.gz (GCS only for now)
     const manifestJsonData = JSON.stringify(hashManifest, null, 2);
     const compressedManifestData = await gzipAsync(Buffer.from(manifestJsonData, 'utf-8'));
     const manifestFileName = `${userId}/${snapshotId}.manifest.json.gz`;
@@ -762,22 +763,104 @@ functions.cloudEvent('snapshotWorker', async (cloudEvent: functions.CloudEvent<P
     });
     console.log(`[${userId}] Hash manifest uploaded to gs://${BUCKET_NAME}/${manifestFileName}`);
 
-    const snapshotGcsFileName = `${userId}/${snapshotId}.json.gz`;
-    const file = storage.bucket(BUCKET_NAME!).file(snapshotGcsFileName);
-
-    console.log(`[${userId}] Uploading snapshot to gs://${BUCKET_NAME}/${snapshotGcsFileName}`);
-    await file.save(compressedData, {
+    // === Parallel Writes to All Storage Providers ===
+    // 1. Fetch user storage configs
+    const providerConfigsSnap = await db
+      .collection('userStorageConfigs')
+      .doc(userId)
+      .collection('providers')
+      .where('isEnabled', '==', true)
+      .get();
+    const adapters: { name: string; adapter: any; path: string; meta: any }[] = [];
+    // Always include GCS as primary
+    adapters.push({
+      name: 'gcs',
+      adapter: {
+        write: async (path: string, data: Buffer, metadata: any) => {
+          const file = storage.bucket(BUCKET_NAME!).file(path);
+          await file.save(data, { metadata });
+        }
+      },
+      path: `${userId}/${snapshotId}.json.gz`,
+      meta: {
+        contentType: 'application/gzip',
         metadata: {
-            contentType: 'application/gzip',
-            metadata: {
+          userId: userId,
+          snapshotId: snapshotId,
+          requestedAt: job.requestedAt.toString(),
+          hasManifest: 'true'
+        }
+      }
+    });
+    for (const doc of providerConfigsSnap.docs) {
+      const cfg = doc.data();
+      try {
+        if (cfg.type === 's3') {
+          const { S3StorageAdapter } = await import('../src/storage/S3StorageAdapter');
+          adapters.push({
+            name: 's3',
+            adapter: new S3StorageAdapter({
+              bucket: cfg.bucket,
+              region: cfg.region,
+              accessKeyId: await decryptString(cfg.encryptedAccessKeyId),
+              secretAccessKey: await decryptString(cfg.encryptedSecretAccessKey),
+              endpoint: cfg.endpoint,
+              forcePathStyle: cfg.forcePathStyle,
+            }),
+            path: `${userId}/${snapshotId}.json.gz`,
+            meta: {
+              contentType: 'application/gzip',
+              metadata: {
                 userId: userId,
                 snapshotId: snapshotId,
                 requestedAt: job.requestedAt.toString(),
                 hasManifest: 'true'
+              }
             }
+          });
+        } else if (cfg.type === 'r2') {
+          const { R2StorageAdapter } = await import('../src/storage/R2StorageAdapter');
+          adapters.push({
+            name: 'r2',
+            adapter: new R2StorageAdapter({
+              bucket: cfg.bucket,
+              endpoint: cfg.endpoint,
+              accessKeyId: await decryptString(cfg.encryptedAccessKeyId),
+              secretAccessKey: await decryptString(cfg.encryptedSecretAccessKey),
+              region: cfg.region || 'auto',
+              forcePathStyle: cfg.forcePathStyle === undefined ? true : cfg.forcePathStyle,
+            }),
+            path: `${userId}/${snapshotId}.json.gz`,
+            meta: {
+              contentType: 'application/gzip',
+              metadata: {
+                userId: userId,
+                snapshotId: snapshotId,
+                requestedAt: job.requestedAt.toString(),
+                hasManifest: 'true'
+              }
+            }
+          });
         }
+        // Add more adapters here if needed (e.g., GCS, Azure, etc.)
+      } catch (err) {
+        console.error(`[${userId}] Failed to instantiate adapter for provider ${cfg.type}:`, err);
+      }
+    }
+    // 2. Write to all adapters in parallel
+    const writeResults = await Promise.allSettled(
+      adapters.map(({ adapter, path, meta, name }) =>
+        adapter.write(path, compressedData, meta).then(() => name)
+      )
+    );
+    writeResults.forEach((result, idx) => {
+      const name = adapters[idx].name;
+      if (result.status === 'fulfilled') {
+        console.log(`[${userId}] Snapshot write succeeded for adapter: ${name}`);
+      } else {
+        console.error(`[${userId}] Snapshot write failed for adapter: ${name}:`, result.reason);
+      }
     });
-    console.log(`[${userId}] Snapshot ${snapshotId} uploaded successfully.`);
 
     if (posthogClient) {
         posthogClient.capture({
@@ -799,7 +882,7 @@ functions.cloudEvent('snapshotWorker', async (cloudEvent: functions.CloudEvent<P
         type: 'snapshot_created',
         details: {
           snapshotId: snapshotId,
-          gcsPath: `gs://${BUCKET_NAME}/${snapshotGcsFileName}`,
+          gcsPath: `gs://${BUCKET_NAME}/${userId}/${snapshotId}.json.gz`,
           itemCount: finalSnapshotData.metadata.itemCount,
           status: 'success'
         },
@@ -812,7 +895,7 @@ functions.cloudEvent('snapshotWorker', async (cloudEvent: functions.CloudEvent<P
         snapshotId: snapshotId,
         userId: userId,
         timestamp: finalSnapshotData.metadata.snapshotTimestamp, // ISOString from metadata
-        gcsPath: `gs://${BUCKET_NAME}/${snapshotGcsFileName}`,
+        gcsPath: `gs://${BUCKET_NAME}/${userId}/${snapshotId}.json.gz`,
         manifestPath: `gs://${BUCKET_NAME}/${manifestFileName}`,
         itemCount: finalSnapshotData.metadata.itemCount,
         sizeKB: Math.round(compressedData.byteLength / 1024), // Approximate size of compressed data
