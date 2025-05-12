@@ -77,24 +77,29 @@ Here's the breakdown:
     *   Task: Integrate R2 adapter in main app validation flow. (✅ **Done** - Used in `/api/user/storage-configs/[id]/validate/route.ts`)
     *   Task: Comprehensive test script covers all core and helper methods (write, read, list, delete, getMetadata, copy). (✅ **Done**)
     *   Status: R2 adapter is fully implemented, tested, and production-ready.
-*   **L2.5: User Configuration for Replication** (➡️ **Nearing Completion - UI/API Implemented, Debugging API 500 Error**)
-    *   Task: API to save these configurations securely (e.g., encrypted in Firestore). (✅ **Done** - API routes for CRUD and validation created using KMS for encryption; Firestore rules updated. Currently debugging a 500 error on POST.)
-    *   Task: UI in user settings/billing for paid plans to configure external storage providers (S3/R2 endpoint, bucket, credentials). (✅ **Done** - SWR hook, page, list, and modal components implemented with initial styling. Awaiting successful API interaction for full test.)
-*   **L2.6: Modify Snapshot Worker for Parallel Writes**
+*   **L2.5: User Configuration for Replication** (✅ **Done**)
+    *   Task: API to save these configurations securely (e.g., encrypted in Firestore). (✅ **Done** - API routes for CRUD and validation created using KMS for encryption; Firestore rules updated.)
+    *   Task: UI in user settings/billing for paid plans to configure external storage providers (S3/R2 endpoint, bucket, credentials). (✅ **Done** - SWR hook, page, list, and modal components implemented with initial styling. Full test successful.)
+    *   Task: Validation and CRUD flows for provider configs. (✅ **Done**)
+    *   Task: Firestore rules updated for secure access. (✅ **Done**)
+    *   Status: Users can now add, edit, delete, and validate replication configs for S3/R2. All flows tested and working.
+*   **L2.6: Modify Snapshot Worker for Parallel Writes** (✅ **Done**)
     *   Task: Update `snapshot-worker` to:
         *   Check user's plan and replication settings.
-        *   If replication is configured, instantiate the appropriate `StorageAdapter`(s) alongside the 
-        primary GCS adapter.
-        *   Perform writes in parallel (or sequentially with robust error handling) to all configured storage locations.
-        *   Log success/failure for each location.
-*   **L2.7: Background Reconciler/Verifier (New Cloud Function or Cron Job)**
-    *   Task: Design a process to periodically verify checksums/parity of replicated snapshots.
+        *   If replication is configured, instantiate the appropriate `StorageAdapter`(s) alongside the primary GCS adapter. (✅ **Done**)
+        *   Perform writes in parallel (or sequentially with robust error handling) to all configured storage locations. (✅ **Done** - Uses Promise.allSettled for parallel writes)
+        *   Log success/failure for each location. (✅ **Done** - Logs for each adapter)
+    *   Status: Snapshot worker now writes to all enabled storage adapters (GCS, S3, R2, etc.) in parallel with robust error logging.
+*   **L2.7: Background Reconciler/Verifier (New Cloud Function or Cron Job)** (✅ **Done**)
+    *   Task: Design a process to periodically verify checksums/parity of replicated snapshots. (✅ **Done**)
     *   Task: Implement the reconciler to:
-        *   List snapshots in primary storage.
-        *   For each, check existence and integrity (e.g., hash of metadata or a stored content hash) in replicated locations.
-        *   Log discrepancies or trigger repair/retry mechanisms.
-*   **L2.8: Update Restore Logic**
-    *   Task: Restore logic needs to be aware of potential multiple storage locations, possibly allowing user to choose source or having a priority list. (This part might be simpler if primary is always GCS and others are just backups).
+        *   List snapshots in primary storage. (✅ **Done**)
+        *   For each, check existence and integrity (hash comparison) in replicated locations. (✅ **Done**)
+        *   Log discrepancies or trigger repair/retry mechanisms. (✅ **Done** - Logs missing, mismatched, or extra items)
+    *   Status: Reconciler worker implemented, checks all user snapshots across all providers, logs missing files and hash mismatches, and is ready for further extension.
+*   **L2.8: Update Restore Logic** (✅ **Done**)
+    *   Task: Restore logic needs to be aware of potential multiple storage locations, possibly allowing user to choose source or having a priority list. (✅ **Done** - Implemented priority list: GCS -> S3 -> R2, etc., in restore worker)
+    *   Status: Restore worker now attempts to download snapshots from GCS, then other configured providers (S3, R2) in order.
 
 ---
 
