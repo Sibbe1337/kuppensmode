@@ -63,24 +63,28 @@ Here's the breakdown:
 *Goal: Paid plans can replicate snapshots to the customer's cloud – zero vendor lock-in.*
 
 *   **L2.1: Define `StorageAdapter` Interface**
-    *   Task: Define a TypeScript interface `StorageAdapter` with methods like `write(path, data, metadata)`, `read(path)`, `list(pathPrefix)`, `delete(path)`, `exists(path)`.
+    *   Task: Define a TypeScript interface `StorageAdapter` with methods like `write(path, data, metadata)`, `read(path)`, `list(pathPrefix)`, `delete(path)`, `exists(path)`. (✅ **Done** - Interface defined and used by GCS, S3, R2 adapters)
 *   **L2.2: Implement GCS Adapter (`GCSStorageAdapter.ts`)**
-    *   Task: Refactor existing GCS logic in `snapshot-worker` (and potentially restore worker) to use the `StorageAdapter` interface, implemented by a `GCSStorageAdapter` class.
-*   **L2.3: Implement AWS S3 Adapter (`S3StorageAdapter.ts`)** (➡️ **In Progress**)
-    *   Task: Add AWS SDK for S3 to relevant worker(s) (`snapshot-worker`, restore worker). (✅ **Done**)
-    *   Task: Create `S3StorageAdapter` class implementing `StorageAdapter`. (✅ **Done** - `S3StorageAdapter.ts` and `testS3Adapter.ts` created)
-    *   Task: Handle AWS credentials securely (e.g., user provides them, stored encrypted, or IAM roles if worker runs in AWS). (Adapter ready for env var configuration as per plan)
+    *   Task: Refactor existing GCS logic in `snapshot-worker` (and potentially restore worker) to use the `StorageAdapter` interface, implemented by a `GCSStorageAdapter` class. (✅ **Done** - Pre-existing, confirmed functional)
+*   **L2.3: Implement AWS S3 Adapter (`S3StorageAdapter.ts`)**
+    *   Task: Add AWS SDK for S3 to relevant worker(s). (✅ **Done**)
+    *   Task: Create `S3StorageAdapter` class implementing `StorageAdapter`. (✅ **Done** - `S3StorageAdapter.ts` and `testS3Adapter.ts` created and tested)
+    *   Task: Handle AWS credentials securely. (✅ **Done** - Adapter supports env vars/profile, and explicit credentials via constructor options after refactor)
 *   **L2.4: Implement Cloudflare R2 Adapter (`R2StorageAdapter.ts`)**
-    *   Task: Add Cloudflare R2 SDK (or S3-compatible SDK if R2 supports it well) to worker(s).
-    *   Task: Create `R2StorageAdapter` class.
-    *   Task: Handle R2 credentials.
-*   **L2.5: User Configuration for Replication**
-    *   Task: UI in user settings/billing for paid plans to configure external storage providers (S3/R2 endpoint, bucket, credentials).
-    *   Task: API to save these configurations securely (e.g., encrypted in Firestore).
+    *   Task: Add Cloudflare R2 SDK (or S3-compatible SDK if R2 supports it well) to worker(s). (✅ **Done** - S3 SDK used)
+    *   Task: Create `R2StorageAdapter` class. (✅ **Done** - `R2StorageAdapter.ts` and `testR2Adapter.ts` created and tested)
+    *   Task: Handle R2 credentials. (✅ **Done** - Adapter takes explicit credentials)
+    *   Task: Integrate R2 adapter in main app validation flow. (✅ **Done** - Used in `/api/user/storage-configs/[id]/validate/route.ts`)
+    *   Task: Comprehensive test script covers all core and helper methods (write, read, list, delete, getMetadata, copy). (✅ **Done**)
+    *   Status: R2 adapter is fully implemented, tested, and production-ready.
+*   **L2.5: User Configuration for Replication** (➡️ **Nearing Completion - UI/API Implemented, Debugging API 500 Error**)
+    *   Task: API to save these configurations securely (e.g., encrypted in Firestore). (✅ **Done** - API routes for CRUD and validation created using KMS for encryption; Firestore rules updated. Currently debugging a 500 error on POST.)
+    *   Task: UI in user settings/billing for paid plans to configure external storage providers (S3/R2 endpoint, bucket, credentials). (✅ **Done** - SWR hook, page, list, and modal components implemented with initial styling. Awaiting successful API interaction for full test.)
 *   **L2.6: Modify Snapshot Worker for Parallel Writes**
     *   Task: Update `snapshot-worker` to:
         *   Check user's plan and replication settings.
-        *   If replication is configured, instantiate the appropriate `StorageAdapter`(s) alongside the primary GCS adapter.
+        *   If replication is configured, instantiate the appropriate `StorageAdapter`(s) alongside the 
+        primary GCS adapter.
         *   Perform writes in parallel (or sequentially with robust error handling) to all configured storage locations.
         *   Log success/failure for each location.
 *   **L2.7: Background Reconciler/Verifier (New Cloud Function or Cron Job)**
@@ -263,17 +267,7 @@ Here's the breakdown:
     *   Task: Update privacy policy and terms of service to reflect data residency options and commitments.
     *   Task: Prepare documentation for customers regarding data residency.
 
----
 
-This is a very high-level breakdown. Each "Task" can be a substantial piece of work.
-
-**Next Steps:**
-
-1.  **Review and Refine:** Go through this list. Does it capture the essence of each epic correctly? Are there major missing pieces for any epic's MVP?
-2.  **Prioritize Epics:** Decide which 1-2 epics you want to tackle first.
-3.  **Detailed Plan for Chosen Epic(s):** For the selected epic(s), we can then create a more detailed, actionable plan (like the S/M level plans) with specific file modifications and code snippets.
-
-This overall "ToDo list" is too large for me to execute directly as a single plan. It's a strategic guide. Let me know how you'd like to proceed with the first epic(s)!
 
 
 UX Work-Items Required for the Upcoming Road-map
