@@ -1,4 +1,4 @@
-import { StorageAdapter } from './StorageAdapter';
+import { StorageAdapter } from '@/storage/StorageAdapter.js';
 import {
   S3Client,
   PutObjectCommand,
