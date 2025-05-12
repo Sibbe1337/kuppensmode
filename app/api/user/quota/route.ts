@@ -1,84 +1,66 @@
-import { StorageAdapter } from '@/storage/StorageAdapter.js';
-import {
-  S3Client,
-  PutObjectCommand,
-  HeadObjectCommand,
-} from '@aws-sdk/client-s3';
+import { NextRequest, NextResponse } from 'next/server';
+import { auth } from '@clerk/nextjs/server';
+import { getDb } from '@/lib/firestore';
 
-/**
- * Minimal S3 implementation that satisfies the StorageAdapter interface.
- * Only `write` and `exists` are fully functional for now; the rest throw
- * “Not implemented” so we can flesh them out incrementally.
- */
-export class S3StorageAdapter implements StorageAdapter {
-  private readonly client: S3Client;
-  private readonly bucket: string;
+// Note: The S3StorageAdapter class and its direct StorageAdapter import have been removed from this file.
+// It's assumed that the primary S3StorageAdapter lives in src/storage/S3StorageAdapter.ts
+// and this API route does not directly instantiate it for quota logic.
+// If direct S3 operations were needed here, it should import the adapter from src/storage.
 
-  constructor(params: {
-    region: string;
-    bucket: string;
-    credentials?: { accessKeyId: string; secretAccessKey: string };
-  }) {
-    this.bucket = params.bucket;
-    this.client = new S3Client({
-      region: params.region,
-      credentials: params.credentials,
-    });
+const db = getDb();
+
+export async function GET(request: NextRequest) {
+  const { userId } = await auth();
+  if (!userId) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  /** Uploads a file or buffer to the configured S3 bucket. */
-  async write(
-    path: string,
-    data: Buffer | Uint8Array | string,
-    metadata: Record<string, any> = {},
-  ): Promise<void> {
-    const body = typeof data === 'string' ? Buffer.from(data) : data;
+  try {
+    const userDocRef = db.collection('users').doc(userId);
+    const userDocSnap = await userDocRef.get();
 
-    await this.client.send(
-      new PutObjectCommand({
-        Bucket: this.bucket,
-        Key: path,
-        Body: body,
-        Metadata: metadata,
-      }),
-    );
-  }
-
-  /** Checks whether a given object key exists in the bucket. */
-  async exists(path: string): Promise<boolean> {
-    try {
-      await this.client.send(
-        new HeadObjectCommand({ Bucket: this.bucket, Key: path }),
-      );
-      return true;
-    } catch (err: any) {
-      // The AWS SDK throws a 404-style error for missing objects.
-      if (err?.$metadata?.httpStatusCode === 404) return false;
-      throw err; // Bubble up non‑404 errors
+    if (!userDocSnap.exists) {
+      // If user doc doesn't exist, they might be new or an issue occurred.
+      // Return default free tier quota or an appropriate error/status.
+      console.warn(`[API /api/user/quota] User document not found for userId: ${userId}. Returning default/free tier quota.`);
+      return NextResponse.json({
+        userId,
+        planName: 'Free Tier',
+        currentSnapshots: 0,
+        maxSnapshots: 5, // Example default free tier limit
+        // Add other relevant default quota fields
+      }, { status: 200 }); 
     }
-  }
 
-  // ---------------------------------------------------------------------------
-  // Stub implementations — satisfy interface but clearly signal “todo”.
-  // ---------------------------------------------------------------------------
+    const userData = userDocSnap.data();
+    const planName = userData?.planName || 'Free Tier'; 
+    
+    const snapshotsCollectionRef = db.collection('users').doc(userId).collection('snapshots');
+    // Get count of non-failed snapshots, or all if status isn't tracked granularly here for quota
+    const snapshotsQuerySnap = await snapshotsCollectionRef.where('status', '==', 'success').count().get();
+    const currentSnapshots = snapshotsQuerySnap.data().count;
 
-  async read(_path: string): Promise<Buffer> {
-    throw new Error('S3StorageAdapter.read() not implemented yet');
-  }
+    // Define plan limits (these would ideally come from a config, DB, or Stripe plan metadata)
+    const planLimits: Record<string, { snapshots: number; storageGB?: number /* etc. */ }> = {
+      'Free Tier': { snapshots: 5 },
+      'Pro': { snapshots: 100 },
+      'Teams': { snapshots: 1000 },
+    };
 
-  async list(_prefix: string): Promise<string[]> {
-    throw new Error('S3StorageAdapter.list() not implemented yet');
-  }
+    const maxSnapshots = planLimits[planName]?.snapshots || 5;
 
-  async delete(_path: string): Promise<void> {
-    throw new Error('S3StorageAdapter.delete() not implemented yet');
-  }
+    const quotaInfo = {
+      userId,
+      planName,
+      currentSnapshots,
+      maxSnapshots,
+      // TODO: Add other quota details like storage used, features enabled, etc.
+    };
 
-  async getMetadata(_path: string): Promise<Record<string, any> | null> {
-    throw new Error('S3StorageAdapter.getMetadata() not implemented yet');
-  }
+    return NextResponse.json(quotaInfo, { status: 200 });
 
-  async copy(_srcPath: string, _destPath: string): Promise<void> {
-    throw new Error('S3StorageAdapter.copy() not implemented yet');
+  } catch (error: any) {
+    console.error(`[API /api/user/quota] Error fetching quota for user ${userId}:`, error);
+    return NextResponse.json({ error: 'Internal Server Error', details: error.message }, { status: 500 });
   }
 }
