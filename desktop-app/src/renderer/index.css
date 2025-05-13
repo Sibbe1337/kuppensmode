@@ -1,5 +1,22 @@
 /* ... (your existing :root variables) ... */
 
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-primary:   #5b8cff;
+    --color-text:      #e6e9f0;
+    --color-heading:   #fff;
+    --color-bg:        #181a20;
+    --color-border:    #23242a;
+    --color-surface:   #23242a;
+
+    --color-rgb-primary: 91, 140, 255;
+    --color-rgb-text: 230, 233, 240;
+    --color-rgb-heading: 255, 255, 255;
+    --color-rgb-bg-darker: 35, 36, 42;
+    --color-rgb-border: 35, 36, 42;
+  }
+}
+
 :root {
   --color-primary:   #1338FF;
   --color-text:      #0F1C4F;
@@ -14,6 +31,13 @@
   --color-rgb-heading: 13, 14, 19;
   --color-rgb-bg-darker: 223, 227, 235; /* A slightly darker shade of the main bg */
   --color-rgb-border: 223, 227, 235;
+
+  --color-midnight: #0A0C12;
+  --color-snow: #FFFFFF;
+  --color-silver: #F1F2F3;
+  --color-fog: #E3E4E8;
+  --color-slate: #6E7380;
+  --color-accent: #0074F0;
 }
 
 body {
@@ -27,13 +51,17 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+body[data-theme='dark'] {
+  /* This will override the system preference if the user toggles manually */
+}
+
 .app-container {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: flex-start; /* Align card to top, allow scrolling if content grows */
+  justify-content: flex-start;
   min-height: 100vh;
-  padding: 40px 20px; /* More top padding */
+  padding: 48px 16px 32px 16px; /* More top/bottom padding, less side padding for smaller screens */
   box-sizing: border-box;
 }
 
@@ -54,13 +82,16 @@ body {
 .content-card {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: 16px; /* Slightly less rounded for a sharper Mac feel */
-  box-shadow: 0 8px 24px rgba(var(--color-rgb-text), 0.06), 0 1px 4px rgba(var(--color-rgb-text), 0.03); /* Refined shadow */
-  padding: 32px 36px; /* Adjusted padding */
-  margin-top: 20px;   /* Reduced margin if app-container has more padding */
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(var(--color-rgb-text), 0.06), 0 1px 4px rgba(var(--color-rgb-text), 0.03);
+  padding: 40px 40px 32px 40px; /* More top/side padding, less bottom */
+  margin-top: 24px;
   width: 100%;
-  max-width: 540px; /* Slightly adjusted max-width */
+  max-width: 520px;
   text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 18px; /* Consistent vertical spacing between children */
 }
 
 .header-main {
@@ -68,7 +99,7 @@ body {
   font-weight: 600; /* Standard bold for SF Pro */
   font-size: 28px;  /* Adjusted size */
   letter-spacing: -0.025em; /* Adjusted letter-spacing */
-  margin-bottom: 10px; /* Reduced bottom margin */
+  margin-bottom: 6px;
   color: var(--color-heading);
 }
 
@@ -76,7 +107,7 @@ body {
   color: var(--color-text);
   font-size: 16px; /* Adjusted size */
   line-height: 1.5; /* Specific line-height for sub-header */
-  margin-bottom: 28px; /* Adjusted bottom margin */
+  margin-bottom: 18px;
   opacity: 0.85; /* Slightly more opaque */
 }
 
@@ -89,7 +120,7 @@ body {
   background-color: var(--color-surface); /* Cleaner than --color-bg for a select */
   color: var(--color-text);
   width: 100%; 
-  margin-bottom: 20px; /* Adjusted margin */
+  margin-bottom: 14px;
   box-shadow: 0 1px 2px rgba(var(--color-rgb-text), 0.03);
   appearance: none;
   background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20viewBox%3D%220%200%2020%2020%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M5.83333%207.5L10%2011.6667L14.1667%207.5%22%20stroke%3D%22%230F1C4F%22%20stroke-width%3D%221.5%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E'); /* Refined SVG arrow */
@@ -105,71 +136,121 @@ body {
 .snapshot-select:focus {
   outline: none;
   border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px rgba(var(--color-rgb-primary), 0.2);
+  box-shadow: 0 0 0 4px rgba(var(--color-rgb-primary), 0.18);
 }
 
 .snapshot-details {
-  background-color: rgba(var(--color-rgb-bg-darker), 0.6); /* Slightly more prominent bg */
+  background: #f7f8fa;
   border-radius: 8px;
   padding: 14px 18px;
-  margin-bottom: 20px;
-  font-size: 14px; /* Slightly smaller for details */
+  margin-bottom: 14px;
+  font-size: 15px;
   color: var(--color-text);
-  border: 1px solid rgba(var(--color-rgb-border), 0.7);
+  border: none;
+  box-shadow: none;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
 }
+
+.snapshot-details .icon {
+  font-size: 22px;
+  margin-right: 8px;
+  opacity: 0.5;
+  margin-top: 2px;
+}
+
+.snapshot-details .meta {
+  flex: 1;
+}
+
 .snapshot-details b {
-  font-weight: 500; /* Less aggressive bold */
+  font-weight: 500;
   opacity: 0.9;
 }
 
+.snapshot-details .meta > div {
+  margin-bottom: 2px;
+}
+
+.btn-primary,
+.btn-panic,
 .btn-restore {
+  width: 100%;
+  margin-bottom: 10px;
+}
+
+.btn-primary {
   background: var(--color-primary);
   color: #fff;
   border: none;
   border-radius: 8px;
-  padding: 12px 24px;
-  font-weight: 500; /* Adjusted for SF Pro */
-  cursor: pointer;
+  padding: 13px 0;
+  font-weight: 500;
   font-size: 16px;
   width: 100%;
-  box-shadow: 0 2px 4px rgba(var(--color-rgb-primary), 0.15), 0 1px 2px rgba(var(--color-rgb-text), 0.04);
-  transition: background 0.1s ease-in-out, transform 0.1s ease-in-out, box-shadow 0.1s ease-in-out;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  margin: 10px 0 0 0;
+  box-shadow: 0 1.5px 6px rgba(15,28,79,0.06);
+  transition: background 0.1s, box-shadow 0.1s;
 }
-.btn-restore:hover {
-  background: #0A28D7;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 8px rgba(var(--color-rgb-primary), 0.20), 0 2px 4px rgba(var(--color-rgb-text), 0.06);
+.btn-primary:hover {
+  background: #2a5fff;
 }
-.btn-restore:active {
-  background: #081FAD;
-  transform: translateY(0px);
-  box-shadow: 0 1px 3px rgba(var(--color-rgb-primary), 0.15);
-}
-.btn-restore:disabled {
+.btn-primary:disabled {
   background: var(--color-border);
   color: rgba(var(--color-rgb-text), 0.4);
-  cursor: not-allowed;
+}
+
+.btn-panic {
+  background: transparent;
+  color: #d32f2f;
+  border: 1.5px solid #d32f2f;
+  border-radius: 8px;
+  padding: 13px 0;
+  font-weight: 600;
+  font-size: 16px;
+  width: 100%;
+  margin: 10px 0 0 0;
   box-shadow: none;
-  transform: none;
+  letter-spacing: 0.2px;
+  cursor: pointer;
+  transition: border-color 0.1s, color 0.1s, background 0.1s;
+}
+.btn-panic:hover {
+  background: #fbe9e7;
+  color: #b71c1c;
+  border-color: #b71c1c;
+}
+.btn-panic:disabled {
+  background: #f8d7da;
+  color: #fff;
+  cursor: not-allowed;
 }
 
 .status-message {
-  margin-top: 24px;
+  margin-top: 18px;
   min-height: 24px;
   font-weight: 500;
   font-size: 14px;
   text-align: center;
-  transition: color 0.2s, opacity 0.2s;
   opacity: 0.9;
+  background: none;
+  border: none;
+  color: var(--color-primary);
 }
 .status-message.success {
-  color: var(--color-primary); 
+  color: var(--color-primary);
 }
 .status-message.error {
-  color: #D32F2F; 
+  color: #d32f2f;
+}
+.status-message.info {
+  color: var(--color-text);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px);}
+  to { opacity: 0.9; transform: translateY(0);}
 }
 
 .spinner {
@@ -186,4 +267,40 @@ body {
 @keyframes spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
+}
+
+@keyframes pulse {
+  0% { box-shadow: 0 0 0 0 rgba(211,47,47,0.10);}
+  100% { box-shadow: 0 0 0 8px rgba(211,47,47,0.18);}
+}
+
+@keyframes shake {
+  0% { transform: translateX(0);}
+  25% { transform: translateX(-2px);}
+  50% { transform: translateX(2px);}
+  75% { transform: translateX(-2px);}
+  100% { transform: translateX(0);}
+}
+
+@media (max-width: 600px) {
+  .content-card {
+    padding: 24px 8px 18px 8px;
+    max-width: 98vw;
+  }
+}
+
+/* Dark mode details card */
+@media (prefers-color-scheme: dark) {
+  .snapshot-details {
+    background: rgba(var(--color-rgb-bg-darker), 0.85);
+  }
+}
+
+/* Footer */
+.footer {
+  margin-top: 32px;
+  text-align: center;
+  color: var(--color-text);
+  opacity: 0.6;
+  font-size: 13px;
 }

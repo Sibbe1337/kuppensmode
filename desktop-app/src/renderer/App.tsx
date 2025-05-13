@@ -55,6 +55,34 @@ function formatSize(bytes?: number): string {
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
+
+function parseSnapshotDisplay(snapshot: Snapshot) {
+  // Example: user_abc/snap_2025-05-13T11-31-59-406Z.json.gz
+  const parts = snapshot.id.split('/');
+  const file = parts[parts.length - 1];
+  const match = file.match(/snap_(.+)\.json\.gz/);
+  let dateStr = '';
+  if (match && match[1]) {
+    // Convert 2025-05-13T11-31-59-406Z to a Date
+    const iso = match[1].replace(/-/g, ':').replace(/:(\d{3,})Z$/, '.$1Z').replace('T', 'T');
+    const date = new Date(match[1].replace(/-/g, ':').replace(/:(\d{3,})Z$/, '.$1Z'));
+    dateStr = isNaN(date.getTime()) ? match[1] : date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  }
+  return {
+    display: dateStr ? `${dateStr} (Test Snapshot)` : file,
+    raw: file,
+  };
+}
+
+function relativeTime(dateStr: string) {
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  if (diffDays === 0) return 'today';
+  if (diffDays === 1) return 'yesterday';
+  return `${diffDays} days ago`;
+}
 // --- END MOVED TO TOP LEVEL ---
 
 function App() {
@@ -62,6 +90,7 @@ function App() {
   const [selectedSnapshotId, setSelectedSnapshotId] = useState<string>("");
   const [status, setStatus] = useState<{ message: string; type: 'info' | 'success' | 'error' }>({ message: "", type: 'info' });
   const [isLoading, setIsLoading] = useState(false);
+  const [showWelcome, setShowWelcome] = useState(false);
 
   // Refs to track timing
   const snapshotListRenderedTime = useRef<number | null>(null);
@@ -109,6 +138,13 @@ function App() {
     };
   }, []); // selectedSnapshotId removed from deps to avoid re-triggering PostHog events excessively
 
+  useEffect(() => {
+    if (!localStorage.getItem('pagelifeline-welcome-shown')) {
+      setShowWelcome(true);
+      localStorage.setItem('pagelifeline-welcome-shown', '1');
+    }
+  }, []);
+
   const handleRestore = () => {
     if (!selectedSnapshotId) {
       setStatus({ message: 'Please select a snapshot to restore.', type: 'error' });
@@ -143,20 +179,19 @@ function App() {
 
         <select
           value={selectedSnapshotId}
-          onChange={e => {
-            setSelectedSnapshotId(e.target.value);
-            // Optionally, you could record the time here if you only want to measure dropdown interaction time
-            // independent of the restore button click.
-          }}
+          onChange={e => setSelectedSnapshotId(e.target.value)}
           className="snapshot-select"
           disabled={isLoading || snapshots.length === 0}
         >
           <option value="">— Select Snapshot —</option>
-          {snapshots.map(snap => (
-            <option key={snap.id} value={snap.id}>
-              {snap.name || snap.id} {snap.createdAt ? `(${formatDate(snap.createdAt)})` : ''}
-            </option>
-          ))}
+          {snapshots.map(snap => {
+            const { display } = parseSnapshotDisplay(snap);
+            return (
+              <option key={snap.id} value={snap.id}>
+                {display}
+              </option>
+            );
+          })}
         </select>
 
         <button
@@ -188,58 +223,104 @@ function App() {
           + Create Test Snapshot
         </button>
 
-        {selectedSnap && (
-          <div className="snapshot-details">
-            <div><b>Name:</b> {selectedSnap.name || selectedSnap.id}</div>
-            {selectedSnap.createdAt && (
-              <div><b>Created:</b> {formatDate(selectedSnap.createdAt)}</div>
-            )}
-            {selectedSnap.size !== undefined && (
-              <div><b>Size:</b> {formatSize(selectedSnap.size)}</div>
-            )}
-            {selectedSnap.pageCount !== undefined && (
-              <div><b>Pages:</b> {selectedSnap.pageCount}</div>
-            )}
-            {/* Download Button */}
-            <button
+        {snapshots.length === 0 && (
+          <div style={{
+            textAlign: 'center',
+            margin: '32px 0 0 0',
+            padding: '24px 0',
+            color: 'var(--color-text)',
+            opacity: 0.85,
+            animation: 'fadeIn 0.5s'
+          }}>
+            <div style={{ fontSize: 44, marginBottom: 8 }}>🕰️</div>
+            <div style={{ fontWeight: 600, fontSize: 18, marginBottom: 6 }}>No snapshots yet!</div>
+            <div style={{ fontSize: 15, marginBottom: 10 }}>
+              PageLifeline will create your first snapshot soon,<br />
+              or click <b>“Create Test Snapshot”</b> to try it out.
+            </div>
+            <a
+              href="https://www.pagelifeline.app/help/snapshots"
+              target="_blank"
+              rel="noopener noreferrer"
               style={{
-                marginTop: 10,
-                background: 'var(--color-primary)',
-                color: '#fff',
-                border: 'none',
-                borderRadius: 8,
-                padding: '8px 16px',
+                color: 'var(--color-primary)',
                 fontSize: 14,
-                cursor: 'pointer',
-                fontWeight: 500
-              }}
-              onClick={async () => {
-                setStatus({ message: 'Generating download link...', type: 'info' });
-                const result = await window.electronAPI?.getSnapshotDownloadUrl?.(selectedSnap.id);
-                if (result?.url) {
-                  setStatus({ message: 'Download started.', type: 'success' });
-                  window.open(result.url, '_blank');
-                } else {
-                  setStatus({ message: `Failed to get download link: ${result?.error || 'Unknown error'}`, type: 'error' });
-                }
+                textDecoration: 'underline',
+                opacity: 0.8
               }}
             >
-              ⬇️ Download Snapshot (.json.gz)
-            </button>
+              Learn more about snapshots
+            </a>
+          </div>
+        )}
+
+        {selectedSnap && (
+          <div className="snapshot-details">
+            <span className="icon" role="img" aria-label="Snapshot">🗂️</span>
+            <div className="meta">
+              <div><b>Name:</b> {parseSnapshotDisplay(selectedSnap).display}</div>
+              {selectedSnap.createdAt && (
+                <div>
+                  <b>Created:</b> {formatDate(selectedSnap.createdAt)}
+                  <span style={{ marginLeft: 8, color: 'var(--color-text)', opacity: 0.7, fontSize: 13 }}>
+                    ({relativeTime(selectedSnap.createdAt)})
+                  </span>
+                </div>
+              )}
+              {selectedSnap.size !== undefined && (
+                <div><b>Size:</b> {formatSize(selectedSnap.size)}</div>
+              )}
+              {selectedSnap.pageCount !== undefined && (
+                <div><b>Pages:</b> {selectedSnap.pageCount}</div>
+              )}
+              <button
+                style={{
+                  marginTop: 12,
+                  background: 'var(--color-primary)',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: 8,
+                  padding: '8px 16px',
+                  fontSize: 14,
+                  cursor: 'pointer',
+                  fontWeight: 500
+                }}
+                onClick={async () => {
+                  setStatus({ message: 'Generating download link...', type: 'info' });
+                  const result = await window.electronAPI?.getSnapshotDownloadUrl?.(selectedSnap.id);
+                  if (result?.url) {
+                    setStatus({ message: 'Download started.', type: 'success' });
+                    window.open(result.url, '_blank');
+                  } else {
+                    setStatus({ message: `Failed to get download link: ${result?.error || 'Unknown error'}`, type: 'error' });
+                  }
+                }}
+              >
+                ⬇️ Download Snapshot (.json.gz)
+              </button>
+            </div>
           </div>
         )}
 
         {/* Panic Button for most recent snapshot */}
         {snapshots.length > 0 && (
           <button
-            className="btn-restore"
+            className="btn-panic"
             style={{
               marginTop: 18,
-              background: '#d32f2f',
-              fontWeight: 700,
-              fontSize: 17,
-              letterSpacing: 0.5,
-              boxShadow: '0 2px 8px rgba(211,47,47,0.10)'
+              background: 'transparent',
+              color: '#d32f2f',
+              border: '1.5px solid #d32f2f',
+              borderRadius: 8,
+              padding: '13px 0',
+              fontWeight: 600,
+              fontSize: 16,
+              width: '100%',
+              margin: '10px 0 0 0',
+              boxShadow: 'none',
+              letterSpacing: '0.2px',
+              cursor: 'pointer',
+              transition: 'border-color 0.1s, color 0.1s, background 0.1s'
             }}
             onClick={() => {
               const mostRecent = snapshots[0];
@@ -255,7 +336,7 @@ function App() {
         )}
 
         <button
-          className="btn-restore"
+          className="btn-primary"
           onClick={handleRestore} // This now triggers the event capture
           disabled={isLoading || !selectedSnapshotId}
         >
@@ -281,6 +362,37 @@ function App() {
         {status.message && status.message !== 'Fetching snapshots...' && (!isLoading || (status.type === 'error' || status.type === 'success')) && (
           <div className={`status-message ${status.type}`}>
             {status.message}
+          </div>
+        )}
+
+        {showWelcome && (
+          <div style={{
+            position: 'fixed',
+            top: 32,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            background: 'var(--color-surface)',
+            border: '1px solid var(--color-border)',
+            borderRadius: 12,
+            boxShadow: '0 4px 24px rgba(15,28,79,0.10)',
+            padding: '24px 36px',
+            zIndex: 9999,
+            textAlign: 'center',
+            animation: 'fadeIn 0.5s'
+          }}>
+            <div style={{ fontSize: 32, marginBottom: 8 }}>👋</div>
+            <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 6 }}>Welcome to PageLifeline!</div>
+            <div style={{ fontSize: 15, marginBottom: 10 }}>
+              Quickly restore any Notion snapshot if things go wrong.<br />
+              Let's get you started!
+            </div>
+            <button
+              className="btn-primary"
+              style={{ width: 180, marginTop: 10 }}
+              onClick={() => setShowWelcome(false)}
+            >
+              Get Started
+            </button>
           </div>
         )}
       </div>
