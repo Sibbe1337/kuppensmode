@@ -4,23 +4,41 @@ import { Storage } from '@google-cloud/storage';
 
 const bucketName = process.env.GCS_BUCKET_NAME;
 const keyJsonString = process.env.GCP_SERVICE_ACCOUNT_KEY_JSON;
+const projectId = process.env.GOOGLE_CLOUD_PROJECT;
 
 export async function GET(request: Request, { params }: { params: { snapshotId: string } }) {
+  console.log("[Download API] GCP_SERVICE_ACCOUNT_KEY_JSON (first 70 chars):", keyJsonString?.substring(0, 70));
+  console.log("[Download API] GCS_BUCKET_NAME:", bucketName);
+  console.log("[Download API] GOOGLE_CLOUD_PROJECT:", projectId);
+
   const { userId } = getAuth(request as any);
   if (!userId) return new NextResponse("Unauthorized", { status: 401 });
 
-  // The snapshotId param from the route is expected to be the full GCS object path
-  // relative to the bucket root, e.g., "user_XXXX/snap_YYYY.json.gz"
   const receivedSnapshotPath = params.snapshotId;
-  const storage = new Storage();
+  
+  let storageClientConfig: any = {};
+  if (keyJsonString && projectId) {
+    try {
+      const credentials = JSON.parse(keyJsonString);
+      storageClientConfig = { credentials, projectId };
+      console.log("[Download API] Using explicit credentials from GCP_SERVICE_ACCOUNT_KEY_JSON.");
+    } catch (e) {
+      console.error("[Download API] FATAL: Failed to parse GCP_SERVICE_ACCOUNT_KEY_JSON.", e);
+      return new NextResponse("Server configuration error - Key JSON parsing", { status: 500 });
+    }
+  } else {
+    console.warn("[Download API] GCP_SERVICE_ACCOUNT_KEY_JSON or GOOGLE_CLOUD_PROJECT is NOT SET. Attempting to use default credentials.");
+    // Let Storage() try to find ADC or other implicit credentials if explicit ones are missing
+    if (projectId) storageClientConfig.projectId = projectId;
+  }
 
-  // Security Check: Ensure the requested path starts with the authenticated user's ID
+  const storage = new Storage(storageClientConfig);
+
   if (!receivedSnapshotPath || !receivedSnapshotPath.startsWith(`${userId}/`)) {
     console.warn(`[Download API] Forbidden access attempt by userId: ${userId} for path: ${receivedSnapshotPath}`);
     return new NextResponse("Forbidden - path does not match user or is invalid", { status: 403 });
   }
 
-  // The receivedSnapshotPath is the filePath
   const filePath = receivedSnapshotPath;
   console.log(`[Download API] Attempting to get signed URL for GCS file: gs://${bucketName}/${filePath}`);
 
@@ -36,9 +54,7 @@ export async function GET(request: Request, { params }: { params: { snapshotId: 
       .file(filePath)
       .getSignedUrl({
         action: 'read',
-        expires: Date.now() + 10 * 60 * 1000, // 10 minutes
-        // Optional: prompt browser to download with original filename
-        // responseDisposition: `attachment; filename="${filePath.split('/').pop()}"` 
+        expires: Date.now() + 10 * 60 * 1000, 
       });
     console.log(`[Download API] Generated signed URL for ${filePath}`);
     return NextResponse.json({ url });
