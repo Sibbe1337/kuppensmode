@@ -3,6 +3,7 @@ import { getAuth } from '@clerk/nextjs/server';
 import { Storage } from '@google-cloud/storage';
 
 const bucketName = process.env.GCS_BUCKET_NAME;
+const keyJsonString = process.env.GCP_SERVICE_ACCOUNT_KEY_JSON;
 
 export async function GET(request: Request, { params }: { params: { snapshotId: string } }) {
   const { userId } = getAuth(request as any);
