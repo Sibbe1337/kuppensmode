@@ -52,7 +52,6 @@ function sha256(buffer: string): Buffer {
   return crypto.createHash('sha256').update(buffer).digest();
 }
 
-let pkceCodeVerifier: string | null = null;
 // --- End PKCE Helpers ---
 
 // --- Constants for Keytar --- (Add these)
