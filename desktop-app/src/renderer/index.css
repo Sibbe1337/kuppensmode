@@ -1,0 +1,189 @@
+/* ... (your existing :root variables) ... */
+
+:root {
+  --color-primary:   #1338FF;
+  --color-text:      #0F1C4F;
+  --color-heading:   #0D0E13;
+  --color-bg:        #F5F6FA; /* Main page background */
+  --color-border:    #DFE3EB; /* Borders, separators */
+  --color-surface:   #FFFFFF; /* Card backgrounds */
+
+  /* For rgba usage if needed, e.g., box-shadows or semi-transparent backgrounds */
+  --color-rgb-primary: 19, 56, 255;
+  --color-rgb-text: 15, 28, 79;
+  --color-rgb-heading: 13, 14, 19;
+  --color-rgb-bg-darker: 223, 227, 235; /* A slightly darker shade of the main bg */
+  --color-rgb-border: 223, 227, 235;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; /* Prioritize SF Pro Text */
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-size: 15px; /* Slightly smaller base for a denser Mac feel, adjust if needed */
+  line-height: 1.55; /* Adjusted for readability */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.app-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start; /* Align card to top, allow scrolling if content grows */
+  min-height: 100vh;
+  padding: 40px 20px; /* More top padding */
+  box-sizing: border-box;
+}
+
+/* Optional: Custom title bar styling - requires main process changes to enable */
+/* .title-bar {
+  -webkit-app-region: drag;
+  height: 38px;
+  background: transparent; 
+  width: 100%;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  border-bottom: 1px solid var(--color-border);
+} */
+
+.content-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 16px; /* Slightly less rounded for a sharper Mac feel */
+  box-shadow: 0 8px 24px rgba(var(--color-rgb-text), 0.06), 0 1px 4px rgba(var(--color-rgb-text), 0.03); /* Refined shadow */
+  padding: 32px 36px; /* Adjusted padding */
+  margin-top: 20px;   /* Reduced margin if app-container has more padding */
+  width: 100%;
+  max-width: 540px; /* Slightly adjusted max-width */
+  text-align: left;
+}
+
+.header-main {
+  font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif; /* Prioritize SF Pro Display */
+  font-weight: 600; /* Standard bold for SF Pro */
+  font-size: 28px;  /* Adjusted size */
+  letter-spacing: -0.025em; /* Adjusted letter-spacing */
+  margin-bottom: 10px; /* Reduced bottom margin */
+  color: var(--color-heading);
+}
+
+.sub-header {
+  color: var(--color-text);
+  font-size: 16px; /* Adjusted size */
+  line-height: 1.5; /* Specific line-height for sub-header */
+  margin-bottom: 28px; /* Adjusted bottom margin */
+  opacity: 0.85; /* Slightly more opaque */
+}
+
+.snapshot-select {
+  font-size: 16px; 
+  padding: 12px 18px;
+  padding-right: 40px; /* Make space for custom arrow */
+  border-radius: 8px; /* Standard Mac control roundness */
+  border: 1px solid var(--color-border);
+  background-color: var(--color-surface); /* Cleaner than --color-bg for a select */
+  color: var(--color-text);
+  width: 100%; 
+  margin-bottom: 20px; /* Adjusted margin */
+  box-shadow: 0 1px 2px rgba(var(--color-rgb-text), 0.03);
+  appearance: none;
+  background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20viewBox%3D%220%200%2020%2020%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M5.83333%207.5L10%2011.6667L14.1667%207.5%22%20stroke%3D%22%230F1C4F%22%20stroke-width%3D%221.5%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E'); /* Refined SVG arrow */
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 18px; /* Slightly larger arrow */
+  cursor: pointer;
+  transition: border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+}
+.snapshot-select:hover {
+  border-color: rgba(var(--color-rgb-primary), 0.5);
+}
+.snapshot-select:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(var(--color-rgb-primary), 0.2);
+}
+
+.snapshot-details {
+  background-color: rgba(var(--color-rgb-bg-darker), 0.6); /* Slightly more prominent bg */
+  border-radius: 8px;
+  padding: 14px 18px;
+  margin-bottom: 20px;
+  font-size: 14px; /* Slightly smaller for details */
+  color: var(--color-text);
+  border: 1px solid rgba(var(--color-rgb-border), 0.7);
+}
+.snapshot-details b {
+  font-weight: 500; /* Less aggressive bold */
+  opacity: 0.9;
+}
+
+.btn-restore {
+  background: var(--color-primary);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 12px 24px;
+  font-weight: 500; /* Adjusted for SF Pro */
+  cursor: pointer;
+  font-size: 16px;
+  width: 100%;
+  box-shadow: 0 2px 4px rgba(var(--color-rgb-primary), 0.15), 0 1px 2px rgba(var(--color-rgb-text), 0.04);
+  transition: background 0.1s ease-in-out, transform 0.1s ease-in-out, box-shadow 0.1s ease-in-out;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.btn-restore:hover {
+  background: #0A28D7;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(var(--color-rgb-primary), 0.20), 0 2px 4px rgba(var(--color-rgb-text), 0.06);
+}
+.btn-restore:active {
+  background: #081FAD;
+  transform: translateY(0px);
+  box-shadow: 0 1px 3px rgba(var(--color-rgb-primary), 0.15);
+}
+.btn-restore:disabled {
+  background: var(--color-border);
+  color: rgba(var(--color-rgb-text), 0.4);
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+}
+
+.status-message {
+  margin-top: 24px;
+  min-height: 24px;
+  font-weight: 500;
+  font-size: 14px;
+  text-align: center;
+  transition: color 0.2s, opacity 0.2s;
+  opacity: 0.9;
+}
+.status-message.success {
+  color: var(--color-primary); 
+}
+.status-message.error {
+  color: #D32F2F; 
+}
+
+.spinner {
+  display: inline-block;
+  width: 15px;
+  height: 15px;
+  border: 2.5px solid rgba(255,255,255,0.4);
+  border-top-color: #fff; 
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite; /* Faster spin */
+  margin-right: 8px;
+  vertical-align: middle;
+}
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}

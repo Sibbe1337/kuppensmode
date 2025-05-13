@@ -1,4 +1,18 @@
-import { defineConfig } from 'vite';
+  // notion-lifeline/desktop-app/vite.preload.config.ts
+  import { defineConfig } from 'vite';
+  import tsconfigPaths from 'vite-tsconfig-paths';
 
-// https://vitejs.dev/config
-export default defineConfig({}); 
+  export default defineConfig({
+    build: {
+      outDir: 'dist',
+      lib: {
+        entry: 'src/preload.ts',
+        formats: ['cjs'],
+        fileName: 'preload'
+      },
+      rollupOptions: {
+        external: ['electron'],
+      },
+    },
+    plugins: [tsconfigPaths()],
+  });

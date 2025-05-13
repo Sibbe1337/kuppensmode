@@ -1,26 +1,13 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
 contextBridge.exposeInMainWorld('electronAPI', {
-  // Example: send a message to the main process and get a response
-  invoke: (channel: string, ...args: any[]) => ipcRenderer.invoke(channel, ...args),
-  // Example: send a message to the main process (one-way)
-  send: (channel: string, payload: any) => {
-    // Whitelist channels
-    const validChannels = ["clerk-auth-success", "clerk-auth-error"];
-    if (validChannels.includes(channel)) {
-      ipcRenderer.send(channel, payload);
-    } else {
-      console.warn(`Blocked IPC send on untrusted channel: ${channel}`);
-    }
+  send: (channel: string, payload?: any) => ipcRenderer.send(channel, payload),
+  receive: (channel: string, func: (...args: any[]) => void) => {
+    ipcRenderer.on(channel, (_event, ...args) => func(...args));
   },
-  // Example: receive messages from the main process
-  on: (channel: string, func: (...args: any[]) => void) => {
-    const subscription = (event: any, ...args: any[]) => func(...args);
-    ipcRenderer.on(channel, subscription);
-    return () => {
-      ipcRenderer.removeListener(channel, subscription);
-    };
-  },
+  getSnapshots: () => ipcRenderer.invoke('get-snapshots'),
+  createTestSnapshot: () => ipcRenderer.invoke('create-test-snapshot'),
+  getSnapshotDownloadUrl: (snapshotId: string) => ipcRenderer.invoke('get-snapshot-download-url', snapshotId),
 });
 
 // It's good practice to declare the types for the exposed API globally

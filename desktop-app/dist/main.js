@@ -16763,41 +16763,43 @@ async function createWindow() {
     win = null;
   });
 }
-async function restoreLatest() {
+async function restoreLatest(snapshotId) {
   var _a, _b;
-  console.log("[main.ts] Attempting to restore latest good snapshot...");
+  console.log("[main.ts] Attempting to restore snapshot...");
   const jwt = await getStoredJwt();
+  console.log("[main.ts] JWT value:", jwt);
   if (!jwt) {
-    console.warn("[main.ts] No JWT found. Please sign in first.");
     new electron.Notification({
       title: "PageLifeline: Authentication Required",
       body: "Please sign in first to restore a snapshot."
     }).show();
     return { success: false, message: "Authentication required." };
   }
-  console.log("[main.ts] Using JWT for restore API call.");
+  if (!snapshotId) {
+    new electron.Notification({
+      title: "PageLifeline: Restore Failed",
+      body: "No snapshot selected."
+    }).show();
+    return { success: false, message: "No snapshot selected." };
+  }
   try {
     const response = await axios.post(
-      `${API_BASE_URL}/api/restore/latest-good`,
-      {},
+      `${API_BASE_URL}/api/restore`,
+      { snapshotId },
       { headers: { "Authorization": `Bearer ${jwt}` } }
     );
-    console.log("[main.ts] Restore API response status:", response.status);
     new electron.Notification({
       title: "PageLifeline: Restore Initiated",
       body: response.data.message || "Check your dashboard for progress."
     }).show();
     return { success: true, ...response.data };
   } catch (err) {
-    console.error("[main.ts] Restore API call failed:", err.isAxiosError ? err.toJSON() : err);
     let errorMessage = "Failed to initiate restore.";
     if (err.response) {
-      console.error("[main.ts] Restore API error response data:", err.response.data);
       errorMessage = ((_a = err.response.data) == null ? void 0 : _a.message) || err.message || errorMessage;
       if (err.response.status === 401) {
         errorMessage = "Authentication failed. JWT might be expired or invalid. Please sign in again.";
         await keytar.deletePassword(KEYTAR_SERVICE, KEYTAR_ACCOUNT_JWT);
-        console.log("[main.ts] Invalid JWT detected during API call, cleared from keychain.");
       }
     }
     new electron.Notification({ title: "PageLifeline: Restore Failed", body: errorMessage }).show();
@@ -16957,6 +16959,7 @@ async function getStoredJwt() {
     const jwt = await keytar.getPassword(KEYTAR_SERVICE, KEYTAR_ACCOUNT_JWT);
     if (jwt) {
       console.log("[main.ts] JWT retrieved from keychain.");
+      console.log("[main.ts] Authorization header:", `Bearer ${jwt}`);
       return jwt;
     }
     console.log("[main.ts] No JWT found in keychain.");
@@ -17003,7 +17006,7 @@ electron.app.whenReady().then(async () => {
           });
         }
       },
-      { label: "Restore latest good snapshot", click: restoreLatest },
+      { label: "Restore latest good snapshot", click: () => restoreLatest() },
       { type: "separator" },
       {
         label: "Show Main Window",
@@ -17053,6 +17056,15 @@ electron.ipcMain.on("clerk-auth-success", async (event, { sessionId, token }) =>
         title: "PageLifeline: Signed In",
         body: "You have successfully signed in to the desktop app."
       }).show();
+      if (!win || win.isDestroyed()) {
+        await createWindow();
+      }
+      if (win && !win.isVisible()) {
+        win.show();
+      }
+      if (win) {
+        win.focus();
+      }
     } catch (keytarError) {
       console.error("[IPC Main] Failed to store JWT with keytar:", keytarError);
       new electron.Notification({
@@ -17075,6 +17087,52 @@ electron.ipcMain.on("clerk-auth-error", (event, { error }) => {
   }).show();
   if (authWindow && !authWindow.isDestroyed()) {
     authWindow.close();
+  }
+});
+electron.ipcMain.handle("get-snapshots", async () => {
+  const jwt = await getStoredJwt();
+  console.log("[main.ts] JWT value:", jwt);
+  if (!jwt) return [];
+  try {
+    const response = await axios.get(`${API_BASE_URL}/api/snapshots`, {
+      headers: { "Authorization": `Bearer ${jwt}` }
+    });
+    return Array.isArray(response.data) ? response.data : [];
+  } catch (e) {
+    console.error("Failed to fetch snapshots:", e);
+    return [];
+  }
+});
+electron.ipcMain.on("restore-latest", async (_event, payload) => {
+  const snapshotId = payload == null ? void 0 : payload.snapshotId;
+  const result = await restoreLatest(snapshotId);
+  if (win) {
+    win.webContents.send("restore-result", result);
+  }
+});
+console.log("Registering create-test-snapshot handler");
+electron.ipcMain.handle("create-test-snapshot", async () => {
+  const jwt = await getStoredJwt();
+  if (!jwt) return { success: false, error: "No JWT" };
+  try {
+    const response = await axios.post(`${API_BASE_URL}/api/snapshots/create`, {}, {
+      headers: { "Authorization": `Bearer ${jwt}` }
+    });
+    return response.data;
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+electron.ipcMain.handle("get-snapshot-download-url", async (_event, snapshotId) => {
+  const jwt = await getStoredJwt();
+  if (!jwt) return { success: false, error: "No JWT" };
+  try {
+    const response = await axios.get(`${API_BASE_URL}/api/snapshots/${encodeURIComponent(snapshotId)}/download`, {
+      headers: { "Authorization": `Bearer ${jwt}` }
+    });
+    return response.data;
+  } catch (e) {
+    return { success: false, error: e.message };
   }
 });
 //# sourceMappingURL=main.js.map
