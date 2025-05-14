@@ -13,7 +13,7 @@ import PQueue from 'p-queue';
 import { promisify } from 'util';
 import zlib from 'node:zlib';
 import { Storage } from '@google-cloud/storage';
-import type { UserData } from './lib/types';
+// import type { UserData } from './lib/types';  
 // import { Resend } from 'resend'; // Commented out
 
 // let resend: Resend | null = null; // Commented out
@@ -40,8 +40,8 @@ export const snapshotTrigger = cloudEvent(
     const mainFunctionName = 'snapshotTrigger';
     try {
       // --- Main Snapshot Logic Here --- 
-      const token = await getSecret('SOME_SECRET'); // Keep example secret fetch if needed for testing
-      console.log('Snapshot function logic would run here...', token, db);
+      // const token = await getSecret('SOME_SECRET'); // Keep example secret fetch if needed for testing
+      console.log('Snapshot function logic would run here...', db); // Removed token from log
       console.log(`${mainFunctionName}: Placeholder - Main logic executed successfully.`);
       // --- End Main Snapshot Logic ---
 

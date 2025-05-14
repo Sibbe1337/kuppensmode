@@ -24,5 +24,21 @@ electron.contextBridge.exposeInMainWorld("electronAPI", {
   getAuthStatus: () => electron.ipcRenderer.invoke("get-auth-status"),
   // Added for renderer to trigger sign-in flow
   requestSignIn: () => electron.ipcRenderer.send("request-sign-in"),
-  restoreLatestGood: () => electron.ipcRenderer.invoke("restore-latest-good")
+  restoreLatestGood: () => electron.ipcRenderer.invoke("restore-latest-good"),
+  // Listener for restore progress updates
+  onRestoreProgressUpdate: (callback) => {
+    const listener = (_event, eventData) => callback(eventData);
+    electron.ipcRenderer.on("restore-progress-update", listener);
+    return () => {
+      electron.ipcRenderer.removeListener("restore-progress-update", listener);
+    };
+  },
+  // Updater related methods
+  onUpdaterEvent: (callback) => {
+    const listener = (_event, eventData) => callback(eventData);
+    electron.ipcRenderer.on("updater-event", listener);
+    return () => electron.ipcRenderer.removeListener("updater-event", listener);
+  },
+  sendUpdaterDownload: () => electron.ipcRenderer.send("updater-download-update"),
+  sendUpdaterQuitAndInstall: () => electron.ipcRenderer.send("updater-quit-and-install")
 });

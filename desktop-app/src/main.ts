@@ -26,6 +26,7 @@ import * as appLifecycle from './main/appLifecycle'; // Import appLifecycle
 import * as ipcManager from './main/ipcHandlers'; // Import ipcManager
 import * as authService from './main/auth';
 import { API_BASE_URL as AppApiBaseUrl } from './main/config'; // Only API_BASE_URL is needed from config by main.ts
+import * as updater from './main/updater'; // Import updater module
 
 // Handle Squirrel Startup Events for Windows (important for installers)
 // This should be one of the first things your app does.
@@ -213,10 +214,11 @@ async function triggerRestoreLatestGoodFromTray() {
 
 app.whenReady().then(async () => {
   console.log('[AppEvent] App is ready.');
-  // windowManager.createMainWindow() will use the declared constants directly from its own scope
   await windowManager.createMainWindow(); 
-  await trayManager.initTray(handleSignOut, triggerRestoreLatestGoodFromTray); 
-  console.log('[AppEvent] Core initializations complete (Window, Tray, IPC Handlers, Lifecycle).');
+  await trayManager.initTray(handleSignOut, restoreLatest); 
+  ipcManager.registerAllIpcHandlers(AppApiBaseUrl, handleSignOut, restoreLatest); // Moved IPC registration here
+  updater.initAutoUpdater(); // Initialize auto updater
+  console.log('[AppEvent] Core initializations complete (Window, Tray, IPC Handlers, Lifecycle, Updater).');
 
   const initialUrl = appLifecycle.getInitialDeeplinkUrl();
   if (initialUrl) {

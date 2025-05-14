@@ -58,7 +58,11 @@ export async function GET(request: Request) {
     console.log(`Fetching snapshots for user: ${userId} from bucket: ${bucketName}`);
 
     // List files from GCS
-    const [files] = await storage.bucket(bucketName).getFiles({ prefix: `${userId}/` });
+    const [files] = await storage.bucket(bucketName).getFiles();
+    // IMPORTANT: You'll need a way to determine which snapshots belong to which user
+    // if they are all at the root. Perhaps the filename itself contains the userId,
+    // or you store userId in GCS file metadata when creating snapshots.
+    // The current screenshot filenames `snap_DATE...` don't show a userId.
     console.log(`Found ${files.length} files/folders for user ${userId}`);
 
     const snapshotPromises = files

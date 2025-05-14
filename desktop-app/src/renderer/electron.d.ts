@@ -19,6 +19,12 @@ export interface RestoreProgressEventData {
   error?: string; // For 'sse_error'
 }
 
+// Define structure for updater events sent from main to renderer
+export interface UpdaterEventData {
+  event: 'checking-for-update' | 'update-available' | 'update-not-available' | 'error' | 'download-progress' | 'update-downloaded';
+  data?: any; // UpdateInfo, Error message string, ProgressInfo
+}
+
 declare global {
   interface Window {
     electronAPI?: {
@@ -43,6 +49,11 @@ declare global {
       
       // New listener for restore progress updates
       onRestoreProgressUpdate?: (callback: (eventData: RestoreProgressEventData) => void) => (() => void) | undefined;
+
+      // Updater related methods
+      onUpdaterEvent?: (callback: (eventData: UpdaterEventData) => void) => (() => void) | undefined;
+      sendUpdaterDownload?: () => void;
+      sendUpdaterQuitAndInstall?: () => void;
     };
   }
 }

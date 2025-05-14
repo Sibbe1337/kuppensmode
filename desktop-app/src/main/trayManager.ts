@@ -18,28 +18,44 @@ let tray: Tray | null = null;
 
 function getTrayIconPath(): string {
     let iconPath: string;
-    const iconFileName = process.platform === 'darwin' ? 'trayTemplate.png' : 'icon.png';
+    // For macOS, it uses trayTemplate.png. For others, icon.png.
+    const iconFileName = process.platform === 'darwin' ? 'trayTemplate.png' : 'icon.png'; 
 
     if (app.isPackaged) {
         const base = path.dirname(app.getPath('exe'));
         let platformSpecificIconName = iconFileName;
-        if (process.platform === 'win32') platformSpecificIconName = 'icon.ico';
+        
+        // For Windows packaged app, prefer .ico if named icon.ico
+        if (process.platform === 'win32') {
+            const icoPath = path.join(base, 'assets', 'icon.ico');
+            if (fs.existsSync(icoPath)) {
+                platformSpecificIconName = 'icon.ico'; // Use icon.ico if present
+            }
+            // If icon.ico isn't there, it will fall back to icon.png via iconFileName
+        }
         
         iconPath = path.join(base, 'assets', platformSpecificIconName);
         if (!fs.existsSync(iconPath)) {
+            // Fallback to resourcesPath
             iconPath = path.join(process.resourcesPath, 'assets', platformSpecificIconName);
-        }
-        if (process.platform === 'win32' && !fs.existsSync(iconPath) && platformSpecificIconName === 'icon.ico') {
-            iconPath = path.join(base, 'assets', 'icon.png'); // Try .png in exe/assets
-            if (!fs.existsSync(iconPath)) {
-                iconPath = path.join(process.resourcesPath, 'assets', 'icon.png'); // Try .png in resourcesPath
+             // If windows .ico was preferred but not found, try .png in resources
+            if (process.platform === 'win32' && platformSpecificIconName === 'icon.ico' && !fs.existsSync(iconPath)) {
+                 const pngPathInResources = path.join(process.resourcesPath, 'assets', 'icon.png');
+                 if (fs.existsSync(pngPathInResources)) iconPath = pngPathInResources;
             }
         }
     } else {
-        // Development: Corrected path assuming assets are at project_root/assets/
+        // Development: assumes assets are at project_root/desktop-app/assets/
         // __dirname in src/main/trayManager.ts (compiled to dist/main/trayManager.js)
-        // ../../.. goes from dist/main -> dist -> desktop-app -> notion-lifeline (project root)
-        iconPath = path.join(__dirname, '../../../assets', iconFileName);
+        // ../../assets goes from dist/main -> dist -> desktop-app -> assets
+        iconPath = path.join(__dirname, '../../assets', iconFileName);
+        // For dev Windows, also check for .ico first
+        if (process.platform === 'win32') {
+            const icoDevPath = path.join(__dirname, '../../assets', 'icon.ico');
+            if (fs.existsSync(icoDevPath)) {
+                iconPath = icoDevPath;
+            }
+        }
         console.log(`[TrayManager-Dev] Attempting icon path: ${iconPath}`);
     }
     return iconPath;

@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 // Attempting relative path import from src/preload.ts to src/renderer/electron.d.ts
-import type { RestoreProgressEventData } from './renderer/electron.d';
+import type { RestoreProgressEventData, UpdaterEventData } from './renderer/electron.d';
 
 contextBridge.exposeInMainWorld('electronAPI', {
   send: (channel: string, payload?: any) => ipcRenderer.send(channel, payload),
@@ -36,6 +36,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.removeListener('restore-progress-update', listener);
     };
   },
+  // Updater related methods
+  onUpdaterEvent: (callback: (eventData: UpdaterEventData) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, eventData: UpdaterEventData) => callback(eventData);
+    ipcRenderer.on('updater-event', listener);
+    return () => ipcRenderer.removeListener('updater-event', listener);
+  },
+  sendUpdaterDownload: () => ipcRenderer.send('updater-download-update'),
+  sendUpdaterQuitAndInstall: () => ipcRenderer.send('updater-quit-and-install'),
 });
 
 // Type definition for electronAPI should now solely reside in electron.d.ts

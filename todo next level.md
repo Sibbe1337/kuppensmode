@@ -111,30 +111,28 @@ Here's the breakdown:
     *   Task: Implement basic main process and renderer process structure. (✅ **Done** - `main.ts`, `preload.ts`, `renderer.tsx` created)
     *   Task: Design tray icon and menu. (✅ **Done** - Tray icon with context menu implemented, including 'Restore latest' & 'Quit')
     *   Status: Basic Electron app with tray functionality is running.
-*   **L3.2: Authentication (OAuth with Clerk)** (➡️ **In Progress**)
+*   **L3.2: Authentication (OAuth with Clerk)** (✅ **COMPLETED**)
     *   Task: Implement Clerk OAuth flow within Electron to securely authenticate the user and obtain an access token. (✅ **Done** - Custom URI, PKCE flow, and token exchange working. User can sign in.)
-    *   Task: Securely store and manage the access token (e.g., using OS keychain). (🕒 **Next Up** - Implement `keytar` for token storage)
-    *   Task: Implement refresh token logic.
-    *   Task: Use stored tokens for authenticated API calls from Electron app.
-    *   Status: User can successfully authenticate via Clerk; token storage and usage in API calls pending.
-*   **L3.3: API Interaction**
+    *   Task: Securely store and manage the access token (e.g., using OS keychain). (✅ **Done** - Implemented `keytar` for token storage, including dynamic tray menu updates for sign-in/out states.)
+    *   Task: Implement refresh token logic. (✅ **Done** - Proactive and reactive refresh logic implemented in `main.ts`, renderer context updates on sign-out.)
+    *   Task: Use stored tokens for authenticated API calls from Electron app. (✅ **Done** - API calls from `main.ts` use stored/refreshed tokens.)
+    *   Status: User can successfully authenticate via Clerk. Token storage, refresh, and usage in API calls from main process are implemented. Renderer UI updates based on auth state.
+*   **L3.3: API Interaction** (✅ **COMPLETED**)
     *   Task: Create a new API endpoint `/api/restore/latest-good` (or similar) that:
-        *   Identifies the "latest good" snapshot for the authenticated user (requires definition of "good" - e.g., completed status, possibly based on diffs if L1 is advanced).
-        *   Initiates a restore of this snapshot with default targets (e.g., restore to a new page).
-    *   Task: Electron app to call this API endpoint using the obtained access token.
-*   **L3.4: UI/UX in Desktop App**
-    *   Task: Minimal UI for status (e.g., "Restoring...", "Restore complete").
-    *   Task: Display system notifications (toasts) for success/failure.
-    *   Task: On success, provide a link to open the newly restored Notion page (requires restore API to return the URL).
-*   **L3.5: Auto-Updater**
-    *   Task: Integrate `electron-updater`.
-    *   Task: Configure update server (e.g., S3, GitHub Releases).
-*   **L3.6: CI/CD for Desktop App Builds**
+        *   Identifies the "latest good" snapshot for the authenticated user (✅ **Done** - Defined as latest 'Completed' by 'createdAt').
+        *   Initiates a restore of this snapshot with default targets (✅ **Done** - Pub/Sub message sent for worker).
+    *   Task: Electron app to call this API endpoint using the obtained access token (✅ **Done** - IPC handler and service call implemented).
+*   **L3.4: UI/UX in Desktop App** (➡️ **In Progress**)
+    *   Task: Minimal UI for status (e.g., "Restoring...", "Restore complete") (✅ **Done** - Basic status via `App.tsx` state; live progress via SSE implemented).
+    *   Task: Display system notifications (toasts) for success/failure (✅ **Done** - Implemented in `ipcHandlers.ts`).
+    *   Task: On success, provide a link to open the newly restored Notion page (✅ **Done** - Implemented via SSE `completed_with_url` event and displayed in `App.tsx`).
+*   **L3.5: Auto-Updater** (✅ **COMPLETED** - `electron-updater` integrated, configured for GitHub releases, basic UI in place)
+*   **L3.6: CI/CD for Desktop App Builds** (➡️ **In Progress** - GitHub Actions workflow for build & draft release created; code signing setup pending credentials)
     *   Task: Set up CI pipeline (e.g., GitHub Actions) to:
-        *   Build Electron app for macOS and Windows.
-        *   Code sign the builds.
-        *   Publish releases (e.g., to S3 or GitHub Releases).
-        *   Update the auto-update feed.
+        *   Build Electron app for macOS and Windows. (✅ **Done** - Workflow builds on macos, windows, ubuntu)
+        *   Code sign the builds. (🕒 **Next Up** - Requires obtaining and configuring certificates/secrets)
+        *   Publish releases (e.g., to S3 or GitHub Releases). (✅ **Done** - Workflow creates draft GitHub Release with assets)
+        *   Update the auto-update feed. (✅ **Done** - `electron-builder` handles `latest.yml` generation)
 
 ---
 
@@ -149,7 +147,7 @@ Here's the breakdown:
     *   Task: Implement SCIM server endpoints (Users, Groups if needed) under `/api/scim/v2/`.
         *   `GET /Users`, `POST /Users`, `GET /Users/{id}`, `PUT /Users/{id}`, `PATCH /Users/{id}`, `DELETE /Users/{id}`.
     *   Task: Logic to map SCIM user attributes to Clerk user attributes and application roles.
-    *   Task: Secure these endpoints (e.g., bearer token authentication for SCIM client).
+or SCIM client).
 *   **L4.3: Define Role Model & Permissions**
     *   Task: Finalize roles: `OWNER`, `ADMIN`, `ANALYST`, `VIEWER` (or as needed).
     *   Task: Define specific permissions for each role (e.g., who can create snapshots, restore, manage billing, assign roles, view audit logs).
@@ -171,12 +169,24 @@ Here's the breakdown:
 **Epic L5: SOC 2 Type II automation**
 *Goal: Reduce sales friction; necessary for mid-market.*
 
-*   **L5.1: Compliance Automation Platform Integration (Vanta/Secureframe)**
+*   **L5.1: Compliance Automation Platform Integration (Vanta/Secureframe)** (🕒 **Next Up** - Vendor selection and onboarding)
     *   Task: Select and onboard with a compliance automation platform.
-    *   Task: Integrate platform's agent/webhook for evidence collection (e.g., monitoring cloud configurations, code repositories, HR systems).
-*   **L5.2: Infrastructure as Code (Terraform)**
-    *   Task: Define and implement Terraform (or other IaC tool like Pulumi) for all core infrastructure (GCP services like Cloud Functions, Pub/Sub, Scheduler, Storage; Vercel project settings; Cloudflare settings).
-    *   Task: CI/CD pipeline for IaC changes, with review and approval processes.
+    *   Task: Integrate platform's agent/webhook for evidence collection.
+*   **L5.2: Infrastructure as Code (Terraform)** (➡️ **In Progress**)
+    *   Task: Define and implement Terraform for all core GCP infrastructure (➡️ **In Progress** - Pub/Sub, GCS, Secrets, SA, Function, Invoker IAMs defined for dev; Scheduler, other Vercel/Cloudflare settings pending).
+        *   Terraform backend (GCS) & provider configured. (✅ **Done**)
+        *   `dev` environment structure created. (✅ **Done**)
+        *   Reusable module for Pub/Sub topics created. (✅ **Done**)
+        *   Pub/Sub topics (snapshot-requests, restore-requests) for `dev` managed by Terraform. (✅ **Done**)
+        *   GCS bucket for `dev` snapshots managed by Terraform (imported). (✅ **Done**)
+        *   GCS bucket for `dev` Cloud Function source code managed by Terraform (imported). (✅ **Done**)
+        *   Secret Manager secrets (envelopes) for `dev` managed by Terraform (imported). (✅ **Done**)
+        *   Worker Service Account for `dev` managed by Terraform (imported). (✅ **Done**)
+        *   IAM bindings for worker SA to access secrets managed by Terraform. (✅ **Done**)
+        *   `dev-snapshot-worker` Cloud Function (Gen2) managed by Terraform (imported and configuration aligned). (✅ **Done**)
+        *   IAM bindings for Pub/Sub and Eventarc service agents to invoke `dev-snapshot-worker` Cloud Run service managed by Terraform. (✅ **Done**)
+        *   Cloud Scheduler, other Vercel/Cloudflare settings still pending IaC.
+    *   Task: CI/CD pipeline for IaC changes, with review and approval processes. (🕒 **Next Up**)
 *   **L5.3: Centralized Logging & Monitoring**
     *   Task: Ensure all application logs (frontend, backend APIs, workers) and infrastructure logs are centralized (e.g., Google Cloud Logging, then exported to BigQuery or a SIEM).
     *   Task: Define Key Performance Indicators (KPIs) and Service Level Objectives (SLOs) for critical functions (e.g., snapshot success rate, restore time, API uptime).

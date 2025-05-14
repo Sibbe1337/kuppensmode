@@ -14,7 +14,9 @@
   },
   "dependencies": {
     "axios": "^1.7.2",
+    "electron-log": "^5.4.0",
     "electron-squirrel-startup": "^1.0.1",
+    "electron-updater": "^6.6.2",
     "event-source-polyfill": "^1.0.31",
     "eventsource": "^4.0.0",
     "keytar": "^7.9.0",
@@ -36,6 +38,7 @@
     "@typescript-eslint/parser": "^7.2.0",
     "@vitejs/plugin-react": "^4.2.1",
     "electron": "^30.0.0",
+    "electron-builder": "^26.0.12",
     "eslint": "^8.57.0",
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-react-refresh": "^0.4.6",
@@ -47,6 +50,37 @@
   },
   "config": {
     "forge": "forge.config.cjs"
+  },
+  "build": {
+    "appId": "com.pagelifeline.desktop",
+    "productName": "PageLifeline Desktop",
+    "directories": {
+      "output": "release/build",
+      "buildResources": "assets"
+    },
+    "files": [
+      "dist/main/**/*",
+      "dist/preload/**/*",
+      "dist/renderer/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "target": "dmg",
+      "icon": "assets/icon.icns"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico"
+    },
+    "linux": {
+      "target": "AppImage",
+      "icon": "assets"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "YOUR_GITHUB_USERNAME_OR_ORG",
+      "repo": "YOUR_GITHUB_REPO_NAME"
+    }
   },
   "pnpm": {
     "onlyBuiltDependencies": [

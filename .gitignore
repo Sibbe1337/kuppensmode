@@ -33,3 +33,4 @@ build
 *.sw? 
 # Sentry Config File
 .env.sentry-build-plugin
+.vercel

@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import posthog from 'posthog-js';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
-import type { Snapshot, RestoreProgressEventData } from './electron.d'; // Import Snapshot from electron.d.ts
+import type { Snapshot, RestoreProgressEventData, UpdaterEventData } from './electron.d'; // Import Snapshot from electron.d.ts
 
 // Global type for electronAPI is now in src/renderer/electron.d.ts
 // Ensure that file is included in your tsconfig.
@@ -97,6 +97,10 @@ function AppContent() {
   const [showWelcome, setShowWelcome] = useState(false);
   const [restoreProgress, setRestoreProgress] = useState<RestoreProgressEventData | null>(null);
   const [restoredPageUrl, setRestoredPageUrl] = useState<string | null>(null);
+  const [updaterStatus, setUpdaterStatus] = useState<UpdaterEventData | null>(null);
+  const [updateInfo, setUpdateInfo] = useState<any>(null); // To store version info from 'update-available'
+  const [downloadProgress, setDownloadProgress] = useState<any>(null);
+  const [updateDownloaded, setUpdateDownloaded] = useState(false);
 
   const snapshotListRenderedTime = useRef<number | null>(null);
 
@@ -194,6 +198,48 @@ function AppContent() {
     };
   }, []); // Runs once on mount
 
+  useEffect(() => {
+    let cleanupUpdaterListener: (() => void) | undefined;
+    if (window.electronAPI?.onUpdaterEvent) {
+      cleanupUpdaterListener = window.electronAPI.onUpdaterEvent((eventData) => {
+        console.log('[AppContent] Updater Event:', eventData);
+        setUpdaterStatus(eventData); // Store the latest raw event for potential detailed display
+        switch (eventData.event) {
+          case 'checking-for-update':
+            setStatus({ message: 'Checking for updates...', type: 'info' });
+            setUpdateDownloaded(false);
+            break;
+          case 'update-available':
+            setUpdateInfo(eventData.data); // Store version info, etc.
+            setStatus({ message: `Update available: ${eventData.data?.version}. Download now?`, type: 'info' });
+            setUpdateDownloaded(false);
+            break;
+          case 'update-not-available':
+            setStatus({ message: 'App is up to date.', type: 'success' });
+            setUpdateDownloaded(false);
+            break;
+          case 'download-progress':
+            setDownloadProgress(eventData.data);
+            setStatus({ message: `Downloading update: ${Math.round(eventData.data?.percent || 0)}%`, type: 'info' });
+            break;
+          case 'update-downloaded':
+            setStatus({ message: `Update ${eventData.data?.version} downloaded. Restart to install.`, type: 'success' });
+            setUpdateDownloaded(true);
+            setDownloadProgress(null);
+            break;
+          case 'error':
+            setStatus({ message: `Update error: ${eventData.data || 'Unknown error'}`, type: 'error' });
+            setUpdateDownloaded(false);
+            setDownloadProgress(null);
+            break;
+        }
+      });
+    }
+    return () => {
+      if (cleanupUpdaterListener) cleanupUpdaterListener();
+    };
+  }, []);
+
   const handleRestore = () => {
     if (!selectedSnapshotId) {
       setStatus({ message: 'Please select a snapshot to restore.', type: 'error' });
@@ -245,6 +291,15 @@ function AppContent() {
     // setIsLoading(false); // Moved into success/error blocks of the try/catch or handled by SSE completion
   };
 
+  const handleDownloadUpdate = () => {
+    window.electronAPI?.sendUpdaterDownload?.();
+    setStatus({ message: 'Starting download...', type: 'info' });
+  };
+
+  const handleRestartAndInstall = () => {
+    window.electronAPI?.sendUpdaterQuitAndInstall?.();
+  };
+
   const selectedSnap = snapshots.find(s => s.id === selectedSnapshotId);
 
   if (isLoadingAuth) {
@@ -260,6 +315,30 @@ function AppContent() {
 
   return (
     <div className="app-container">
+      {/* Updater UI Banner - Simple example */}
+      {updateInfo && !updateDownloaded && !downloadProgress && (
+        <div style={{ padding: '10px', textAlign: 'center', background: '#337ab7', color: 'white' }}>
+          Update available: {updateInfo.version}. 
+          <button onClick={handleDownloadUpdate} style={{ marginLeft: '10px' }}>Download Update</button>
+        </div>
+      )}
+      {downloadProgress && !updateDownloaded && (
+         <div style={{ padding: '10px', textAlign: 'center', background: '#f0ad4e', color: 'white' }}>
+           Downloading update: {Math.round(downloadProgress.percent)}% ({formatSize(downloadProgress.transferred)} / {formatSize(downloadProgress.total)})
+         </div>
+      )}
+      {updateDownloaded && (
+        <div style={{ padding: '10px', textAlign: 'center', background: '#5cb85c', color: 'white' }}>
+          Update downloaded. 
+          <button onClick={handleRestartAndInstall} style={{ marginLeft: '10px' }}>Restart & Install</button>
+        </div>
+      )}
+      {updaterStatus?.event === 'error' && (
+         <div style={{ padding: '10px', textAlign: 'center', background: '#d9534f', color: 'white' }}>
+           Update Error: {updaterStatus.data}
+         </div>
+      )}
+
       <div className="content-card">
         <h1 className="header-main">PageLifeline Desktop</h1>
         

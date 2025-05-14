@@ -29,16 +29,6 @@ var import_functions_framework = require("@google-cloud/functions-framework");
 var import_firestore = require("@google-cloud/firestore");
 var db = new import_firestore.Firestore({ ignoreUndefinedProperties: true });
 
-// src/lib/secrets.ts
-var import_secret_manager = require("@google-cloud/secret-manager");
-var sm = new import_secret_manager.SecretManagerServiceClient();
-async function getSecret(name) {
-  const [v] = await sm.accessSecretVersion({
-    name: `projects/${process.env.GOOGLE_CLOUD_PROJECT}/secrets/${name}/versions/latest`
-  });
-  return v.payload?.data?.toString() ?? "";
-}
-
 // src/snapshot.ts
 var snapshotTrigger = (0, import_functions_framework.cloudEvent)(
   "snapshotTrigger",
@@ -46,8 +36,7 @@ var snapshotTrigger = (0, import_functions_framework.cloudEvent)(
     console.log(`Snapshot trigger received: ${cloudEvent2.id}`);
     const mainFunctionName = "snapshotTrigger";
     try {
-      const token = await getSecret("SOME_SECRET");
-      console.log("Snapshot function logic would run here...", token, db);
+      console.log("Snapshot function logic would run here...", db);
       console.log(`${mainFunctionName}: Placeholder - Main logic executed successfully.`);
     } catch (e) {
       console.error(`${mainFunctionName} failed:`, e);
