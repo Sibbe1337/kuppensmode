@@ -1,6 +1,7 @@
 import { ipcMain, Notification } from 'electron';
 import axios from 'axios';
 import path from 'node:path';
+import { EventSourcePolyfill as EventSource } from 'event-source-polyfill';
 import * as authService from './auth';
 import * as windowManager from './windowManager';
 
@@ -8,17 +9,117 @@ import * as windowManager from './windowManager';
 // They need to be passed or imported if this module is to be fully independent.
 // For now, we assume they can be called if main.ts passes them or if we solve this dependency later.
 let _mainHandleSignOut: () => Promise<void>;
-let _mainRestoreLatest: (snapshotId?: string, isRetry?: boolean) => Promise<any>;
+let _legacyRestoreFn: (snapshotId?: string, isRetry?: boolean) => Promise<any>;
 let _API_BASE_URL: string;
+
+// Keep track of active SSE connections to close them if needed
+const activeSseConnections: { [key: string]: EventSource } = {};
 
 function initDependencies(
     apiBaseUrl: string,
     handleSignOut: () => Promise<void>,
-    restoreLatest: (snapshotId?: string, isRetry?: boolean) => Promise<any> 
+    legacyRestoreCallback: (snapshotId?: string, isRetry?: boolean) => Promise<any>
 ) {
     _API_BASE_URL = apiBaseUrl;
     _mainHandleSignOut = handleSignOut;
-    _mainRestoreLatest = restoreLatest;
+    _legacyRestoreFn = legacyRestoreCallback;
+}
+
+function closeSseConnection(restoreJobId: string) {
+    if (activeSseConnections[restoreJobId]) {
+        console.log(`[IPCHandlers-Core] Closing SSE connection for restoreJobId: ${restoreJobId}`);
+        activeSseConnections[restoreJobId].close();
+        delete activeSseConnections[restoreJobId];
+    }
+}
+
+// Exportable function containing the core logic for restoring the latest good snapshot
+export async function performRestoreLatestGood(): Promise<{ success: boolean; message: string; snapshotId?: string; restoreJobId?: string; errorDetails?: any }> {
+    console.log('[IPCHandlers-Core] Attempting to restore latest good snapshot.');
+    const accessToken = await authService.getStoredAccessToken(_mainHandleSignOut); 
+    if (!accessToken) {
+        new Notification({ title: 'Authentication Required', body: 'Please sign in to restore.'}).show();
+        return { success: false, message: 'Authentication required.' };
+    }
+    try {
+        const backendResponse = await axios.post(
+            `${_API_BASE_URL}/api/restore/latest-good`,
+            {},
+            { headers: { 'Authorization': `Bearer ${accessToken}` } }
+        );
+
+        const backendData = backendResponse.data;
+
+        if (backendData?.success && backendData.restoreJobId) {
+            new Notification({ 
+                title: 'PageLifeline: Restore Initiated', 
+                body: backendData.message || 'Restore of latest good snapshot started.' 
+            }).show();
+
+            const restoreJobId = backendData.restoreJobId;
+            const mainWindow = windowManager.getMainWindow();
+
+            // Close any existing SSE connection for this job ID (e.g., if retried quickly)
+            closeSseConnection(restoreJobId);
+
+            const sseUrl = `${_API_BASE_URL}/api/restore-status/${restoreJobId}`;
+            console.log(`[IPCHandlers-Core] Opening SSE connection to: ${sseUrl}`);
+            
+            // Use EventSource with Authorization header (eventsource package might need polyfill for headers or specific options)
+            // For `eventsource` package, headers are typically passed in an `eventSourceInitDict` as the second argument.
+            const es = new EventSource(sseUrl, { headers: { 'Authorization': `Bearer ${accessToken}` } });
+            activeSseConnections[restoreJobId] = es;
+
+            es.onopen = () => {
+                console.log(`[IPCHandlers-SSE] Connection opened for restoreJobId: ${restoreJobId}`);
+                mainWindow?.webContents.send('restore-progress-update', { type: 'sse_connected', restoreJobId });
+            };
+
+            es.onmessage = (event: any) => {
+                try {
+                    const progressData = JSON.parse(event.data as string); // event.data is string for MessageEvent
+                    console.log(`[IPCHandlers-SSE] Message for ${restoreJobId}:`, progressData);
+                    mainWindow?.webContents.send('restore-progress-update', { type: 'progress', restoreJobId, data: progressData });
+                    
+                    if (progressData.status === 'completed' || progressData.status === 'error') {
+                        closeSseConnection(restoreJobId);
+                        if(progressData.status === 'completed' && progressData.restoredPageUrl) {
+                            mainWindow?.webContents.send('restore-progress-update', { type: 'completed_with_url', restoreJobId, url: progressData.restoredPageUrl, message: progressData.message });
+                        }
+                    }
+                } catch (parseError) {
+                    console.error(`[IPCHandlers-SSE] Error parsing SSE message data for ${restoreJobId}:`, parseError, "Raw data:", event.data);
+                }
+            };
+
+            es.onerror = (errorEvent: any) => {
+                console.error(`[IPCHandlers-SSE] Error for ${restoreJobId}:`, errorEvent);
+                mainWindow?.webContents.send('restore-progress-update', { type: 'sse_error', restoreJobId, error: 'SSE connection error' });
+                closeSseConnection(restoreJobId);
+            };
+
+        } else {
+            new Notification({ 
+                title: 'PageLifeline: Restore Failed', 
+                body: backendData?.message || 'Could not initiate restore of latest good snapshot.' 
+            }).show();
+        }
+        return backendData; 
+    } catch (error: any) {
+        console.error('[IPCHandlers-Core] Error calling /api/restore/latest-good:', error.response?.data || error.message);
+        let friendlyMessage = 'Failed to initiate latest good restore.';
+        if (error.response?.data?.message) {
+            friendlyMessage = error.response.data.message;
+        } else if (error.isAxiosError && !error.response) {
+            friendlyMessage = 'Network error. Please check your connection.';
+        }
+        new Notification({ title: 'PageLifeline: Error', body: friendlyMessage }).show();
+        return { 
+            success: false, 
+            message: friendlyMessage,
+            errorDetails: error.response?.data 
+        };
+    }
 }
 
 function registerAuthEventHandlers() {
@@ -26,7 +127,14 @@ function registerAuthEventHandlers() {
         console.log(`[IPCHandlers] clerk-auth-success. Session: ${sessionId}`);
         if (token) {
             try {
-                const tokensToStore = { accessToken: token, refreshToken: null, idToken: null, userId: sessionId, expiresIn: 3600, obtainedAt: Date.now() }; 
+                const tokensToStore = {
+                    accessToken: token,
+                    refreshToken: null,
+                    idToken: null,
+                    userId: sessionId,
+                    expiresIn: 3600,
+                    obtainedAt: Date.now()
+                };
                 await authService.storeTokenObject(tokensToStore);
                 new Notification({ title: "PageLifeline: Signed In", body: "Successfully signed in." }).show();
                 await windowManager.ensureMainWindowVisibleAndFocused();
@@ -86,7 +194,7 @@ function registerSnapshotAndRestoreHandlers() {
 
     ipcMain.on('restore-latest', async (_event, payload) => {
         const snapshotId = payload?.snapshotId;
-        const result = await _mainRestoreLatest(snapshotId);
+        const result = await _legacyRestoreFn(snapshotId);
         const mainWindow = windowManager.getMainWindow();
         if (mainWindow) {
             mainWindow.webContents.send('restore-result', result);
@@ -128,14 +236,19 @@ function registerSnapshotAndRestoreHandlers() {
             return { success: false, error: (e as Error).message };
         }
     });
+
+    ipcMain.handle('restore-latest-good', async () => {
+        console.log('[IPCHandlers] IPC \'restore-latest-good\' received. Calling core logic.');
+        return await performRestoreLatestGood();
+    });
 }
 
 export function registerAllIpcHandlers(
     apiBaseUrl: string,
     handleSignOut: () => Promise<void>,
-    restoreLatest: (snapshotId?: string, isRetry?: boolean) => Promise<any> 
+    legacyRestoreCallback: (snapshotId?: string, isRetry?: boolean) => Promise<any>
 ) {
-    initDependencies(apiBaseUrl, handleSignOut, restoreLatest);
+    initDependencies(apiBaseUrl, handleSignOut, legacyRestoreCallback);
     console.log('[IPCHandlers] Registering all IPC handlers...');
     registerAuthEventHandlers();
     registerSnapshotAndRestoreHandlers();

@@ -199,11 +199,23 @@ ipcManager.registerAllIpcHandlers(AppApiBaseUrl, handleSignOut, restoreLatest);
 // (global as any).MAIN_WINDOW_VITE_DEV_SERVER_URL = MAIN_WINDOW_VITE_DEV_SERVER_URL;
 // (global as any).MAIN_WINDOW_VITE_NAME = MAIN_WINDOW_VITE_NAME;
 
+// Callback for the tray to trigger the 'restore-latest-good' action
+async function triggerRestoreLatestGoodFromTray() {
+  console.log('[Main.ts] Tray requested \'restore-latest-good\'. Calling IPC handler logic.'); // Corrected string concatenation
+  try {
+    const result = await ipcManager.performRestoreLatestGood(); 
+    console.log('[Main.ts] Result from performRestoreLatestGood via tray:', result);
+  } catch (error) {
+    console.error('[Main.ts] Error calling performRestoreLatestGood from tray:', error);
+    new Notification({title: "Restore Error", body: "Could not start latest good restore via tray."}).show();
+  }
+}
+
 app.whenReady().then(async () => {
   console.log('[AppEvent] App is ready.');
   // windowManager.createMainWindow() will use the declared constants directly from its own scope
   await windowManager.createMainWindow(); 
-  await trayManager.initTray(handleSignOut, restoreLatest); 
+  await trayManager.initTray(handleSignOut, triggerRestoreLatestGoodFromTray); 
   console.log('[AppEvent] Core initializations complete (Window, Tray, IPC Handlers, Lifecycle).');
 
   const initialUrl = appLifecycle.getInitialDeeplinkUrl();

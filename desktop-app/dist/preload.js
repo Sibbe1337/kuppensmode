@@ -23,5 +23,6 @@ electron.contextBridge.exposeInMainWorld("electronAPI", {
   // Added for AuthContext to check initial status
   getAuthStatus: () => electron.ipcRenderer.invoke("get-auth-status"),
   // Added for renderer to trigger sign-in flow
-  requestSignIn: () => electron.ipcRenderer.send("request-sign-in")
+  requestSignIn: () => electron.ipcRenderer.send("request-sign-in"),
+  restoreLatestGood: () => electron.ipcRenderer.invoke("restore-latest-good")
 });

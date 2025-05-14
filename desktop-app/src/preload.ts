@@ -1,4 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
+// Attempting relative path import from src/preload.ts to src/renderer/electron.d.ts
+import type { RestoreProgressEventData } from './renderer/electron.d';
 
 contextBridge.exposeInMainWorld('electronAPI', {
   send: (channel: string, payload?: any) => ipcRenderer.send(channel, payload),
@@ -25,23 +27,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getAuthStatus: () => ipcRenderer.invoke('get-auth-status'),
   // Added for renderer to trigger sign-in flow
   requestSignIn: () => ipcRenderer.send('request-sign-in'),
+  restoreLatestGood: () => ipcRenderer.invoke('restore-latest-good'),
+  // Listener for restore progress updates
+  onRestoreProgressUpdate: (callback: (eventData: RestoreProgressEventData) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, eventData: RestoreProgressEventData) => callback(eventData);
+    ipcRenderer.on('restore-progress-update', listener);
+    return () => {
+      ipcRenderer.removeListener('restore-progress-update', listener);
+    };
+  },
 });
 
-// It's good practice to declare the types for the exposed API globally
-// You can put this in a d.ts file in your project, e.g., src/electron.d.ts
-/*
-declare global {
-  interface Window {
-    electronAPI: {
-      send: (channel: string, payload?: any) => void;
-      receive: (channel: string, func: (...args: any[]) => void) => () => void; // Updated to show it returns a cleanup function
-      getSnapshots: () => Promise<any[]>; // Added example types
-      createTestSnapshot: () => Promise<any>;
-      getSnapshotDownloadUrl: (snapshotId: string) => Promise<any>;
-      onUserSignedOut: (callback: () => void) => () => void; // Added new API
-      getAuthStatus: () => Promise<{ isAuthenticated: boolean; userId?: string | null }>; // Added
-      requestSignIn: () => void; // Added
-    };
-  }
-}
-*/ 
+// Type definition for electronAPI should now solely reside in electron.d.ts
+// Remove any commented out or duplicate declare global here. 

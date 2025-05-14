@@ -9,6 +9,16 @@ export type Snapshot = {
   pageCount?: number;
 };
 
+// Define the structure of the progress update data for clarity
+export interface RestoreProgressEventData {
+  type: 'sse_connected' | 'progress' | 'completed_with_url' | 'sse_error';
+  restoreJobId: string;
+  data?: any; // For 'progress' type, carries the actual progress event data from SSE
+  url?: string; // For 'completed_with_url'
+  message?: string; // For 'completed_with_url' or general status messages
+  error?: string; // For 'sse_error'
+}
+
 declare global {
   interface Window {
     electronAPI?: {
@@ -27,6 +37,12 @@ declare global {
       onUserSignedOut?: (callback: () => void) => (() => void) | undefined;
       getAuthStatus?: () => Promise<{ isAuthenticated: boolean; userId?: string | null }>; 
       requestSignIn?: () => void; 
+      
+      // Restore methods
+      restoreLatestGood?: () => Promise<{ success: boolean; message: string; snapshotId?: string; restoreJobId?: string }>; // Added with a more specific return type
+      
+      // New listener for restore progress updates
+      onRestoreProgressUpdate?: (callback: (eventData: RestoreProgressEventData) => void) => (() => void) | undefined;
     };
   }
 }

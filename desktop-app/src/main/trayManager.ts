@@ -1,4 +1,4 @@
-import { app, Tray, Menu, nativeImage, NativeImage } from 'electron';
+import { app, Tray, Menu, nativeImage, NativeImage, ipcMain } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import * as authService from './auth';
@@ -9,8 +9,11 @@ import * as windowManager from './windowManager';
 // Or, trayManager could emit an event that main.ts listens to.
 // For now, let's assume main.ts passes a pre-bound handleSignOut function.
 let _handleSignOut: () => Promise<void>;
-let _restoreLatest: () => Promise<void>; // Similar for restoreLatest
-
+// _restoreLatest callback is no longer strictly needed for the "latest good" tray item,
+// as that action will now be handled by a dedicated IPC call.
+// However, keeping it in initTray in case other specific restore options are added to the tray later.
+let _legacyRestoreLatestWithId: (snapshotId?: string) => Promise<void>; 
+let _triggerRestoreLatestGood: () => void;
 let tray: Tray | null = null;
 
 function getTrayIconPath(): string {
@@ -20,24 +23,24 @@ function getTrayIconPath(): string {
     if (app.isPackaged) {
         const base = path.dirname(app.getPath('exe'));
         let platformSpecificIconName = iconFileName;
-        // Windows might prefer .ico
         if (process.platform === 'win32') platformSpecificIconName = 'icon.ico';
         
         iconPath = path.join(base, 'assets', platformSpecificIconName);
-        // Fallback for macOS .app structure and Windows if not in exe/assets
         if (!fs.existsSync(iconPath)) {
             iconPath = path.join(process.resourcesPath, 'assets', platformSpecificIconName);
         }
-        // If .ico wasn't found for win32 in either, try .png as a final fallback
         if (process.platform === 'win32' && !fs.existsSync(iconPath) && platformSpecificIconName === 'icon.ico') {
-            iconPath = path.join(base, 'assets', 'icon.png');
+            iconPath = path.join(base, 'assets', 'icon.png'); // Try .png in exe/assets
             if (!fs.existsSync(iconPath)) {
-                iconPath = path.join(process.resourcesPath, 'assets', 'icon.png');
+                iconPath = path.join(process.resourcesPath, 'assets', 'icon.png'); // Try .png in resourcesPath
             }
         }
     } else {
-        // Development: path relative to project root, assuming this file is in src/main/
-        iconPath = path.join(__dirname, '../../assets', iconFileName);
+        // Development: Corrected path assuming assets are at project_root/assets/
+        // __dirname in src/main/trayManager.ts (compiled to dist/main/trayManager.js)
+        // ../../.. goes from dist/main -> dist -> desktop-app -> notion-lifeline (project root)
+        iconPath = path.join(__dirname, '../../../assets', iconFileName);
+        console.log(`[TrayManager-Dev] Attempting icon path: ${iconPath}`);
     }
     return iconPath;
 }
@@ -67,17 +70,39 @@ export async function updateTrayMenu() {
         console.warn('[TrayManager] Attempted to update tray menu, but tray object is null.');
         return;
     }
-    if (!_handleSignOut || !_restoreLatest) {
-        console.error('[TrayManager] Sign out or restore function not initialized for tray.');
+    if (!_handleSignOut) {
+        console.error('[TrayManager] Sign out function not initialized for tray.');
+        // Attempt to build a minimal menu anyway or return
+        const minimalMenu = Menu.buildFromTemplate([
+            { label: 'Quit PageLifeline', click: () => app.quit() }
+        ]);
+        tray.setContextMenu(minimalMenu);
         return;
     }
 
-    const accessToken = await authService.getStoredAccessToken(_handleSignOut); // Pass the sign out callback
+    const accessToken = await authService.getStoredAccessToken(_handleSignOut); 
     let menuTemplate: Electron.MenuItemConstructorOptions[];
 
     if (accessToken) {
         menuTemplate = [
-            { label: 'Restore latest good snapshot', click: _restoreLatest }, 
+            { 
+              label: 'Restore Latest Good Snapshot', 
+              click: () => {
+                console.log('[TrayManager] Restore Latest Good Snapshot clicked. Invoking IPC handler...');
+                ipcMain.emit('trigger-restore-latest-good'); // Emit an event for main to pick up, or directly invoke if a handler is exposed differently
+                // OR, if main.ts exposes a function to directly call the IPC handler logic:
+                // This assumes main.ts has a function like: export async function triggerRestoreLatestGood() { return ipcMain.handle('restore-latest-good'); }
+                // For simplicity with existing ipcHandlers, a direct invoke or an event for main.ts to call the handler is better.
+                // Let's assume ipcHandlers directly handles 'restore-latest-good' and we can invoke it.
+                // This needs main to expose its ipcMain.handle as callable, or use a new dedicated function.
+                // Simpler: main.ts will expose a function that then calls the IPC handler's logic.
+                // For now, let's assume an event that main.ts listens for, or a direct call to a main process function.
+                // The actual IPC invoke will be done by a function in main.ts that this click handler calls.
+                // So, we need to change what is passed to initTray for this item.
+                // Let's have initTray take a specific callback for this.
+                 _triggerRestoreLatestGood(); // This function will be passed in via initTray
+              }
+            }, 
             { label: 'Show Main Window', click: windowManager.ensureMainWindowVisibleAndFocused },
             { type: 'separator' },
             { label: 'Sign Out', click: _handleSignOut },
@@ -89,11 +114,12 @@ export async function updateTrayMenu() {
                 label: 'Sign In with PageLifeline',
                 click: () => {
                     const authPageUrl = "https://www.pagelifeline.app/electron-auth";
-                    const preloadPath = path.join(__dirname, '../preload.js'); // Path relative to this file in src/main/
+                    const preloadPath = path.join(__dirname, '../preload.js'); 
                     windowManager.showAuthWindow(authPageUrl, preloadPath);
                 }
             },
-            { label: 'Restore latest good snapshot', enabled: false, click: _restoreLatest }, 
+            // { label: 'Restore latest good snapshot', enabled: false, click: _legacyRestoreLatestWithId }, // Keep if needed for other restore types 
+            { label: 'Restore Latest Good Snapshot', enabled: false }, // Disabled when signed out
             { type: 'separator' },
             { label: 'Show Main Window', click: windowManager.ensureMainWindowVisibleAndFocused },
             { label: 'Quit PageLifeline', click: () => app.quit() },
@@ -106,10 +132,12 @@ export async function updateTrayMenu() {
 
 export async function initTray(
     handleSignOutCallback: () => Promise<void>,
-    restoreLatestCallback: () => Promise<void>
+    // restoreLatestCallback: () => Promise<void>, // No longer passing the old restoreLatest directly for this item
+    triggerRestoreLatestGoodCallback: () => void // New callback for this specific action
 ) {
     _handleSignOut = handleSignOutCallback;
-    _restoreLatest = restoreLatestCallback;
+    // _legacyRestoreLatestWithId = restoreLatestCallback; // Store if needed for other menu items
+    _triggerRestoreLatestGood = triggerRestoreLatestGoodCallback;
 
     try {
         const iconPath = getTrayIconPath();
@@ -123,6 +151,6 @@ export async function initTray(
 
     } catch (e) {
         console.error('[TrayManager] FAILED TO CREATE TRAY OR SET CONTEXT MENU:', e);
-        tray = null; // Ensure tray is null if creation failed
+        tray = null; 
     }
 } 

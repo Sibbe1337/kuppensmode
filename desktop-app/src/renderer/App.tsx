@@ -1,40 +1,19 @@
 import React, { useEffect, useState, useRef } from 'react';
 import posthog from 'posthog-js';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import type { Snapshot, RestoreProgressEventData } from './electron.d'; // Import Snapshot from electron.d.ts
 
 // Global type for electronAPI is now in src/renderer/electron.d.ts
 // Ensure that file is included in your tsconfig.
 
-// Snapshot type definition, used by AppContent and potentially by electron.d.ts if made global
-export type Snapshot = {
-  id: string;
-  name?: string;
-  createdAt?: string;
-  size?: number; 
-  pageCount?: number;
-};
-
-// --- CONSOLIDATED GLOBAL TYPE DEFINITION ---
-// This should be the single source of truth for the Window.electronAPI type in the renderer.
-// Consider moving this to a dedicated .d.ts file (e.g., src/renderer/electron.d.ts) for larger projects.
-declare global {
-  interface Window {
-    electronAPI?: {
-      // Methods for general IPC
-      send: (channel: string, payload?: any) => void;
-      receive: (channel: string, func: (...args: any[]) => void) => (() => void) | undefined;
-      // Snapshot related methods
-      getSnapshots: () => Promise<Snapshot[]>;
-      createTestSnapshot: () => Promise<{ success: boolean; error?: string }>;
-      getSnapshotDownloadUrl?: (snapshotId: string) => Promise<{ url?: string; error?: string }>;
-      // Auth related methods, including those used by AuthContext
-      onUserSignedOut?: (callback: () => void) => (() => void) | undefined;
-      getAuthStatus?: () => Promise<{ isAuthenticated: boolean; userId?: string | null }>; 
-      requestSignIn?: () => void; 
-    };
-  }
-}
-// --- END CONSOLIDATED GLOBAL TYPE DEFINITION ---
+// Snapshot type definition REMOVED from here, it's imported from electron.d.ts
+// export type Snapshot = {
+//   id: string;
+//   name?: string;
+//   createdAt?: string;
+//   size?: number; 
+//   pageCount?: number;
+// };
 
 // Initialize PostHog (do this once)
 // IMPORTANT: Replace with your actual PostHog API key and instance address
@@ -116,6 +95,8 @@ function AppContent() {
   const [status, setStatus] = useState<{ message: string; type: 'info' | 'success' | 'error' }>({ message: "", type: 'info' });
   const [isLoading, setIsLoading] = useState(false);
   const [showWelcome, setShowWelcome] = useState(false);
+  const [restoreProgress, setRestoreProgress] = useState<RestoreProgressEventData | null>(null);
+  const [restoredPageUrl, setRestoredPageUrl] = useState<string | null>(null);
 
   const snapshotListRenderedTime = useRef<number | null>(null);
 
@@ -174,6 +155,45 @@ function AppContent() {
     }
   }, []);
 
+  useEffect(() => {
+    let cleanupProgressListener: (() => void) | undefined;
+    if (window.electronAPI && typeof window.electronAPI.onRestoreProgressUpdate === 'function') {
+      cleanupProgressListener = window.electronAPI.onRestoreProgressUpdate((eventData) => {
+        console.log('[AppContent] Restore Progress Update:', eventData);
+        setRestoreProgress(eventData);
+        setRestoredPageUrl(null); // Clear previous URL on new progress
+
+        switch (eventData.type) {
+          case 'sse_connected':
+            setStatus({ message: `Connected to restore progress for job: ${eventData.restoreJobId}...`, type: 'info' });
+            break;
+          case 'progress':
+            setStatus({ 
+              message: `Restoring: ${eventData.data?.percentage ?? ''}% - ${eventData.data?.message ?? 'In progress...'}`, 
+              type: 'info' 
+            });
+            break;
+          case 'completed_with_url':
+            setStatus({ message: eventData.message || 'Restore completed successfully!', type: 'success' });
+            if (eventData.url) {
+              setRestoredPageUrl(eventData.url);
+            }
+            setIsLoading(false); // Restore process finished
+            break;
+          case 'sse_error':
+            setStatus({ message: eventData.error || 'Error receiving restore progress.', type: 'error' });
+            setIsLoading(false); // Restore process finished (with error)
+            break;
+        }
+      });
+    }
+    return () => {
+      if (cleanupProgressListener) {
+        cleanupProgressListener();
+      }
+    };
+  }, []); // Runs once on mount
+
   const handleRestore = () => {
     if (!selectedSnapshotId) {
       setStatus({ message: 'Please select a snapshot to restore.', type: 'error' });
@@ -198,6 +218,31 @@ function AppContent() {
 
   const handleSignIn = () => {
     window.electronAPI?.requestSignIn?.();
+  };
+
+  const handlePanicRestore = async () => {
+    console.log('[AppContent] Panic Restore button clicked. Calling restoreLatestGood.');
+    setStatus({ message: 'Initiating restore of latest good snapshot...', type: 'info' });
+    setRestoreProgress(null); // Clear previous progress
+    setRestoredPageUrl(null); // Clear previous URL
+    setIsLoading(true);
+    try {
+      const result = await window.electronAPI?.restoreLatestGood?.();
+      console.log('[AppContent] restoreLatestGood call result:', result);
+      if (result?.success) {
+        // Initial status update, SSE will provide more details
+        // setStatus({ message: result.message || 'Latest good restore initiated!', type: 'info' }); 
+        // No need to set isLoading(false) here if SSE will take over
+      } else {
+        setStatus({ message: result?.message || 'Failed to start latest good restore.', type: 'error' });
+        setIsLoading(false); 
+      }
+    } catch (error: any) {
+      console.error('[AppContent] Error invoking restoreLatestGood:', error);
+      setStatus({ message: error.message || 'Error trying to restore latest good snapshot.', type: 'error' });
+      setIsLoading(false); 
+    }
+    // setIsLoading(false); // Moved into success/error blocks of the try/catch or handled by SSE completion
   };
 
   const selectedSnap = snapshots.find(s => s.id === selectedSnapshotId);
@@ -290,7 +335,7 @@ function AppContent() {
                  {isAuthenticated ? (
                   <div style={{ fontSize: 15, marginBottom: 10 }}>
                     PageLifeline will create your first snapshot soon,<br />
-                    or click <b>“Create Test Snapshot”</b> to try it out.
+                    or click <b>"Create Test Snapshot"</b> to try it out.
                   </div>
                 ) : (
                   <div style={{ fontSize: 15, marginBottom: 10 }}>
@@ -380,16 +425,10 @@ function AppContent() {
                   cursor: 'pointer',
                   transition: 'border-color 0.1s, color 0.1s, background 0.1s'
                 }}
-                onClick={() => {
-                  const mostRecent = snapshots[0];
-                  if (mostRecent) {
-                    setSelectedSnapshotId(mostRecent.id);
-                    window.electronAPI?.send('restore-latest', { snapshotId: mostRecent.id }); 
-                  }
-                }}
+                onClick={handlePanicRestore}
                 disabled={isLoading}
               >
-                🚨 Panic Restore Now!
+                🚨 Panic Restore Latest Good!
               </button>
             )}
 
@@ -416,6 +455,23 @@ function AppContent() {
             }}>
               ℹ️ Creates a new copy – your original page stays untouched.
             </p>
+
+            {/* Display Restore Progress and Link */}
+            {restoreProgress && restoreProgress.type !== 'sse_connected' && (restoreProgress.type !== 'completed_with_url' || !restoredPageUrl) && (
+              <div className={`status-message ${restoreProgress.type === 'sse_error' || restoreProgress.type === 'progress' && restoreProgress.data?.status === 'error' ? 'error' : 'info'}`}>
+                {`Restore Status (${restoreProgress.restoreJobId}): `}
+                {restoreProgress.type === 'progress' && `${restoreProgress.data?.percentage ?? ''}% - ${restoreProgress.data?.message ?? 'Processing...'}`}
+                {restoreProgress.type === 'sse_error' && restoreProgress.error}
+              </div>
+            )}
+            {restoredPageUrl && (
+              <div className="status-message success" style={{ marginTop: '10px' }}>
+                Restore completed! 
+                <a href={restoredPageUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-primary-darker)', textDecoration: 'underline', marginLeft: '5px' }}>
+                  Open restored page in Notion
+                </a>
+              </div>
+            )}
           </>
         )}
 
