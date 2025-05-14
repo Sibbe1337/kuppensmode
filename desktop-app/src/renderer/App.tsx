@@ -1,27 +1,40 @@
 import React, { useEffect, useState, useRef } from 'react';
 import posthog from 'posthog-js';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 
-// --- MOVED TO TOP LEVEL ---
-declare global {
-  interface Window {
-    electronAPI?: {
-      send: (channel: string, payload?: any) => void;
-      receive: (channel: string, func: (...args: any[]) => void) => (() => void) | undefined;
-      getSnapshots: () => Promise<Snapshot[]>;
-      createTestSnapshot: () => Promise<{ success: boolean; error?: string }>;
-      getSnapshotDownloadUrl?: (snapshotId: string) => Promise<{ url?: string; error?: string }>;
-    };
-  }
-}
+// Global type for electronAPI is now in src/renderer/electron.d.ts
+// Ensure that file is included in your tsconfig.
 
-type Snapshot = {
+// Snapshot type definition, used by AppContent and potentially by electron.d.ts if made global
+export type Snapshot = {
   id: string;
   name?: string;
   createdAt?: string;
-  // Add any other relevant snapshot properties you expect from the backend
-  size?: number; // Example: size in bytes
-  pageCount?: number; // Example
+  size?: number; 
+  pageCount?: number;
 };
+
+// --- CONSOLIDATED GLOBAL TYPE DEFINITION ---
+// This should be the single source of truth for the Window.electronAPI type in the renderer.
+// Consider moving this to a dedicated .d.ts file (e.g., src/renderer/electron.d.ts) for larger projects.
+declare global {
+  interface Window {
+    electronAPI?: {
+      // Methods for general IPC
+      send: (channel: string, payload?: any) => void;
+      receive: (channel: string, func: (...args: any[]) => void) => (() => void) | undefined;
+      // Snapshot related methods
+      getSnapshots: () => Promise<Snapshot[]>;
+      createTestSnapshot: () => Promise<{ success: boolean; error?: string }>;
+      getSnapshotDownloadUrl?: (snapshotId: string) => Promise<{ url?: string; error?: string }>;
+      // Auth related methods, including those used by AuthContext
+      onUserSignedOut?: (callback: () => void) => (() => void) | undefined;
+      getAuthStatus?: () => Promise<{ isAuthenticated: boolean; userId?: string | null }>; 
+      requestSignIn?: () => void; 
+    };
+  }
+}
+// --- END CONSOLIDATED GLOBAL TYPE DEFINITION ---
 
 // Initialize PostHog (do this once)
 // IMPORTANT: Replace with your actual PostHog API key and instance address
@@ -85,58 +98,74 @@ function relativeTime(dateStr: string) {
 }
 // --- END MOVED TO TOP LEVEL ---
 
-function App() {
+// App component now wraps AppContent with AuthProvider
+const App: React.FC = () => {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
+  );
+}
+
+// Renamed original App to AppContent and use useAuth here
+function AppContent() {
+  const { isAuthenticated, isLoadingAuth } = useAuth();
+
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [selectedSnapshotId, setSelectedSnapshotId] = useState<string>("");
   const [status, setStatus] = useState<{ message: string; type: 'info' | 'success' | 'error' }>({ message: "", type: 'info' });
   const [isLoading, setIsLoading] = useState(false);
   const [showWelcome, setShowWelcome] = useState(false);
 
-  // Refs to track timing
   const snapshotListRenderedTime = useRef<number | null>(null);
 
   useEffect(() => {
-    setIsLoading(true);
-    setStatus({ message: 'Fetching snapshots...', type: 'info' });
-    
-    let unsubscribeRestore: (() => void) | undefined;
+    if (!isLoadingAuth && isAuthenticated) {
+      setIsLoading(true);
+      setStatus({ message: 'Fetching snapshots...', type: 'info' });
+      
+      let unsubscribeRestore: (() => void) | undefined;
 
-    window.electronAPI?.getSnapshots?.()
-      .then((snaps) => {
-        setSnapshots(snaps || []);
-        setStatus({ message: (snaps && snaps.length > 0) ? "" : "No snapshots found.", type: 'info' });
-        if (snaps && snaps.length > 0) {
-          snapshotListRenderedTime.current = Date.now(); // Record time when options are available
-        }
-      })
-      .catch(err => {
-        console.error("Error fetching snapshots:", err);
-        setStatus({ message: 'Failed to load snapshots.', type: 'error' });
-        posthog.capture('snapshot_fetch_failed', { error: err.message });
-      })
-      .finally(() => {
-        setIsLoading(false);
-      });
+      window.electronAPI?.getSnapshots?.()
+        .then((snaps) => {
+          setSnapshots(snaps || []);
+          setStatus({ message: (snaps && snaps.length > 0) ? "" : "No snapshots found. Sign in to see your snapshots.", type: 'info' });
+          if (snaps && snaps.length > 0) {
+            snapshotListRenderedTime.current = Date.now();
+          }
+        })
+        .catch(err => {
+          console.error("Error fetching snapshots:", err);
+          setStatus({ message: 'Failed to load snapshots.', type: 'error' });
+          posthog.capture('snapshot_fetch_failed', { error: (err as Error).message });
+        })
+        .finally(() => {
+          setIsLoading(false);
+        });
 
-    if (window.electronAPI && typeof window.electronAPI.receive === 'function') {
-      unsubscribeRestore = window.electronAPI.receive('restore-result', (result: any) => {
-        setIsLoading(false);
-        if (result.success) {
-          setStatus({ message: result.message || 'Restore initiated successfully!', type: 'success' });
-          posthog.capture('restore_success', { snapshot_id: selectedSnapshotId });
-        } else {
-          setStatus({ message: `Restore failed: ${result.message || 'Unknown error'}`, type: 'error' });
-          posthog.capture('restore_failed', { snapshot_id: selectedSnapshotId, error_message: result.message });
-        }
-      });
-    }
-
-    return () => {
-      if (typeof unsubscribeRestore === 'function') {
-        unsubscribeRestore();
+      if (window.electronAPI && typeof window.electronAPI.receive === 'function') {
+        unsubscribeRestore = window.electronAPI.receive('restore-result', (result: any) => {
+          setIsLoading(false);
+          if (result.success) {
+            setStatus({ message: result.message || 'Restore initiated successfully!', type: 'success' });
+            posthog.capture('restore_success', { snapshot_id: selectedSnapshotId });
+          } else {
+            setStatus({ message: `Restore failed: ${result.message || 'Unknown error'}`, type: 'error' });
+            posthog.capture('restore_failed', { snapshot_id: selectedSnapshotId, error_message: result.message });
+          }
+        });
       }
-    };
-  }, []); // selectedSnapshotId removed from deps to avoid re-triggering PostHog events excessively
+      return () => {
+        if (typeof unsubscribeRestore === 'function') {
+          unsubscribeRestore();
+        }
+      };
+    } else if (!isLoadingAuth && !isAuthenticated) {
+      setSnapshots([]);
+      setSelectedSnapshotId("");
+      setStatus({ message: "Please sign in to manage your snapshots.", type: 'info' });
+    }
+  }, [isAuthenticated, isLoadingAuth]);
 
   useEffect(() => {
     if (!localStorage.getItem('pagelifeline-welcome-shown')) {
@@ -167,197 +196,228 @@ function App() {
     window.electronAPI?.send('restore-latest', { snapshotId: selectedSnapshotId });
   };
 
+  const handleSignIn = () => {
+    window.electronAPI?.requestSignIn?.();
+  };
+
   const selectedSnap = snapshots.find(s => s.id === selectedSnapshotId);
+
+  if (isLoadingAuth) {
+    return (
+      <div className="app-container">
+        <div className="content-card" style={{ textAlign: 'center', padding: '50px' }}>
+          <span className="spinner" />
+          <p>Loading session...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="app-container">
       <div className="content-card">
         <h1 className="header-main">PageLifeline Desktop</h1>
-        <p className="sub-header">
-          Select a snapshot to restore to your Notion workspace.
-        </p>
+        
+        {!isAuthenticated ? (
+          <div style={{ textAlign: 'center', margin: '30px 0' }}>
+            <p style={{ marginBottom: '20px' }}>Please sign in to access your snapshots and restore functionality.</p>
+            <button className="btn-primary" onClick={handleSignIn} style={{ padding: '12px 25px', fontSize: '16px' }}>
+              Sign In with PageLifeline
+            </button>
+          </div>
+        ) : (
+          <>
+            <p className="sub-header">
+              Select a snapshot to restore to your Notion workspace.
+            </p>
 
-        <select
-          value={selectedSnapshotId}
-          onChange={e => setSelectedSnapshotId(e.target.value)}
-          className="snapshot-select"
-          disabled={isLoading || snapshots.length === 0}
-        >
-          <option value="">— Select Snapshot —</option>
-          {snapshots.map(snap => {
-            const { display } = parseSnapshotDisplay(snap);
-            return (
-              <option key={snap.id} value={snap.id}>
-                {display}
-              </option>
-            );
-          })}
-        </select>
+            <select
+              value={selectedSnapshotId}
+              onChange={e => setSelectedSnapshotId(e.target.value)}
+              className="snapshot-select"
+              disabled={isLoading || snapshots.length === 0}
+            >
+              <option value="">— Select Snapshot —</option>
+              {snapshots.map(snap => {
+                const { display } = parseSnapshotDisplay(snap);
+                return (
+                  <option key={snap.id} value={snap.id}>
+                    {display}
+                  </option>
+                );
+              })}
+            </select>
 
-        <button
-          style={{
-            marginTop: 12,
-            marginBottom: 12,
-            background: 'var(--color-border)',
-            color: 'var(--color-text)',
-            border: 'none',
-            borderRadius: 8,
-            padding: '10px 18px',
-            fontSize: 14,
-            cursor: 'pointer',
-            opacity: 0.8
-          }}
-          onClick={async () => {
-            setStatus({ message: 'Creating test snapshot...', type: 'info' });
-            const result = await window.electronAPI?.createTestSnapshot?.();
-            if (result?.success) {
-              setStatus({ message: 'Test snapshot created! Refreshing...', type: 'success' });
-              // Re-fetch snapshots
-              const snaps = await window.electronAPI?.getSnapshots?.();
-              setSnapshots(snaps || []);
-            } else {
-              setStatus({ message: `Failed to create test snapshot: ${result?.error || 'Unknown error'}`, type: 'error' });
-            }
-          }}
-        >
-          + Create Test Snapshot
-        </button>
-
-        {snapshots.length === 0 && (
-          <div style={{
-            textAlign: 'center',
-            margin: '32px 0 0 0',
-            padding: '24px 0',
-            color: 'var(--color-text)',
-            opacity: 0.85,
-            animation: 'fadeIn 0.5s'
-          }}>
-            <div style={{ fontSize: 44, marginBottom: 8 }}>🕰️</div>
-            <div style={{ fontWeight: 600, fontSize: 18, marginBottom: 6 }}>No snapshots yet!</div>
-            <div style={{ fontSize: 15, marginBottom: 10 }}>
-              PageLifeline will create your first snapshot soon,<br />
-              or click <b>“Create Test Snapshot”</b> to try it out.
-            </div>
-            <a
-              href="https://www.pagelifeline.app/help/snapshots"
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
               style={{
-                color: 'var(--color-primary)',
+                marginTop: 12,
+                marginBottom: 12,
+                background: 'var(--color-border)',
+                color: 'var(--color-text)',
+                border: 'none',
+                borderRadius: 8,
+                padding: '10px 18px',
                 fontSize: 14,
-                textDecoration: 'underline',
+                cursor: 'pointer',
                 opacity: 0.8
               }}
+              onClick={async () => {
+                setStatus({ message: 'Creating test snapshot...', type: 'info' });
+                const result = await window.electronAPI?.createTestSnapshot?.();
+                if (result?.success) {
+                  setStatus({ message: 'Test snapshot created! Refreshing...', type: 'success' });
+                  const snaps = await window.electronAPI?.getSnapshots?.();
+                  setSnapshots(snaps || []);
+                } else {
+                  setStatus({ message: `Failed to create test snapshot: ${result?.error || 'Unknown error'}`, type: 'error' });
+                }
+              }}
             >
-              Learn more about snapshots
-            </a>
-          </div>
-        )}
+              + Create Test Snapshot
+            </button>
 
-        {selectedSnap && (
-          <div className="snapshot-details">
-            <span className="icon" role="img" aria-label="Snapshot">🗂️</span>
-            <div className="meta">
-              <div><b>Name:</b> {parseSnapshotDisplay(selectedSnap).display}</div>
-              {selectedSnap.createdAt && (
-                <div>
-                  <b>Created:</b> {formatDate(selectedSnap.createdAt)}
-                  <span style={{ marginLeft: 8, color: 'var(--color-text)', opacity: 0.7, fontSize: 13 }}>
-                    ({relativeTime(selectedSnap.createdAt)})
-                  </span>
+            {snapshots.length === 0 && (
+              <div style={{
+                textAlign: 'center',
+                margin: '32px 0 0 0',
+                padding: '24px 0',
+                color: 'var(--color-text)',
+                opacity: 0.85,
+                animation: 'fadeIn 0.5s'
+              }}>
+                <div style={{ fontSize: 44, marginBottom: 8 }}>🕰️</div>
+                <div style={{ fontWeight: 600, fontSize: 18, marginBottom: 6 }}>No snapshots yet!</div>
+                 {isAuthenticated ? (
+                  <div style={{ fontSize: 15, marginBottom: 10 }}>
+                    PageLifeline will create your first snapshot soon,<br />
+                    or click <b>“Create Test Snapshot”</b> to try it out.
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 15, marginBottom: 10 }}>
+                    Sign in to see your snapshots or create new ones.
+                  </div>
+                )}
+                <a
+                  href="https://www.pagelifeline.app/help/snapshots"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    color: 'var(--color-primary)',
+                    fontSize: 14,
+                    textDecoration: 'underline',
+                    opacity: 0.8
+                  }}
+                >
+                  Learn more about snapshots
+                </a>
+              </div>
+            )}
+
+            {selectedSnap && (
+              <div className="snapshot-details">
+                <span className="icon" role="img" aria-label="Snapshot">🗂️</span>
+                <div className="meta">
+                  <div><b>Name:</b> {parseSnapshotDisplay(selectedSnap).display}</div>
+                  {selectedSnap.createdAt && (
+                    <div>
+                      <b>Created:</b> {formatDate(selectedSnap.createdAt)}
+                      <span style={{ marginLeft: 8, color: 'var(--color-text)', opacity: 0.7, fontSize: 13 }}>
+                        ({relativeTime(selectedSnap.createdAt)})
+                      </span>
+                    </div>
+                  )}
+                  {selectedSnap.size !== undefined && (
+                    <div><b>Size:</b> {formatSize(selectedSnap.size)}</div>
+                  )}
+                  {selectedSnap.pageCount !== undefined && (
+                    <div><b>Pages:</b> {selectedSnap.pageCount}</div>
+                  )}
+                  <button
+                    style={{
+                      marginTop: 12,
+                      background: 'var(--color-primary)',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: 8,
+                      padding: '8px 16px',
+                      fontSize: 14,
+                      cursor: 'pointer',
+                      fontWeight: 500
+                    }}
+                    onClick={async () => {
+                      setStatus({ message: 'Generating download link...', type: 'info' });
+                      const result = await window.electronAPI?.getSnapshotDownloadUrl?.(selectedSnap.id);
+                      if (result?.url) {
+                        setStatus({ message: 'Download started.', type: 'success' });
+                        window.open(result.url, '_blank');
+                      } else {
+                        setStatus({ message: `Failed to get download link: ${result?.error || 'Unknown error'}`, type: 'error' });
+                      }
+                    }}
+                  >
+                    ⬇️ Download Snapshot (.json.gz)
+                  </button>
                 </div>
-              )}
-              {selectedSnap.size !== undefined && (
-                <div><b>Size:</b> {formatSize(selectedSnap.size)}</div>
-              )}
-              {selectedSnap.pageCount !== undefined && (
-                <div><b>Pages:</b> {selectedSnap.pageCount}</div>
-              )}
+              </div>
+            )}
+
+            {snapshots.length > 0 && (
               <button
+                className="btn-panic"
                 style={{
-                  marginTop: 12,
-                  background: 'var(--color-primary)',
-                  color: '#fff',
-                  border: 'none',
+                  marginTop: 18,
+                  background: 'transparent',
+                  color: '#d32f2f',
+                  border: '1.5px solid #d32f2f',
                   borderRadius: 8,
-                  padding: '8px 16px',
-                  fontSize: 14,
+                  padding: '13px 0',
+                  fontWeight: 600,
+                  fontSize: 16,
+                  width: '100%',
+                  margin: '10px 0 0 0',
+                  boxShadow: 'none',
+                  letterSpacing: '0.2px',
                   cursor: 'pointer',
-                  fontWeight: 500
+                  transition: 'border-color 0.1s, color 0.1s, background 0.1s'
                 }}
-                onClick={async () => {
-                  setStatus({ message: 'Generating download link...', type: 'info' });
-                  const result = await window.electronAPI?.getSnapshotDownloadUrl?.(selectedSnap.id);
-                  if (result?.url) {
-                    setStatus({ message: 'Download started.', type: 'success' });
-                    window.open(result.url, '_blank');
-                  } else {
-                    setStatus({ message: `Failed to get download link: ${result?.error || 'Unknown error'}`, type: 'error' });
+                onClick={() => {
+                  const mostRecent = snapshots[0];
+                  if (mostRecent) {
+                    setSelectedSnapshotId(mostRecent.id);
+                    window.electronAPI?.send('restore-latest', { snapshotId: mostRecent.id }); 
                   }
                 }}
+                disabled={isLoading}
               >
-                ⬇️ Download Snapshot (.json.gz)
+                🚨 Panic Restore Now!
               </button>
-            </div>
-          </div>
+            )}
+
+            <button
+              className="btn-primary"
+              onClick={handleRestore}
+              disabled={isLoading || !selectedSnapshotId}
+            >
+              {isLoading && (status.message === 'Preparing restore...' || status.message === 'Restoring...') ? (
+                <>
+                  <span className="spinner" /> {status.message}
+                </>
+              ) : (
+                'Restore Selected Snapshot'
+              )}
+            </button>
+
+            <p style={{ 
+                textAlign: 'center', 
+                fontSize: '13px', 
+                color: 'var(--color-text)', 
+                opacity: 0.7, 
+                marginTop: '12px' 
+            }}>
+              ℹ️ Creates a new copy – your original page stays untouched.
+            </p>
+          </>
         )}
-
-        {/* Panic Button for most recent snapshot */}
-        {snapshots.length > 0 && (
-          <button
-            className="btn-panic"
-            style={{
-              marginTop: 18,
-              background: 'transparent',
-              color: '#d32f2f',
-              border: '1.5px solid #d32f2f',
-              borderRadius: 8,
-              padding: '13px 0',
-              fontWeight: 600,
-              fontSize: 16,
-              width: '100%',
-              margin: '10px 0 0 0',
-              boxShadow: 'none',
-              letterSpacing: '0.2px',
-              cursor: 'pointer',
-              transition: 'border-color 0.1s, color 0.1s, background 0.1s'
-            }}
-            onClick={() => {
-              const mostRecent = snapshots[0];
-              if (mostRecent) {
-                setSelectedSnapshotId(mostRecent.id);
-                handleRestore();
-              }
-            }}
-            disabled={isLoading}
-          >
-            🚨 Panic Restore Now!
-          </button>
-        )}
-
-        <button
-          className="btn-primary"
-          onClick={handleRestore} // This now triggers the event capture
-          disabled={isLoading || !selectedSnapshotId}
-        >
-          {isLoading && (status.message === 'Preparing restore...' || status.message === 'Restoring...') ? (
-            <>
-              <span className="spinner" /> {status.message}
-            </>
-          ) : (
-            'Restore Selected Snapshot'
-          )}
-        </button>
-
-        <p style={{ 
-            textAlign: 'center', 
-            fontSize: '13px', 
-            color: 'var(--color-text)', 
-            opacity: 0.7, 
-            marginTop: '12px' 
-        }}>
-          ℹ️ Creates a new copy – your original page stays untouched.
-        </p>
 
         {status.message && status.message !== 'Fetching snapshots...' && (!isLoading || (status.type === 'error' || status.type === 'success')) && (
           <div className={`status-message ${status.type}`}>

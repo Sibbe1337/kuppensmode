@@ -16742,8 +16742,225 @@ let tray = null;
 let authWindow = null;
 const API_BASE_URL = "https://www.pagelifeline.app";
 let deeplinkingUrl;
+const CLERK_CLIENT_ID = "pk_live_Y2xlcmsucGFnZWxpZmVsaW5lLmFwcCQ";
+const CLERK_TOKEN_ENDPOINT = "https://clerk.pagelifeline.app/oauth/token";
 const KEYTAR_SERVICE = "PageLifelineDesktop";
 const KEYTAR_ACCOUNT_JWT = "userSessionJWT";
+let isRefreshingToken = false;
+async function ensureMainWindowVisibleAndFocused() {
+  if (!win || win.isDestroyed()) {
+    console.log("[WindowManager] Main window doesn't exist or was destroyed. Creating new one.");
+    await createWindow();
+  }
+  if (win) {
+    if (win.isMinimized()) {
+      console.log("[WindowManager] Main window is minimized. Restoring.");
+      win.restore();
+    }
+    if (!win.isVisible()) {
+      console.log("[WindowManager] Main window is not visible. Showing.");
+      win.show();
+    }
+    console.log("[WindowManager] Focusing main window.");
+    win.focus();
+  } else {
+    console.error("[WindowManager] CRITICAL: Main window still null after attempting to create it.");
+  }
+}
+async function getStoredTokenObject() {
+  try {
+    const tokenString = await keytar.getPassword(KEYTAR_SERVICE, KEYTAR_ACCOUNT_JWT);
+    if (tokenString) {
+      const tokenObject = JSON.parse(tokenString);
+      console.log("[TokenManager] Token object retrieved from keychain.");
+      return tokenObject;
+    }
+    console.log("[TokenManager] No token object found in keychain.");
+    return null;
+  } catch (error) {
+    console.error("[TokenManager] Error retrieving/parsing token object from keychain:", error);
+    try {
+      await keytar.deletePassword(KEYTAR_SERVICE, KEYTAR_ACCOUNT_JWT);
+      console.log("[TokenManager] Deleted potentially corrupted token from keychain.");
+    } catch (deleteError) {
+      console.error("[TokenManager] Failed to delete corrupted token:", deleteError);
+    }
+    return null;
+  }
+}
+async function attemptTokenRefresh() {
+  if (isRefreshingToken) {
+    console.log("[TokenManager] Token refresh already in progress. Waiting...");
+    await new Promise((resolve) => setTimeout(resolve, 3e3));
+    const refreshedTokenObj = await getStoredTokenObject();
+    return (refreshedTokenObj == null ? void 0 : refreshedTokenObj.accessToken) || null;
+  }
+  isRefreshingToken = true;
+  console.log("[TokenManager] Attempting to refresh token...");
+  const currentTokenObject = await getStoredTokenObject();
+  if (!(currentTokenObject == null ? void 0 : currentTokenObject.refreshToken)) {
+    console.log("[TokenManager] No refresh token available. Signing out.");
+    await handleSignOut();
+    isRefreshingToken = false;
+    return null;
+  }
+  try {
+    const response = await axios.post(CLERK_TOKEN_ENDPOINT, new node_url.URLSearchParams({
+      grant_type: "refresh_token",
+      refresh_token: currentTokenObject.refreshToken,
+      client_id: CLERK_CLIENT_ID
+      // client_secret: CLERK_CLIENT_SECRET, // Clerk might not require client_secret for public clients if PKCE was used for initial auth and refresh token is tight-scoped
+    }).toString(), {
+      headers: { "Content-Type": "application/x-www-form-urlencoded" }
+    });
+    const { access_token, refresh_token, id_token, expires_in } = response.data;
+    if (!access_token) {
+      throw new Error("New access token not received from refresh.");
+    }
+    const newTokensToStore = {
+      accessToken: access_token,
+      refreshToken: refresh_token || currentTokenObject.refreshToken,
+      // Use new refresh token if provided, else keep old one
+      idToken: id_token,
+      userId: currentTokenObject.userId,
+      // Preserve original userId
+      expiresIn: expires_in || 3600,
+      obtainedAt: Date.now()
+    };
+    await keytar.setPassword(KEYTAR_SERVICE, KEYTAR_ACCOUNT_JWT, JSON.stringify(newTokensToStore));
+    console.log("[TokenManager] Tokens refreshed and new tokens stored successfully.");
+    isRefreshingToken = false;
+    return newTokensToStore.accessToken;
+  } catch (error) {
+    console.error("[TokenManager] ##### ERROR refreshing token #####:", error.isAxiosError ? error.toJSON() : error);
+    if (error.response) {
+      console.error("[TokenManager] Token refresh error response data:", error.response.data);
+      if (error.response.status === 400 || error.response.status === 401 || error.response.status === 403) {
+        console.log("[TokenManager] Refresh token invalid or expired. Signing out.");
+        await handleSignOut();
+      }
+    }
+    isRefreshingToken = false;
+    return null;
+  }
+}
+async function getStoredAccessToken() {
+  let tokenObject = await getStoredTokenObject();
+  if (tokenObject && tokenObject.accessToken) {
+    const nowInSeconds = Date.now() / 1e3;
+    const tokenExpiryTime = tokenObject.obtainedAt / 1e3 + tokenObject.expiresIn;
+    const bufferSeconds = 60;
+    if (tokenExpiryTime - bufferSeconds < nowInSeconds) {
+      console.log("[TokenManager] Access token expired or nearing expiry. Attempting refresh.");
+      const newAccessToken = await attemptTokenRefresh();
+      if (newAccessToken) {
+        return newAccessToken;
+      } else {
+        console.log("[TokenManager] Token refresh failed, user is effectively signed out.");
+        return null;
+      }
+    }
+    return tokenObject.accessToken;
+  }
+  return null;
+}
+async function handleSignOut() {
+  try {
+    await keytar.deletePassword(KEYTAR_SERVICE, KEYTAR_ACCOUNT_JWT);
+    console.log("[TokenManager] Tokens deleted on sign out.");
+    new electron.Notification({
+      title: "PageLifeline: Signed Out",
+      body: "You have been successfully signed out."
+    }).show();
+    await updateTrayMenu();
+    if (win && !win.isDestroyed()) {
+      win.webContents.send("user-signed-out");
+    }
+  } catch (error) {
+    console.error("[TokenManager] Failed to delete tokens on sign out:", error);
+    new electron.Notification({
+      title: "PageLifeline: Sign Out Error",
+      body: "Could not sign out properly. Please restart the app."
+    }).show();
+  }
+}
+let currentContextMenu = null;
+async function updateTrayMenu() {
+  if (!tray) {
+    console.warn("[TrayManager] Attempted to update tray menu, but tray object is null.");
+    return;
+  }
+  const accessToken = await getStoredAccessToken();
+  let menuTemplate;
+  if (accessToken) {
+    menuTemplate = [
+      // { label: 'Signed in as: User Email', enabled: false }, // Placeholder for user info
+      { label: "Restore latest good snapshot", click: () => restoreLatest() },
+      // Consider enabling/disabling based on snapshot availability
+      {
+        label: "Show Main Window",
+        click: () => {
+          if (!win || win.isDestroyed()) {
+            createWindow().then(() => win == null ? void 0 : win.show());
+          } else {
+            win.show();
+            win.focus();
+          }
+        }
+      },
+      { type: "separator" },
+      { label: "Sign Out", click: handleSignOut },
+      { label: "Quit PageLifeline", click: () => electron.app.quit() }
+    ];
+  } else {
+    menuTemplate = [
+      {
+        label: "Sign In with PageLifeline",
+        click: () => {
+          if (authWindow && !authWindow.isDestroyed()) {
+            authWindow.focus();
+            return;
+          }
+          const authPageUrl = "https://www.pagelifeline.app/electron-auth";
+          console.log(`[SignInClick] Opening auth window with URL: ${authPageUrl}`);
+          const preloadPath = path$1.join(__dirname, "preload.js");
+          authWindow = new electron.BrowserWindow({
+            width: 420,
+            height: 640,
+            show: true,
+            webPreferences: {
+              preload: preloadPath,
+              contextIsolation: true,
+              nodeIntegration: false
+            }
+          });
+          authWindow.loadURL(authPageUrl);
+          authWindow.on("closed", () => {
+            authWindow = null;
+          });
+        }
+      },
+      { label: "Restore latest good snapshot", enabled: false, click: () => restoreLatest() },
+      // Disabled when signed out
+      { type: "separator" },
+      {
+        label: "Show Main Window",
+        click: () => {
+          if (!win || win.isDestroyed()) {
+            createWindow().then(() => win == null ? void 0 : win.show());
+          } else {
+            win.show();
+            win.focus();
+          }
+        }
+      },
+      { label: "Quit PageLifeline", click: () => electron.app.quit() }
+    ];
+  }
+  currentContextMenu = electron.Menu.buildFromTemplate(menuTemplate);
+  tray.setContextMenu(currentContextMenu);
+  console.log("[TrayManager] Tray context menu updated. Signed in status:", !!accessToken);
+}
 async function createWindow() {
   win = new electron.BrowserWindow({
     width: 800,
@@ -16763,16 +16980,17 @@ async function createWindow() {
     win = null;
   });
 }
-async function restoreLatest(snapshotId) {
+async function restoreLatest(snapshotId, isRetry = false) {
   var _a, _b;
-  console.log("[main.ts] Attempting to restore snapshot...");
-  const jwt = await getStoredJwt();
-  console.log("[main.ts] JWT value:", jwt);
-  if (!jwt) {
+  console.log(`[main.ts] Attempting to restore snapshot... Retry: ${isRetry}`);
+  const accessToken = await getStoredAccessToken();
+  console.log("[main.ts] Access Token value (first 10 chars):", accessToken == null ? void 0 : accessToken.substring(0, 10));
+  if (!accessToken) {
     new electron.Notification({
       title: "PageLifeline: Authentication Required",
       body: "Please sign in first to restore a snapshot."
     }).show();
+    if (!isRetry) await updateTrayMenu();
     return { success: false, message: "Authentication required." };
   }
   if (!snapshotId) {
@@ -16786,7 +17004,7 @@ async function restoreLatest(snapshotId) {
     const response = await axios.post(
       `${API_BASE_URL}/api/restore`,
       { snapshotId },
-      { headers: { "Authorization": `Bearer ${jwt}` } }
+      { headers: { "Authorization": `Bearer ${accessToken}` } }
     );
     new electron.Notification({
       title: "PageLifeline: Restore Initiated",
@@ -16797,10 +17015,23 @@ async function restoreLatest(snapshotId) {
     let errorMessage = "Failed to initiate restore.";
     if (err.response) {
       errorMessage = ((_a = err.response.data) == null ? void 0 : _a.message) || err.message || errorMessage;
-      if (err.response.status === 401) {
-        errorMessage = "Authentication failed. JWT might be expired or invalid. Please sign in again.";
-        await keytar.deletePassword(KEYTAR_SERVICE, KEYTAR_ACCOUNT_JWT);
+      if (err.response.status === 401 && !isRetry) {
+        console.log("[main.ts - restoreLatest] Received 401. Attempting token refresh.");
+        const newAccessToken = await attemptTokenRefresh();
+        if (newAccessToken) {
+          console.log("[main.ts - restoreLatest] Token refreshed. Retrying restoreLatest.");
+          return restoreLatest(snapshotId, true);
+        } else {
+          errorMessage = "Authentication failed. Please sign in again.";
+          await handleSignOut();
+        }
+      } else if (err.response.status === 401 && isRetry) {
+        console.log("[main.ts - restoreLatest] Received 401 on retry. Signing out.");
+        errorMessage = "Authentication failed after retry. Please sign in again.";
+        await handleSignOut();
       }
+    } else {
+      console.error("[main.ts - restoreLatest] Network or other error:", err);
     }
     new electron.Notification({ title: "PageLifeline: Restore Failed", body: errorMessage }).show();
     return { success: false, message: errorMessage, errorDetails: (_b = err.response) == null ? void 0 : _b.data };
@@ -16933,40 +17164,38 @@ async function handleOAuthCallback(callbackUrl) {
       accessToken,
       refreshToken,
       idToken,
+      userId,
       expiresIn: expiresIn || 3600,
       obtainedAt: Date.now()
     };
     await keytar.setPassword(KEYTAR_SERVICE, KEYTAR_ACCOUNT_JWT, JSON.stringify(tokensToStore));
     console.log("[handleOAuthCallback] Tokens securely stored in keychain.");
-    const retrievedTokenString = await keytar.getPassword(KEYTAR_SERVICE, KEYTAR_ACCOUNT_JWT);
-    if (retrievedTokenString) {
-      console.log("[handleOAuthCallback] Verified stored tokens (debug):", JSON.parse(retrievedTokenString));
+    const verifiedAccessToken = await getStoredAccessToken();
+    if (verifiedAccessToken) {
+      console.log("[handleOAuthCallback] Verified stored access token (first 10):", verifiedAccessToken.substring(0, 10));
+    } else {
+      console.error("[handleOAuthCallback] CRITICAL: Failed to retrieve access token immediately after storing!");
     }
+    await ensureMainWindowVisibleAndFocused();
+    await updateTrayMenu();
     console.log("[handleOAuthCallback] Tokens received and processed successfully. User ID:", userId);
     new electron.Notification({ title: "Authentication Successful!", body: "You are now signed in." }).show();
-    if (win && !win.isVisible() && !win.isMinimized()) win.show();
-    if (win) win.focus();
+    if (!win || win.isDestroyed()) {
+      await createWindow();
+    }
+    if (win && !win.isVisible()) {
+      win.show();
+    }
+    if (win) {
+      win.focus();
+    }
+    await updateTrayMenu();
   } catch (error) {
     console.error("[handleOAuthCallback] ##### ERROR exchanging OTC or storing tokens #####:", error.isAxiosError ? error.toJSON() : error);
     if (error.response) {
       console.error("[handleOAuthCallback] OTC Exchange Error response data:", error.response.data);
     }
     new electron.Notification({ title: "Auth Error", body: "Failed to complete sign in. Check logs." }).show();
-  }
-}
-async function getStoredJwt() {
-  try {
-    const jwt = await keytar.getPassword(KEYTAR_SERVICE, KEYTAR_ACCOUNT_JWT);
-    if (jwt) {
-      console.log("[main.ts] JWT retrieved from keychain.");
-      console.log("[main.ts] Authorization header:", `Bearer ${jwt}`);
-      return jwt;
-    }
-    console.log("[main.ts] No JWT found in keychain.");
-    return null;
-  } catch (error) {
-    console.error("[main.ts] Error retrieving JWT from keychain:", error);
-    return null;
   }
 }
 electron.app.whenReady().then(async () => {
@@ -16979,51 +17208,9 @@ electron.app.whenReady().then(async () => {
       tray.setTitle("Test");
       setTimeout(() => tray.setTitle(""), 2e3);
     }
-    const contextMenu = electron.Menu.buildFromTemplate([
-      {
-        label: "Sign In with PageLifeline",
-        click: () => {
-          if (authWindow && !authWindow.isDestroyed()) {
-            authWindow.focus();
-            return;
-          }
-          const authPageUrl = "https://www.pagelifeline.app/electron-auth";
-          console.log(`[SignInClick] Opening auth window with URL: ${authPageUrl}`);
-          authWindow = new electron.BrowserWindow({
-            width: 420,
-            height: 640,
-            show: true,
-            webPreferences: {
-              preload: path$1.join(__dirname, "preload.js"),
-              // Critical for IPC
-              contextIsolation: true,
-              nodeIntegration: false
-            }
-          });
-          authWindow.loadURL(authPageUrl);
-          authWindow.on("closed", () => {
-            authWindow = null;
-          });
-        }
-      },
-      { label: "Restore latest good snapshot", click: () => restoreLatest() },
-      { type: "separator" },
-      {
-        label: "Show Main Window",
-        click: () => {
-          if (!win || win.isDestroyed()) {
-            createWindow().then(() => win == null ? void 0 : win.show());
-          } else {
-            win.show();
-            win.focus();
-          }
-        }
-      },
-      { label: "Quit PageLifeline", click: () => electron.app.quit() }
-    ]);
+    await updateTrayMenu();
     tray.setToolTip("PageLifeline Desktop");
-    tray.setContextMenu(contextMenu);
-    console.log("[AppEvent] Tray tooltip and context menu set.");
+    console.log("[AppEvent] Tray tooltip set. Context menu will be set by updateTrayMenu.");
   } catch (e) {
     console.error("[AppEvent] FAILED TO CREATE TRAY OR SET CONTEXT MENU:", e);
   }
@@ -17050,8 +17237,20 @@ electron.ipcMain.on("clerk-auth-success", async (event, { sessionId, token }) =>
   console.log(`[IPC Main] clerk-auth-success received. Session: ${sessionId}, Token (first 10): ${token == null ? void 0 : token.substring(0, 10)}...`);
   if (token) {
     try {
-      await keytar.setPassword(KEYTAR_SERVICE, KEYTAR_ACCOUNT_JWT, token);
-      console.log("[IPC Main] JWT securely stored in keychain.");
+      const tokensToStore = {
+        accessToken: token,
+        refreshToken: null,
+        // Or undefined, if not available from this flow
+        idToken: null,
+        // Or undefined
+        userId: sessionId,
+        // Assuming sessionId can act as a userId placeholder here
+        expiresIn: 3600,
+        // Default expiry if not known
+        obtainedAt: Date.now()
+      };
+      await keytar.setPassword(KEYTAR_SERVICE, KEYTAR_ACCOUNT_JWT, JSON.stringify(tokensToStore));
+      console.log("[IPC Main] JWT object (from clerk-auth-success) securely stored in keychain.");
       new electron.Notification({
         title: "PageLifeline: Signed In",
         body: "You have successfully signed in to the desktop app."
@@ -17065,6 +17264,7 @@ electron.ipcMain.on("clerk-auth-success", async (event, { sessionId, token }) =>
       if (win) {
         win.focus();
       }
+      await updateTrayMenu();
     } catch (keytarError) {
       console.error("[IPC Main] Failed to store JWT with keytar:", keytarError);
       new electron.Notification({
@@ -17089,17 +17289,34 @@ electron.ipcMain.on("clerk-auth-error", (event, { error }) => {
     authWindow.close();
   }
 });
-electron.ipcMain.handle("get-snapshots", async () => {
-  const jwt = await getStoredJwt();
-  console.log("[main.ts] JWT value:", jwt);
-  if (!jwt) return [];
+electron.ipcMain.handle("get-snapshots", async (_event, isRetry = false) => {
+  const accessToken = await getStoredAccessToken();
+  console.log("[main.ts - get-snapshots] Access Token value (first 10):", accessToken == null ? void 0 : accessToken.substring(0, 10), `Retry: ${isRetry}`);
+  if (!accessToken) {
+    if (!isRetry) await updateTrayMenu();
+    return [];
+  }
   try {
     const response = await axios.get(`${API_BASE_URL}/api/snapshots`, {
-      headers: { "Authorization": `Bearer ${jwt}` }
+      headers: { "Authorization": `Bearer ${accessToken}` }
     });
     return Array.isArray(response.data) ? response.data : [];
   } catch (e) {
-    console.error("Failed to fetch snapshots:", e);
+    if (e.response && e.response.status === 401 && !isRetry) {
+      console.log("[main.ts - get-snapshots] Received 401. Attempting token refresh.");
+      const newAccessToken = await attemptTokenRefresh();
+      if (newAccessToken) {
+        console.log("[main.ts - get-snapshots] Token refreshed. Retrying get-snapshots.");
+        const thisHandler = electron.ipcMain.listeners("get-snapshots")[0];
+        return thisHandler(_event, true);
+      } else {
+        await handleSignOut();
+      }
+    } else if (e.response && e.response.status === 401 && isRetry) {
+      console.log("[main.ts - get-snapshots] Received 401 on retry. Signing out.");
+      await handleSignOut();
+    }
+    console.error("Failed to fetch snapshots:", e.message);
     return [];
   }
 });
@@ -17111,28 +17328,99 @@ electron.ipcMain.on("restore-latest", async (_event, payload) => {
   }
 });
 console.log("Registering create-test-snapshot handler");
-electron.ipcMain.handle("create-test-snapshot", async () => {
-  const jwt = await getStoredJwt();
-  if (!jwt) return { success: false, error: "No JWT" };
+electron.ipcMain.handle("create-test-snapshot", async (_event, isRetry = false) => {
+  var _a;
+  const accessToken = await getStoredAccessToken();
+  console.log("[main.ts - create-test-snapshot] Access Token (first 10):", accessToken == null ? void 0 : accessToken.substring(0, 10), `Retry: ${isRetry}`);
+  if (!accessToken) {
+    if (!isRetry) await updateTrayMenu();
+    return { success: false, error: "No JWT" };
+  }
   try {
     const response = await axios.post(`${API_BASE_URL}/api/snapshots/create`, {}, {
-      headers: { "Authorization": `Bearer ${jwt}` }
+      headers: { "Authorization": `Bearer ${accessToken}` }
     });
     return response.data;
   } catch (e) {
-    return { success: false, error: e.message };
+    if (e.response && e.response.status === 401 && !isRetry) {
+      console.log("[main.ts - create-test-snapshot] Received 401. Attempting token refresh.");
+      const newAccessToken = await attemptTokenRefresh();
+      if (newAccessToken) {
+        console.log("[main.ts - create-test-snapshot] Token refreshed. Retrying create-test-snapshot.");
+        const thisHandler = electron.ipcMain.listeners("create-test-snapshot")[0];
+        return thisHandler(_event, true);
+      } else {
+        await handleSignOut();
+      }
+    } else if (e.response && e.response.status === 401 && isRetry) {
+      console.log("[main.ts - create-test-snapshot] Received 401 on retry. Signing out.");
+      await handleSignOut();
+    }
+    return { success: false, error: e.message, details: (_a = e.response) == null ? void 0 : _a.data };
   }
 });
-electron.ipcMain.handle("get-snapshot-download-url", async (_event, snapshotId) => {
-  const jwt = await getStoredJwt();
-  if (!jwt) return { success: false, error: "No JWT" };
+electron.ipcMain.handle("get-snapshot-download-url", async (_event, snapshotId, isRetry = false) => {
+  var _a;
+  const accessToken = await getStoredAccessToken();
+  console.log("[main.ts - get-snapshot-download-url] Token (first 10):", accessToken == null ? void 0 : accessToken.substring(0, 10), `Retry: ${isRetry}`);
+  if (!accessToken) {
+    if (!isRetry) await updateTrayMenu();
+    return { success: false, error: "No JWT" };
+  }
   try {
     const response = await axios.get(`${API_BASE_URL}/api/snapshots/${encodeURIComponent(snapshotId)}/download`, {
-      headers: { "Authorization": `Bearer ${jwt}` }
+      headers: { "Authorization": `Bearer ${accessToken}` }
     });
     return response.data;
   } catch (e) {
-    return { success: false, error: e.message };
+    if (e.response && e.response.status === 401 && !isRetry) {
+      console.log("[main.ts - get-snapshot-download-url] Received 401. Attempting token refresh.");
+      const newAccessToken = await attemptTokenRefresh();
+      if (newAccessToken) {
+        console.log("[main.ts - get-snapshot-download-url] Token refreshed. Retrying download URL.");
+        const thisHandler = electron.ipcMain.listeners("get-snapshot-download-url")[0];
+        return thisHandler(_event, snapshotId, true);
+      } else {
+        await handleSignOut();
+      }
+    } else if (e.response && e.response.status === 401 && isRetry) {
+      console.log("[main.ts - get-snapshot-download-url] Received 401 on retry. Signing out.");
+      await handleSignOut();
+    }
+    return { success: false, error: e.message, details: (_a = e.response) == null ? void 0 : _a.data };
   }
+});
+electron.ipcMain.handle("get-auth-status", async () => {
+  console.log("[IPC Main] Received get-auth-status request.");
+  const tokenObject = await getStoredTokenObject();
+  if (tokenObject && tokenObject.accessToken) {
+    console.log("[IPC Main] User is authenticated. UserID:", tokenObject.userId);
+    return { isAuthenticated: true, userId: tokenObject.userId };
+  }
+  console.log("[IPC Main] User is not authenticated.");
+  return { isAuthenticated: false, userId: null };
+});
+electron.ipcMain.on("request-sign-in", () => {
+  console.log("[IPC Main] Received request-sign-in. Opening auth window.");
+  if (authWindow && !authWindow.isDestroyed()) {
+    authWindow.focus();
+    return;
+  }
+  const authPageUrl = "https://www.pagelifeline.app/electron-auth";
+  const preloadPath = path$1.join(__dirname, "preload.js");
+  authWindow = new electron.BrowserWindow({
+    width: 420,
+    height: 640,
+    show: true,
+    webPreferences: {
+      preload: preloadPath,
+      contextIsolation: true,
+      nodeIntegration: false
+    }
+  });
+  authWindow.loadURL(authPageUrl);
+  authWindow.on("closed", () => {
+    authWindow = null;
+  });
 });
 //# sourceMappingURL=main.js.map

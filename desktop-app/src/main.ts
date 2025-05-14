@@ -1,123 +1,141 @@
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string;
 declare const MAIN_WINDOW_VITE_NAME: string;
+declare const AUTH_WINDOW_PRELOAD_VITE_DEV_SERVER_URL: string;
+declare const AUTH_WINDOW_PRELOAD_VITE_NAME: string;
 
 import { app, BrowserWindow, Tray, Menu, nativeImage, shell, Notification, ipcMain, NativeImage } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs'; // Import fs for existsSync
 import axios from 'axios'; // Ensure axios is in dependencies
 import { URL, URLSearchParams } from 'node:url'; // Import URL and URLSearchParams
-import crypto from 'node:crypto'; // For PKCE
 import keytar from 'keytar'; // Import keytar
+import { base64URLEncode, sha256 } from './main/utils'; // Import from new utils.ts
+import {
+  KEYTAR_SERVICE, // Will be used by handleSignOut if it directly calls keytar
+  KEYTAR_ACCOUNT_JWT, // Will be used by handleSignOut if it directly calls keytar
+  getStoredTokenObject as auth_getStoredTokenObject, // Renamed to avoid conflict if a local one existed
+  attemptTokenRefresh as auth_attemptTokenRefresh,
+  getStoredAccessToken as auth_getStoredAccessToken,
+  storeTokenObject as auth_storeTokenObject,
+  clearStoredTokens as auth_clearStoredTokens,
+  exchangeCodeForTokensAndStore as auth_exchangeCodeForTokensAndStore // Import new function
+} from './main/auth';
+import * as windowManager from './main/windowManager'; // Import windowManager
+import * as trayManager from './main/trayManager'; // Import trayManager
+import * as appLifecycle from './main/appLifecycle'; // Import appLifecycle
+import * as ipcManager from './main/ipcHandlers'; // Import ipcManager
+import * as authService from './main/auth';
+import { API_BASE_URL as AppApiBaseUrl } from './main/config'; // Only API_BASE_URL is needed from config by main.ts
 
 // Handle Squirrel Startup Events for Windows (important for installers)
 // This should be one of the first things your app does.
-if (require('electron-squirrel-startup')) {
-  app.quit();
+if (appLifecycle.handleSquirrelEvents()) {
+  // If squirrel handled it, app.quit() was called in the function.
 }
 
 // --- App Protocol ---
-const APP_PROTOCOL = 'pagelifeline';
-if (process.defaultApp) {
-  if (process.argv.length >= 2) {
-    app.setAsDefaultProtocolClient(APP_PROTOCOL, process.execPath, [path.resolve(process.argv[1])]);
-  }
-} else {
-  app.setAsDefaultProtocolClient(APP_PROTOCOL);
-}
+// const APP_PROTOCOL = 'pagelifeline';
+// if (process.defaultApp) {
+//   if (process.argv.length >= 2) {
+//     app.setAsDefaultProtocolClient(APP_PROTOCOL, process.execPath, [path.resolve(process.argv[1])]);
+//   }
+// } else {
+//   app.setAsDefaultProtocolClient(APP_PROTOCOL);
+// }
+appLifecycle.registerProtocol();
 // --- End App Protocol ---
 
-let win: BrowserWindow | null = null; // Renamed to avoid conflict with window global
-let tray: Tray | null = null;
-let authWindow: BrowserWindow | null = null; // Keep a reference to the auth window
+// Tray variable MOVED to trayManager.ts
+// let tray: Tray | null = null;
 
-const API_BASE_URL = 'https://www.pagelifeline.app';
+// const API_BASE_URL = 'https://www.pagelifeline.app'; // MOVED to config.ts
 // const API_BASE_URL = 'http://localhost:3000'; // For local Next.js dev server
 
-let deeplinkingUrl: string | undefined;
-const CLERK_CLIENT_ID = 'pk_live_Y2xlcmsucGFnZWxpZmVsaW5lLmFwcCQ';
-const CLERK_TOKEN_ENDPOINT = 'https://clerk.pagelifeline.app/oauth/token';
-const CLERK_CLIENT_SECRET = 'sk_live_2zbanEkqqOqlpJf6aNZXVW3r9Cod69okaXIqP1lnuX'; // Add this line; // Your actual token endpoint
+// let deeplinkingUrl: string | undefined; // MOVED to appLifecycle.ts
 const ELECTRON_RELAY_CALLBACK_URL = 'https://pagelifeline.app/api/auth/electron-relay'; // For initial redirect to Clerk
-const FINAL_APP_CALLBACK_URL = `${APP_PROTOCOL}://auth-callback`; // For redirect from relay to Electron app
+const FINAL_APP_CALLBACK_URL = `${appLifecycle.APP_PROTOCOL}://auth-callback`; // Use exported APP_PROTOCOL from appLifecycle
 
 // --- PKCE Helper functions ---
-function base64URLEncode(str: Buffer): string {
-  return str.toString('base64')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=/g, '');
-}
+// MOVED to ./main/utils.ts
+// function base64URLEncode(str: Buffer): string {
+//   return str.toString('base64')
+//     .replace(/\+/g, '-')
+//     .replace(/\//g, '_')
+//     .replace(/=/g, '');
+// }
 
-function sha256(buffer: string): Buffer {
-  return crypto.createHash('sha256').update(buffer).digest();
-}
-
+// function sha256(buffer: string): Buffer {
+//   return crypto.createHash('sha256').update(buffer).digest();
+// }
 // --- End PKCE Helpers ---
 
 // --- Constants for Keytar --- (Add these)
-const KEYTAR_SERVICE = 'PageLifelineDesktop';
-const KEYTAR_ACCOUNT_JWT = 'userSessionJWT'; // Storing the JWT directly
+// const KEYTAR_SERVICE = 'PageLifelineDesktop';
+// const KEYTAR_ACCOUNT_JWT = 'userSessionJWT'; // Storing the JWT directly
 // --- End Keytar Constants ---
 
-async function createWindow() {
-  win = new BrowserWindow({
-    width: 800, // Main app window can be larger
-    height: 600,
-    show: false, 
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js'), 
-      contextIsolation: true,
-      nodeIntegration: false,
-    },
-  });
+// --- Token Management Global State ---
+let isRefreshingToken = false; // Prevents multiple refresh attempts simultaneously
+// --- End Token Management Global State ---
 
-  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
-    win.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
-  } else {
-    win.loadFile(path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`)); 
+// --- Helper function to show and focus the main window ---
+// async function ensureMainWindowVisibleAndFocused() { ... }
+
+// --- Token Management Functions ---
+// Token Management Functions (getStoredTokenObject, attemptTokenRefresh, getStoredAccessToken) MOVED to auth.ts
+// handleSignOut is KEPT here for now due to direct dependencies on Notification, updateTrayMenu, win.webContents
+async function handleSignOut() {
+  try {
+    await authService.clearStoredTokens(); 
+    console.log('[Main.ts] Tokens cleared. Proceeding with UI sign out.');
+    new Notification({ title: "PageLifeline: Signed Out", body: "Successfully signed out."}).show();
+    await trayManager.updateTrayMenu(); 
+    const mainWindow = windowManager.getMainWindow();
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('user-signed-out');
+    }
+  } catch (error) {
+    console.error('[Main.ts] Error during sign out process:', error);
+    new Notification({ title: "PageLifeline: Sign Out Error", body: "Could not sign out properly."}).show();
+    await trayManager.updateTrayMenu(); 
   }
-  win.on('closed', () => { win = null; });
 }
+// --- End Token Management ---
 
-async function restoreLatest(snapshotId?: string) {
-  console.log('[main.ts] Attempting to restore snapshot...');
-  const jwt = await getStoredJwt();
-  console.log('[main.ts] JWT value:', jwt);
 
-  if (!jwt) {
-    new Notification({
-      title: 'PageLifeline: Authentication Required',
-      body: 'Please sign in first to restore a snapshot.'
-    }).show();
+// createWindow MOVED to windowManager.ts
+// async function createWindow() { ... }
+
+async function restoreLatest(snapshotId?: string, isRetry = false): Promise<any> {
+  console.log(`[main.ts] Attempting to restore snapshot... Retry: ${isRetry}`);
+  const accessToken = await authService.getStoredAccessToken(handleSignOut);
+  if (!accessToken) {
+    new Notification({ title: 'PageLifeline: Authentication Required', body: 'Please sign in first.' }).show();
+    if(!isRetry) await trayManager.updateTrayMenu(); 
     return { success: false, message: "Authentication required." };
   }
-
   if (!snapshotId) {
-    new Notification({
-      title: 'PageLifeline: Restore Failed',
-      body: 'No snapshot selected.'
-    }).show();
+    new Notification({ title: 'PageLifeline: Restore Failed', body: 'No snapshot selected.' }).show();
     return { success: false, message: 'No snapshot selected.' };
   }
-
   try {
     const response = await axios.post(
-      `${API_BASE_URL}/api/restore`,
+      `${AppApiBaseUrl}/api/restore`,
       { snapshotId },
-      { headers: { 'Authorization': `Bearer ${jwt}` } }
+      { headers: { 'Authorization': `Bearer ${accessToken}` } }
     );
-    new Notification({
-      title: 'PageLifeline: Restore Initiated',
-      body: response.data.message || 'Check your dashboard for progress.'
-    }).show();
+    new Notification({ title: 'PageLifeline: Restore Initiated', body: response.data.message || '...progress.' }).show();
     return { success: true, ...response.data };
   } catch (err: any) {
     let errorMessage = 'Failed to initiate restore.';
     if (err.response) {
       errorMessage = err.response.data?.message || err.message || errorMessage;
-      if (err.response.status === 401) {
-        errorMessage = 'Authentication failed. JWT might be expired or invalid. Please sign in again.';
-        await keytar.deletePassword(KEYTAR_SERVICE, KEYTAR_ACCOUNT_JWT);
+      if (err.response.status === 401 && !isRetry) {
+        const newAccessToken = await authService.attemptTokenRefresh(handleSignOut);
+        if (newAccessToken) return restoreLatest(snapshotId, true); 
+        else { errorMessage = 'Auth failed. Sign in again.'; await handleSignOut(); }
+      } else if (err.response.status === 401 && isRetry) {
+        errorMessage = 'Auth failed after retry. Sign in again.'; await handleSignOut();
       }
     }
     new Notification({ title: 'PageLifeline: Restore Failed', body: errorMessage }).show();
@@ -125,267 +143,73 @@ async function restoreLatest(snapshotId?: string) {
   }
 }
 
-const gotTheLock = app.requestSingleInstanceLock();
-
-if (!gotTheLock) {
-  app.quit();
-} else {
-  app.on('second-instance', (event, commandLine, workingDirectory) => {
-    console.log(`[AppEvent] !!!!! SECOND-INSTANCE event. Full commandLine: ${commandLine.join(' ')} !!!!!`);
-    const urlOpened = commandLine.find((arg) => arg.startsWith(`${APP_PROTOCOL}://`));
-    if (urlOpened) {
-      console.log(`[AppEvent] URL found in second-instance: ${urlOpened}. Calling handleOAuthCallback.`);
-      deeplinkingUrl = undefined; 
-      handleOAuthCallback(urlOpened);
-      if (win && win.isMinimized()) win.restore();
-      if (win) win.focus();
-    } else if (win) {
-      console.log('[AppEvent] second-instance: No protocol URL, focusing window.');
-      if (win.isMinimized()) win.restore();
-      win.focus();
-    }
-  });
-}
-
-app.on('open-url', (event, url) => {
-  console.log(`[AppEvent] !!!!! MACOS OPEN-URL event. URL: ${url} !!!!!`);
-  event.preventDefault(); 
-  deeplinkingUrl = undefined; 
-  handleOAuthCallback(url);
-  if (win && win.isMinimized()) win.restore(); 
-  if (win) win.focus(); 
-});
-
-function getTrayIcon(): NativeImage {
-  let iconPath: string;
-  const iconFileName = process.platform === 'darwin' ? 'trayTemplate.png' : 'icon.png';
-
-  if (app.isPackaged) {
-    const packagedAssetsPath = path.join(path.dirname(app.getPath('exe')), 'assets');
-    iconPath = path.join(packagedAssetsPath, iconFileName);
-    if (!fs.existsSync(iconPath) && process.platform === 'darwin') {
-        iconPath = path.join(process.resourcesPath, 'assets', iconFileName); // iconFileName already has trayTemplate.png for darwin
-    }
-     if (!fs.existsSync(iconPath) && process.platform === 'win32') { 
-        const icoPath = path.join(path.dirname(app.getPath('exe')), 'assets', 'icon.ico');
-        if (fs.existsSync(icoPath)) iconPath = icoPath; // Prefer .ico if available for Windows
-        else if (!fs.existsSync(iconPath)) { // if icon.png also not found at exe/assets
-            iconPath = path.join(process.resourcesPath, 'assets', 'icon.ico'); // Fallback to resources for .ico
-             if (!fs.existsSync(iconPath)) { // if .ico also not found in resources, try .png in resources
-                 iconPath = path.join(process.resourcesPath, 'assets', 'icon.png');
-             }
-        }
-    }
-  } else {
-    iconPath = path.join(__dirname, '..', 'assets', iconFileName);
-  }
-
-  console.log(`[getTrayIcon] Determined icon path: ${iconPath}`);
-
-  if (!fs.existsSync(iconPath)) {
-    console.error(`[getTrayIcon] Icon file NOT FOUND at: ${iconPath}`);
-    if (process.platform === 'darwin') {
-        const systemIcon = nativeImage.createFromNamedImage('NSActionTemplate', [-1,-1,-1,-1]);
-        if (systemIcon && !systemIcon.isEmpty()) {
-            console.log('[getTrayIcon] Using system NSActionTemplate as fallback because file not found.');
-            return systemIcon;
-        }
-    }
-    console.log('[getTrayIcon] Creating empty image as final fallback (file not found).');
-    return nativeImage.createEmpty();
-  }
-
-  try {
-    const img = nativeImage.createFromPath(iconPath);
-    if (!img) { 
-      console.error(`[getTrayIcon] nativeImage.createFromPath(${iconPath}) returned null.`);
-      throw new Error('createFromPath returned null');
-    }
-    if (img.isEmpty()) {
-      console.error(`[getTrayIcon] Icon at ${iconPath} IS EMPTY after loading.`);
-      throw new Error(`Icon at ${iconPath} is empty.`);
-    }
-
-    console.log(`[getTrayIcon] Successfully created NativeImage from: ${iconPath}. Size: ${img.getSize().width}x${img.getSize().height}`);
-    if (process.platform === 'darwin') {
-      img.setTemplateImage(true);
-      console.log('[getTrayIcon] Applied setTemplateImage(true) for macOS.');
-    }
-    return img;
-  } catch (e) {
-    console.error(`[getTrayIcon] CRITICAL ERROR creating NativeImage from path: ${iconPath}. Error:`, e);
-    if (process.platform === 'darwin') {
-        const systemIcon = nativeImage.createFromNamedImage('NSActionTemplate', [-1,-1,-1,-1]);
-        if (systemIcon && !systemIcon.isEmpty()) {
-            console.log('[getTrayIcon] Using system NSActionTemplate due to error.');
-            return systemIcon;
-        }
-    }
-    console.log('[getTrayIcon] Creating empty image as final fallback (due to error).');
-    return nativeImage.createEmpty();
-  }
-}
-
+// RESTORED: handleOAuthCallback function definition
 async function handleOAuthCallback(callbackUrl: string) {
-  console.log(`[handleOAuthCallback] ##### INVOKED with URL: ${callbackUrl} #####`);
-  if (!callbackUrl || !callbackUrl.startsWith(APP_PROTOCOL)) {
-    console.warn(`[handleOAuthCallback] Received non-custom-protocol or empty URL: ${callbackUrl}. Ignoring.`);
+  console.log(`[MainApp] handleOAuthCallback invoked with URL: ${callbackUrl}`);
+  if (!callbackUrl || !callbackUrl.startsWith(appLifecycle.APP_PROTOCOL)) {
+    console.warn(`[MainApp] handleOAuthCallback: Received non-custom-protocol or empty URL: ${callbackUrl}. Ignoring.`);
     return;
   }
-  console.log(`[handleOAuthCallback] Processing URL from relay: ${callbackUrl}`);
+  console.log(`[MainApp] handleOAuthCallback: Processing URL from relay: ${callbackUrl}`);
+  let oneTimeCode: string | null = null; 
   try {
     const parsedUrl = new URL(callbackUrl);
-    const oneTimeCode = parsedUrl.searchParams.get('one_time_code');
+    oneTimeCode = parsedUrl.searchParams.get('one_time_code');
     const error = parsedUrl.searchParams.get('error');
 
     if (error) {
       const errorDesc = parsedUrl.searchParams.get('error_description');
-      console.error(`[handleOAuthCallback] Error received from relay: ${error}, Description: ${errorDesc}`);
+      console.error(`[MainApp] handleOAuthCallback: Error from relay: ${error}, Description: ${errorDesc}`);
       new Notification({ title: 'Auth Error', body: `Failed: ${errorDesc || error}` }).show();
       return;
     }
-
     if (!oneTimeCode) {
-      console.error('[handleOAuthCallback] One-Time Code not found in callback URL from relay.');
+      console.error('[MainApp] handleOAuthCallback: One-Time Code not found in callback URL from relay.');
       new Notification({ title: 'Auth Error', body: 'Could not get one-time code.' }).show();
       return;
     }
-    console.log(`[handleOAuthCallback] Extracted One-Time Code: ${oneTimeCode}`);
-
-    // Step 2: Exchange OTC for actual tokens with your backend
-    const exchangeOtcUrl = `${API_BASE_URL}/api/auth/exchange-otc`; // New backend endpoint needed
-    console.log(`[handleOAuthCallback] Exchanging OTC at: ${exchangeOtcUrl}`);
-    const tokenResponse = await axios.post(exchangeOtcUrl, { oneTimeCode });
-
-    console.log('[handleOAuthCallback] OTC exchange response status:', tokenResponse.status);
-
-    const { accessToken, refreshToken, idToken, expiresIn, userId } = tokenResponse.data; 
-    // Ensure your /api/auth/exchange-otc returns these fields
-
-    if (!accessToken) {
-        throw new Error('Access Token not received from OTC exchange.');
+    console.log(`[MainApp] handleOAuthCallback: Extracted One-Time Code: ${oneTimeCode}`);
+    
+    const authResult = await authService.exchangeCodeForTokensAndStore(oneTimeCode!, AppApiBaseUrl); 
+    if (authResult.success && authResult.newAccessToken) {
+      new Notification({ title: 'Authentication Successful!', body: 'You are now signed in.' }).show();
+      await windowManager.ensureMainWindowVisibleAndFocused();
+      await trayManager.updateTrayMenu(); 
+    } else {
+      throw new Error(authResult.error || 'Failed during token exchange by authService.');
     }
-
-    const tokensToStore = {
-      accessToken,
-      refreshToken,
-      idToken,
-      expiresIn: expiresIn || 3600,
-      obtainedAt: Date.now()
-    };
-
-    await keytar.setPassword(KEYTAR_SERVICE, KEYTAR_ACCOUNT_JWT, JSON.stringify(tokensToStore));
-    console.log('[handleOAuthCallback] Tokens securely stored in keychain.');
-    const retrievedTokenString = await keytar.getPassword(KEYTAR_SERVICE, KEYTAR_ACCOUNT_JWT);
-    if (retrievedTokenString) {
-      console.log('[handleOAuthCallback] Verified stored tokens (debug):', JSON.parse(retrievedTokenString));
-    }
-    console.log('[handleOAuthCallback] Tokens received and processed successfully. User ID:', userId );
-    new Notification({ title: 'Authentication Successful!', body: 'You are now signed in.' }).show();
-    if(win && !win.isVisible() && !win.isMinimized()) win.show();
-    if(win) win.focus();
-
   } catch (error: any) {
-    console.error('[handleOAuthCallback] ##### ERROR exchanging OTC or storing tokens #####:', error.isAxiosError ? error.toJSON() : error);
-    if (error.response) {
-      console.error('[handleOAuthCallback] OTC Exchange Error response data:', error.response.data);
-    }
-    new Notification({ title: 'Auth Error', body: 'Failed to complete sign in. Check logs.' }).show();
+    console.error('[MainApp] handleOAuthCallback: ##### OVERALL ERROR #####:', error.message);
+    new Notification({ title: 'Auth Error', body: error.message || 'Sign in failed. Check logs.' }).show();
   }
 }
+// --- End Callbacks ---
 
-async function getStoredJwt(): Promise<string | null> {
-  try {
-    const jwt = await keytar.getPassword(KEYTAR_SERVICE, KEYTAR_ACCOUNT_JWT);
-    if (jwt) {
-      // TODO: Add JWT expiry check here if possible (decode JWT, check 'exp' claim)
-      // For now, we assume if it exists, it might be valid or refresh handled by API calls / re-auth
-      console.log('[main.ts] JWT retrieved from keychain.');
-      console.log('[main.ts] Authorization header:', `Bearer ${jwt}`);
-      return jwt;
-    }
-    console.log('[main.ts] No JWT found in keychain.');
-    return null;
-  } catch (error) {
-    console.error('[main.ts] Error retrieving JWT from keychain:', error);
-    return null;
-  }
+// Initialize App Lifecycle Handlers
+if (!appLifecycle.requestSingleInstanceLock(handleOAuthCallback)) {
+  app.quit(); 
 }
+appLifecycle.initializeOpenUrlHandler(handleOAuthCallback);
+appLifecycle.initializeWindowAllClosedHandler();
+
+// Initialize IPC Handlers, pass AppApiBaseUrl from config
+ipcManager.registerAllIpcHandlers(AppApiBaseUrl, handleSignOut, restoreLatest);
+
+// Global VITE variable assignments - REMOVE THESE
+// (global as any).MAIN_WINDOW_VITE_DEV_SERVER_URL = MAIN_WINDOW_VITE_DEV_SERVER_URL;
+// (global as any).MAIN_WINDOW_VITE_NAME = MAIN_WINDOW_VITE_NAME;
 
 app.whenReady().then(async () => {
   console.log('[AppEvent] App is ready.');
-  await createWindow();
-  
-  try {
-    tray = new Tray(getTrayIcon()); 
-    console.log('[AppEvent] Tray object created successfully.');
+  // windowManager.createMainWindow() will use the declared constants directly from its own scope
+  await windowManager.createMainWindow(); 
+  await trayManager.initTray(handleSignOut, restoreLatest); 
+  console.log('[AppEvent] Core initializations complete (Window, Tray, IPC Handlers, Lifecycle).');
 
-    if (process.platform === 'darwin' && tray && typeof tray.setTitle === 'function') {
-        tray.setTitle("Test"); 
-        setTimeout(() => tray!.setTitle(""), 2000); 
-    }
-
-    const contextMenu = Menu.buildFromTemplate([
-      {
-        label: 'Sign In with PageLifeline',
-        click: () => {
-          if (authWindow && !authWindow.isDestroyed()) {
-            authWindow.focus();
-            return;
-          }
-          const authPageUrl = "https://www.pagelifeline.app/electron-auth";
-          console.log(`[SignInClick] Opening auth window with URL: ${authPageUrl}`);
-          authWindow = new BrowserWindow({
-            width: 420, height: 640, show: true,
-            webPreferences: { 
-              preload: path.join(__dirname, 'preload.js'), // Critical for IPC
-              contextIsolation: true, 
-              nodeIntegration: false 
-            }, 
-          });
-          authWindow.loadURL(authPageUrl);
-          authWindow.on('closed', () => { authWindow = null; });
-        }
-      },
-      { label: 'Restore latest good snapshot', click: () => restoreLatest() },
-      { type: 'separator' },
-      { label: 'Show Main Window', click: () => { 
-          if (!win || win.isDestroyed()) { 
-              createWindow().then(() => win?.show()); 
-          } else { 
-              win.show(); win.focus(); 
-          }
-        }
-      },
-      { label: 'Quit PageLifeline', click: () => app.quit() },
-    ]);
-    tray.setToolTip('PageLifeline Desktop');
-    tray.setContextMenu(contextMenu);
-    console.log('[AppEvent] Tray tooltip and context menu set.');
-
-    // if (process.platform === 'darwin') {
-    //   app.dock.hide();
-    //   console.log('[main.ts] app.dock.hide() called for macOS.');
-    // }
-
-  } catch (e) {
-    console.error('[AppEvent] FAILED TO CREATE TRAY OR SET CONTEXT MENU:', e);
-  }
-
-  // Initial URL check
-  let initialUrlToProcess: string | undefined = undefined;
-  if (process.platform === 'darwin') {
-    initialUrlToProcess = process.argv.find(arg => arg.startsWith(`${APP_PROTOCOL}://`));
-    console.log(`[AppEvent] macOS initial argv check. Found URL: ${initialUrlToProcess}`);
-  } else {
-    initialUrlToProcess = process.argv.find(arg => arg.startsWith(`${APP_PROTOCOL}://`)) || deeplinkingUrl;
-    console.log(`[AppEvent] Win/Linux initial argv/deeplink check. Found URL: ${initialUrlToProcess}`);
-  }
-
-  if (initialUrlToProcess) {
-    console.log(`[AppEvent] Processing initial deeplink URL on ready: ${initialUrlToProcess}`);
-    handleOAuthCallback(initialUrlToProcess);
-    deeplinkingUrl = undefined; 
+  const initialUrl = appLifecycle.getInitialDeeplinkUrl();
+  if (initialUrl) {
+    console.log(`[AppEvent] Processing initial deeplink URL on ready: ${initialUrl}`);
+    handleOAuthCallback(initialUrl);
   } else {
     console.log('[AppEvent] No initial deeplink URL to process on ready.');
   }
@@ -397,104 +221,5 @@ app.on('window-all-closed', () => {
   // Electron Forge default behavior might quit if not darwin; this ensures it stays for tray.
   if (process.platform !== 'darwin') {
     // app.quit(); // Keep commented to ensure tray app stays running
-  }
-});
-
-// IPC Handlers for Clerk Auth
-ipcMain.on('clerk-auth-success', async (event, { sessionId, token }) => {
-  console.log(`[IPC Main] clerk-auth-success received. Session: ${sessionId}, Token (first 10): ${token?.substring(0,10)}...`);
-  if (token) {
-    try {
-      await keytar.setPassword(KEYTAR_SERVICE, KEYTAR_ACCOUNT_JWT, token);
-      console.log('[IPC Main] JWT securely stored in keychain.');
-      new Notification({
-        title: "PageLifeline: Signed In",
-        body: "You have successfully signed in to the desktop app.",
-      }).show();
-      // --- SHOW MAIN WINDOW AFTER SIGN-IN ---
-      if (!win || win.isDestroyed()) {
-        await createWindow();
-      }
-      if (win && !win.isVisible()) {
-        win.show();
-      }
-      if (win) {
-        win.focus();
-      }
-      // --- END SHOW MAIN WINDOW ---
-      // TODO: Update tray menu (e.g., change "Sign In" to "Sign Out", enable features)
-    } catch (keytarError) {
-      console.error('[IPC Main] Failed to store JWT with keytar:', keytarError);
-      new Notification({
-        title: "PageLifeline: Sign In Error",
-        body: "Could not securely save your session. Please try again.",
-      }).show();
-    }
-  } else {
-    console.warn('[IPC Main] clerk-auth-success received, but no token provided.');
-  }
-  if (authWindow && !authWindow.isDestroyed()) {
-    authWindow.close();
-  }
-});
-
-ipcMain.on('clerk-auth-error', (event, { error }) => {
-  console.error('[IPC Main] clerk-auth-error received:', error);
-  new Notification({
-    title: "PageLifeline: Sign In Failed",
-    body: error || "An unknown error occurred during sign-in.",
-  }).show();
-  if (authWindow && !authWindow.isDestroyed()) {
-    authWindow.close();
-  }
-});
-
-ipcMain.handle('get-snapshots', async () => {
-  const jwt = await getStoredJwt();
-  console.log('[main.ts] JWT value:', jwt);
-  if (!jwt) return [];
-  try {
-    const response = await axios.get(`${API_BASE_URL}/api/snapshots`, {
-      headers: { 'Authorization': `Bearer ${jwt}` }
-    });
-    return Array.isArray(response.data) ? response.data : [];
-  } catch (e) {
-    console.error('Failed to fetch snapshots:', e);
-    return [];
-  }
-});
-
-ipcMain.on('restore-latest', async (_event, payload) => {
-  const snapshotId = payload?.snapshotId;
-  const result = await restoreLatest(snapshotId);
-  if (win) {
-    win.webContents.send('restore-result', result);
-  }
-});
-
-console.log('Registering create-test-snapshot handler');
-ipcMain.handle('create-test-snapshot', async () => {
-  const jwt = await getStoredJwt();
-  if (!jwt) return { success: false, error: 'No JWT' };
-  try {
-    const response = await axios.post(`${API_BASE_URL}/api/snapshots/create`, {}, {
-      headers: { 'Authorization': `Bearer ${jwt}` }
-    });
-    return response.data;
-  } catch (e: any) {
-    return { success: false, error: e.message };
-  }
-});
-
-ipcMain.handle('get-snapshot-download-url', async (_event, snapshotId: string) => {
-  const jwt = await getStoredJwt();
-  if (!jwt) return { success: false, error: 'No JWT' };
-  try {
-    const response = await axios.get(`${API_BASE_URL}/api/snapshots/${encodeURIComponent(snapshotId)}/download`, {
-      headers: { 'Authorization': `Bearer ${jwt}` }
-    });
-    return response.data;
-  } catch (e: any) {
-    return { success: false, error: e.message };
   }
 });
