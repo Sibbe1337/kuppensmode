@@ -8,17 +8,19 @@
     "build": "rm -rf dist-* && esbuild src/snapshot.ts src/restore.ts src/stripeWebhook.ts src/updateDailyStats.ts --bundle --platform=node --target=node20 --format=cjs --outdir=dist-temp --external:@google-cloud/* && mkdir -p dist-snapshot dist-restore dist-stripe-webhook dist-daily-stats && mv dist-temp/snapshot.js dist-snapshot/index.js && mv dist-temp/restore.js dist-restore/index.js && mv dist-temp/stripeWebhook.js dist-stripe-webhook/index.js && mv dist-temp/updateDailyStats.js dist-daily-stats/index.js && rmdir dist-temp && node build-copy.js"
   },
   "dependencies": {
-    "@google-cloud/functions-framework": "^4.0.0",
+    "@clerk/backend": "^1.31.2",
     "@google-cloud/firestore": "^7.11.0",
+    "@google-cloud/functions-framework": "^4.0.0",
     "@google-cloud/pubsub": "^5.0.0",
     "@google-cloud/secret-manager": "^6.0.1",
     "@google-cloud/storage": "^7.16.0",
+    "@langchain/openai": "^0.5.10",
     "@notionhq/client": "^2.3.0",
+    "@pinecone-database/pinecone": "^6.0.0",
     "p-queue": "^8.1.0",
-    "@clerk/backend": "^1.31.2",
-    "stripe": "^16.12.0",
+    "posthog-node": "^4.0.0",
     "resend": "^3.5.0",
-    "posthog-node": "^4.0.0"
+    "stripe": "^16.12.0"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",
@@ -28,4 +30,4 @@
   "engines": {
     "node": "20"
   }
-} 
+}
