@@ -454,4 +454,38 @@ resource "google_cloud_run_service_iam_member" "dev_snapshot_worker_invoker_self
   service  = module.dev_snapshot_worker.function_name # Use function_name as service name
   role     = "roles/run.invoker"
   member   = "serviceAccount:${google_service_account.worker_sa.email}"
+}
+
+# --- Cloud Scheduler Job for Dev Snapshot Worker ---
+module "scheduler_trigger_dev_snapshot_worker" {
+  source = "../../modules/cloud_scheduler_job"
+
+  project_id      = var.gcp_project_id
+  location_id     = var.gcp_region # Ensure this is where your Pub/Sub topic and function are
+  job_name        = "${var.app_name_prefix}-dev-trigger-snapshot-worker"
+  job_description = "Triggers the dev-snapshot-worker function every 10 minutes for testing."
+  
+  schedule          = "*/10 * * * *" # Every 10 minutes
+  time_zone         = "Etc/UTC"
+  pubsub_topic_name = module.pubsub_snapshot_requests_dev.name # Corrected to use .name output
+  
+  pubsub_message_body = jsonencode({
+    source           = "scheduler-dev-snapshot-trigger"
+    task             = "trigger-all-snapshots-dev"
+    trigger_time_utc = "${timestamp()}" # Include current timestamp for unique messages if needed
+  })
+  
+  pubsub_message_attributes = {
+    "source"      = "terraform-scheduler"
+    "environment" = "development"
+  }
+
+  // Retry config can be left to defaults or customized here
+  // attempt_deadline = "600s"
+  // retry_max_attempts = 5
+}
+
+output "scheduler_trigger_dev_snapshot_worker_job_name" {
+  description = "Name of the Cloud Scheduler job for the dev snapshot worker."
+  value       = module.scheduler_trigger_dev_snapshot_worker.job_name
 } 

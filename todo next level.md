@@ -173,10 +173,11 @@ or SCIM client).
     *   Task: Select and onboard with a compliance automation platform.
     *   Task: Integrate platform's agent/webhook for evidence collection.
 *   **L5.2: Infrastructure as Code (Terraform)** (➡️ **In Progress**)
-    *   Task: Define and implement Terraform for all core GCP infrastructure (➡️ **In Progress** - Pub/Sub, GCS, Secrets, SA, Function, Invoker IAMs defined for dev; Scheduler, other Vercel/Cloudflare settings pending).
+    *   Task: Define and implement Terraform for all core GCP infrastructure (➡️ **In Progress** - Pub/Sub, GCS, Secrets, SA, Function, Invoker IAMs, Cloud Scheduler job defined for dev; other Vercel/Cloudflare settings pending).
         *   Terraform backend (GCS) & provider configured. (✅ **Done**)
         *   `dev` environment structure created. (✅ **Done**)
         *   Reusable module for Pub/Sub topics created. (✅ **Done**)
+        *   Reusable module for Cloud Scheduler jobs created. (✅ **Done**)
         *   Pub/Sub topics (snapshot-requests, restore-requests) for `dev` managed by Terraform. (✅ **Done**)
         *   GCS bucket for `dev` snapshots managed by Terraform (imported). (✅ **Done**)
         *   GCS bucket for `dev` Cloud Function source code managed by Terraform (imported). (✅ **Done**)
@@ -185,7 +186,8 @@ or SCIM client).
         *   IAM bindings for worker SA to access secrets managed by Terraform. (✅ **Done**)
         *   `dev-snapshot-worker` Cloud Function (Gen2) managed by Terraform (imported and configuration aligned). (✅ **Done**)
         *   IAM bindings for Pub/Sub and Eventarc service agents to invoke `dev-snapshot-worker` Cloud Run service managed by Terraform. (✅ **Done**)
-        *   Cloud Scheduler, other Vercel/Cloudflare settings still pending IaC.
+        *   Cloud Scheduler job (`nl-dev-trigger-snapshot-worker`) for `dev` environment managed by Terraform. (✅ **Done**)
+        *   Other Vercel/Cloudflare settings still pending IaC.
     *   Task: CI/CD pipeline for IaC changes, with review and approval processes. (🕒 **Next Up**)
 *   **L5.3: Centralized Logging & Monitoring**
     *   Task: Ensure all application logs (frontend, backend APIs, workers) and infrastructure logs are centralized (e.g., Google Cloud Logging, then exported to BigQuery or a SIEM).
