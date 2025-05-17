@@ -47,6 +47,13 @@ provider "google" {
 // We will create environment-specific configurations later (e.g., terraform/environments/dev/main.tf)
 // that will use these providers and potentially call modules.
 
+module "log_sink_to_bigquery" {
+  source      = "./modules/log_sink"
+  name        = "export-logs-to-bigquery"
+  destination = "bigquery.googleapis.com/projects/YOUR_PROJECT/datasets/YOUR_DATASET"
+  filter      = ""
+}
+
 output "info" {
   value = "Root Terraform configuration. Define resources in modules or environment-specific files."
 } 

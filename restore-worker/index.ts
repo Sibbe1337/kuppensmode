@@ -7,13 +7,42 @@ import * as fs from 'fs';
 import * as zlib from 'zlib'; // For gzip decompression
 import { Client } from '@notionhq/client'; // Notion Client
 import { SecretManagerServiceClient } from '@google-cloud/secret-manager'; // Added
+import { KeyManagementServiceClient } from '@google-cloud/kms'; // Import KMS client
+
+// Assuming storage adapters are copied/available locally within the worker package
+import { StorageAdapter } from './storage/StorageAdapter';
+import { GCSStorageAdapter } from './storage/GCSStorageAdapter';
+import { S3StorageAdapter } from './storage/S3StorageAdapter';
+import { R2StorageAdapter } from './storage/R2StorageAdapter';
+import { RedundantStorageAdapter } from './storage/RedundantStorageAdapter';
 
 const storage = new Storage();
 const db = new Firestore();
 const secretManagerClient = new SecretManagerServiceClient(); // Added
+const kmsClient = new KeyManagementServiceClient(); // Initialize KMS client
 const BUCKET = process.env.GCS_BUCKET_NAME;
 const GCP_PROJECT_ID = process.env.GOOGLE_CLOUD_PROJECT;
 const DEFAULT_RESTORE_PARENT_PAGE_ID = process.env.DEFAULT_RESTORE_PARENT_PAGE_ID; // Optional: Set a default parent in env vars
+
+async function decryptString(ciphertextBase64: string): Promise<string> {
+  if (!GCP_PROJECT_ID || !process.env.KMS_LOCATION_ID || !process.env.KMS_KEY_RING_ID || !process.env.KMS_KEY_ID) {
+    console.error("KMS environment variables for decryption are not fully set (PROJECT, LOCATION, KEYRING, KEY).");
+    throw new Error("KMS configuration incomplete for decryption.");
+  }
+  if (!ciphertextBase64) {
+    console.warn("decryptString called with empty or null ciphertext. Returning empty string.");
+    return '';
+  }
+  const keyName = kmsClient.cryptoKeyPath(GCP_PROJECT_ID, process.env.KMS_LOCATION_ID, process.env.KMS_KEY_RING_ID, process.env.KMS_KEY_ID);
+  try {
+    const [result] = await kmsClient.decrypt({ name: keyName, ciphertext: Buffer.from(ciphertextBase64, 'base64') });
+    if (!result.plaintext) throw new Error('KMS decryption result is null or undefined.');
+    return result.plaintext.toString();
+  } catch (error) {
+    console.error(`KMS Decryption failed for key ${keyName}:`, error);
+    throw new Error(`Failed to decrypt string: ${(error as Error).message}`);
+  }
+}
 
 // New function to get user-specific Notion access token from Firestore
 async function getUserNotionAccessToken(userId: string): Promise<string> {
@@ -184,6 +213,7 @@ functions.cloudEvent('restoreWorker', async (cloudEvent: functions.CloudEvent<Pu
 
   const { restoreId, userId, snapshotId, targets, targetParentPageId } = job;
   const progressRef = db.collection('restores').doc(userId).collection('items').doc(restoreId);
+  const auditLogCol = db.collection('users').doc(userId).collection('audit');
 
   // Helper to update progress in Firestore
   const updateProgress = async (status: RestoreProgress['status'], message: string, percentage: number) => {
@@ -205,17 +235,49 @@ functions.cloudEvent('restoreWorker', async (cloudEvent: functions.CloudEvent<Pu
   let tempFilePath: string | null = null; // Define here for cleanup in finally block
 
   try {
-    await updateProgress('downloading', 'Starting snapshot download...', 5);
+    await updateProgress('downloading', 'Initializing storage and preparing download...', 2);
 
-    // --- 1. Download snapshot from GCS --- 
-    // snapshotId should be the full path in GCS, e.g., "user_123/snap_abc.json.gz"
-    const file = storage.bucket(BUCKET).file(snapshotId);
+    // --- Instantiate Storage Adapters ---
+    console.log(`[${restoreId}] Configuring storage adapters for user ${userId}...`);
+    if (!BUCKET) throw new Error("GCS_BUCKET_NAME for primary adapter is not set.");
+    const gcsAdapter = new GCSStorageAdapter({ bucket: BUCKET });
+    const mirrorAdapters: StorageAdapter[] = [];
+
+    const providersSnap = await db.collection('userStorageConfigs').doc(userId).collection('providers').where('isEnabled', '==', true).get();
+    if (!providersSnap.empty) {
+      for (const providerDoc of providersSnap.docs) {
+        const config = providerDoc.data();
+        try {
+          if (!config.encryptedAccessKeyId || !config.encryptedSecretAccessKey) throw new Error('Missing encrypted credentials');
+          const accessKeyId = await decryptString(config.encryptedAccessKeyId);
+          const secretAccessKey = await decryptString(config.encryptedSecretAccessKey);
+          if (!accessKeyId || !secretAccessKey) throw new Error('Decrypted keys are empty.');
+
+          if (config.type === 's3' && config.bucket && config.region) {
+            mirrorAdapters.push(new S3StorageAdapter({ bucket: config.bucket, region: config.region, accessKeyId, secretAccessKey }));
+          } else if (config.type === 'r2' && config.bucket && config.endpoint) {
+            mirrorAdapters.push(new R2StorageAdapter({ bucket: config.bucket, endpoint: config.endpoint, accessKeyId, secretAccessKey, region: config.region || 'auto' }));
+          }
+        } catch (e: any) {
+          console.error(`[${restoreId}] Failed to configure mirror ${config.type} ${config.bucket}: ${e.message}`);
+          await auditLogCol.add({ type: 'restore_mirror_config_error', message: `Failed to use mirror ${config.type} ${config.bucket}: ${e.message}`, providerId: providerDoc.id, timestamp: FieldValue.serverTimestamp() });
+        }
+      }
+    }
+    const redundantAdapter = new RedundantStorageAdapter(gcsAdapter, mirrorAdapters);
+    console.log(`[${restoreId}] Storage configured. Primary: GCS. Mirrors: ${mirrorAdapters.length}`);
+    // --- End Storage Adapter Configuration ---
+
+    await updateProgress('downloading', 'Starting snapshot download via redundant adapter...', 5);
+    
     const baseFilename = path.basename(snapshotId);
     tempFilePath = path.join(os.tmpdir(), `restore_${restoreId}_${baseFilename}`);
     
-    console.log(`[${restoreId}] Downloading ${snapshotId} to ${tempFilePath}`);
-    await file.download({ destination: tempFilePath });
-    console.log(`[${restoreId}] Download complete.`);
+    console.log(`[${restoreId}] Reading snapshot ${snapshotId} via RedundantStorageAdapter to temp file ${tempFilePath}`);
+    const compressedBuffer = await redundantAdapter.read(snapshotId); // snapshotId is the GCS path/key
+    fs.writeFileSync(tempFilePath, compressedBuffer); // Write buffer to temp file
+    console.log(`[${restoreId}] Snapshot data written to temp file: ${tempFilePath}. Size: ${compressedBuffer.length} bytes.`);
+
     await updateProgress('decompressing', 'Snapshot downloaded, decompressing...', 15);
 
     // --- 2. Decompress (if needed) and Parse Snapshot --- 
@@ -273,6 +335,15 @@ functions.cloudEvent('restoreWorker', async (cloudEvent: functions.CloudEvent<Pu
                 return; // Stop processing
             }
             console.log(`[${restoreId}] Determined target parent page ID for restore: ${parentPageIdForRestore}`);
+
+            // Initialize Notion client and queue here, as they are needed for item processing
+            const notionToken = await getUserNotionAccessToken(userId);
+            if (!notionToken) throw new Error(`Could not retrieve Notion token for user ${userId}.`);
+            notion = new Client({ auth: notionToken });
+            if (!notionQueue) {
+                const { default: PQueueConstructor } = await import('p-queue');
+                notionQueue = new PQueueConstructor({ intervalCap: 3, interval: 1000 });
+            }
 
             for (const item of itemsToProcess) {
                 if (!item || typeof item.id !== 'string' || !item.object) {
@@ -625,7 +696,7 @@ functions.cloudEvent('restoreWorker', async (cloudEvent: functions.CloudEvent<Pu
           status: 'success'
         },
       };
-      await db.collection('users').doc(userId).collection('audit').add(auditLogCompleted);
+      await auditLogCol.add(auditLogCompleted);
       console.log(`[${restoreId}] Audit log created for completed restore.`);
     } catch (auditError) {
       console.error(`[${restoreId}] Failed to write audit log for completed restore:`, auditError);
@@ -648,7 +719,7 @@ functions.cloudEvent('restoreWorker', async (cloudEvent: functions.CloudEvent<Pu
           status: 'failed'
         },
       };
-      await db.collection('users').doc(userId).collection('audit').add(auditLogFailed);
+      await auditLogCol.add(auditLogFailed);
       console.log(`[${restoreId}] Audit log created for failed restore.`);
     } catch (auditError) {
       console.error(`[${restoreId}] Failed to write audit log for failed restore:`, auditError);

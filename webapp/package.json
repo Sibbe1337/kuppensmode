@@ -1,0 +1,12 @@
+{
+  "scripts": {
+    "test:web": "playwright test",
+    "dev": "next dev"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.52.0"
+  },
+  "dependencies": {
+    "next": "^15.3.2"
+  }
+}

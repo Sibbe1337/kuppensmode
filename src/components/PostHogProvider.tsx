@@ -7,6 +7,7 @@ import { useAuth, useUser } from '@clerk/nextjs'; // For user identification
 import { useToast } from "@/hooks/use-toast"; // For NPS Toast
 import { Button } from "@/components/ui/button"; // For NPS Toast actions
 import NPSModal from "@/components/modals/NPSModal"; // Import NPSModal
+import { PostHogPageviewTracker } from './PostHogPageviewTracker'; // Import the new component
 
 // Check if PostHog is client-side enabled
 if (typeof window !== 'undefined') {
@@ -106,6 +107,7 @@ function PostHogAuthWrapper({ children }: PostHogProviderProps) {
   return (
     <>
       {children}
+      <PostHogPageviewTracker />
       <NPSModal isOpen={isNPSModalOpen} onOpenChange={setIsNPSModalOpen} />
     </>
   );

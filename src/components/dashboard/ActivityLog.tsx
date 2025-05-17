@@ -117,18 +117,25 @@ const ActivityLog: React.FC<ActivityLogProps> = ({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {displayChanges.length > 0 ? displayChanges.map((change, index) => (
-                  <TableRow key={change.id} className="even:bg-muted/30 dark:even:bg-slate-800/50">
-                    <TableCell className="font-medium">{index + 1}</TableCell>
-                    <TableCell>{change.description}</TableCell>
-                    <TableCell>{formatDate(change.date)}</TableCell>
-                    <TableCell className="text-center">
-                      <Button variant="ghost" size="icon" className="h-8 w-8" asChild>
-                        <Link href={`/snapshots/${change.snapshotId}`}><LinkIcon className="h-4 w-4" /></Link>
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                )) : (
+                {displayChanges.length > 0 ? displayChanges.map((change, index) => {
+                  const isDummySnapshotId = change.snapshotId === 'snap123' || change.snapshotId === 'snap122';
+                  return (
+                    <TableRow key={change.id} className="even:bg-muted/30 dark:even:bg-slate-800/50">
+                      <TableCell className="font-medium">{index + 1}</TableCell>
+                      <TableCell>{change.description}</TableCell>
+                      <TableCell>{formatDate(change.date)}</TableCell>
+                      <TableCell className="text-center">
+                        {isDummySnapshotId ? (
+                          <LinkIcon className="h-4 w-4 text-muted-foreground mx-auto" />
+                        ) : (
+                          <Button variant="ghost" size="icon" className="h-8 w-8" asChild>
+                            <Link href={`/snapshots/${change.snapshotId}`}><LinkIcon className="h-4 w-4" /></Link>
+                          </Button>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                }) : (
                   <TableRow><TableCell colSpan={4} className="h-24 text-center">No recent changes found.</TableCell></TableRow>
                 )}
               </TableBody>

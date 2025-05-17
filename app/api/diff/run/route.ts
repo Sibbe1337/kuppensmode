@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { PubSub } from '@google-cloud/pubsub';
 import { v4 as uuidv4 } from 'uuid'; // Ensure uuid is imported
+import { getDb } from "@/lib/firestore"; // Import getDb
 
 export const runtime = 'nodejs';
 
@@ -70,12 +71,33 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Server configuration error: PubSub not initialized." }, { status: 500 });
   }
 
+  const db = getDb(); // Initialize Firestore client
+
   try {
     const body: DiffRunRequest = await request.json();
     const { snapshotIdFrom, snapshotIdTo } = body;
 
     if (!snapshotIdFrom || !snapshotIdTo) {
       return NextResponse.json({ error: 'Missing snapshotIdFrom or snapshotIdTo' }, { status: 400 });
+    }
+
+    // Validate snapshots exist and are completed
+    const userSnapshotsCol = db.collection('users').doc(userId).collection('snapshots');
+    const fromDocRef = userSnapshotsCol.doc(snapshotIdFrom);
+    const toDocRef = userSnapshotsCol.doc(snapshotIdTo);
+
+    const [fromDocSnap, toDocSnap] = await Promise.all([
+      fromDocRef.get(),
+      toDocRef.get()
+    ]);
+
+    const fromData = fromDocSnap.data();
+    const toData = toDocSnap.data();
+
+    if (!fromDocSnap.exists || fromData?.status !== 'Completed' || 
+        !toDocSnap.exists || toData?.status !== 'Completed') {
+      console.warn(`[API Diff Run] Validation failed for user ${userId}: from (${snapshotIdFrom}, exists: ${fromDocSnap.exists}, status: ${fromData?.status}), to (${snapshotIdTo}, exists: ${toDocSnap.exists}, status: ${toData?.status})`);
+      return NextResponse.json({ error: "Snapshot(s) not found or not completed." }, { status: 404 });
     }
 
     const diffJobId = uuidv4();

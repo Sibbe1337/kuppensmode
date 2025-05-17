@@ -1,137 +1,100 @@
 import { NextResponse, NextRequest } from 'next/server';
-import { auth }         from '@clerk/nextjs/server';
-// import { Firestore }    from '@google-cloud/firestore'; // We'll use our lazy loader
-import { getDb } from '@/lib/firestore'; // Using our lazy loader
+import { auth } from '@clerk/nextjs/server';
+import { getDb } from '@/lib/firestore';
+import { Timestamp } from '@google-cloud/firestore'; // Import Timestamp for type checking if needed
 
-export const dynamic = "force-dynamic"; // Added
-export const runtime = 'nodejs';          // ❗ we need full Node for Firestore
-
-// -- initialise Firestore once per cold-start -- // This global const db is removed, getDb() is used inside handler
-// const db = new Firestore(); 
+export const dynamic = "force-dynamic";
+export const runtime = 'nodejs';
 
 /** GET  /api/analytics/kpis
- *  Returns a handful of high-level numbers for the dashboard.
+ *  Returns global aggregated KPIs for the application.
  *
  *  Response shape:
  *    {
- *      snapshotsTotal:   number,
- *      latestSnapshotAt: number | null   // epoch ms, or Firestore Timestamp
+ *      snapshotsCreated: number,
+ *      storageUsedMB:    number,
+ *      lastDiffsRun:     number, // Or totalDiffsRun depending on desired metric
+ *      // other global KPIs...
  *    }
  */
 export async function GET(_req: NextRequest) {
-  console.log('[KPIs API] Starting request');
+  console.log('[User KPIs API] Starting request');
   
   try {
     const session = await auth();
-    console.log('[KPIs API] Auth session:', { 
-      hasUserId: !!session?.userId,
-      userId: session?.userId 
-    });
-    
     if (!session?.userId) {
-      console.log('[KPIs API] No userId in session, returning 401');
+      console.log('[User KPIs API] No userId in session, returning 401');
       return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
     }
 
     const db = getDb();
-    console.log('[KPIs API] Firestore instance obtained');
-    
-    // 1️⃣ total count ------------------------------------
-    console.log('[KPIs API] Attempting to get snapshot count for user:', session.userId);
-    const snapCol = db.collection('users').doc(session.userId).collection('snapshots');
-    
-    // Fallback to size() if count() fails
-    let snapshotsTotal = 0;
-    try {
-      const countSnap = await snapCol.count().get();
-      snapshotsTotal = countSnap.data().count || 0;
-      console.log('[KPIs API] Successfully got snapshot count:', snapshotsTotal);
-    } catch (countErr) {
-      console.warn('[KPIs API] Count query failed, falling back to size():', countErr);
-      const allDocs = await snapCol.get();
-      snapshotsTotal = allDocs.size;
-      console.log('[KPIs API] Fallback size count:', snapshotsTotal);
+    const userSnapshotsCollectionRef = db.collection('users').doc(session.userId).collection('snapshots');
+
+    // Check if the user's snapshot collection is empty first
+    const initialCheck = await userSnapshotsCollectionRef.limit(1).get();
+    if (initialCheck.empty) {
+      console.log(`[User KPIs API] User ${session.userId} has no snapshots. Returning default KPIs.`);
+      return NextResponse.json({ snapshotsTotal: 0, latestSnapshotAt: null });
     }
 
-    // 2️⃣ timestamp of most-recent snapshot ---------------
-    console.log('[KPIs API] Attempting to get latest snapshot for user:', session.userId);
-    let latestSnapshotAt: number | null = null;
-    
+    // If not empty, proceed to calculate actual totals and latest snapshot
+    let snapshotsTotal = 0;
     try {
-      const latestQuery = await snapCol
-        .where('status', '==', 'Completed')
+      const countSnap = await userSnapshotsCollectionRef.count().get();
+      snapshotsTotal = countSnap.data().count || 0;
+      console.log(`[User KPIs API] Successfully got snapshot count for ${session.userId}: ${snapshotsTotal}`);
+    } catch (countErr) {
+      console.warn(`[User KPIs API] Count query failed for ${session.userId}, falling back to size():`, countErr);
+      const allDocs = await userSnapshotsCollectionRef.get();
+      snapshotsTotal = allDocs.size;
+      console.log(`[User KPIs API] Fallback size count for ${session.userId}: ${snapshotsTotal}`);
+    }
+
+    let latestSnapshotAt: number | null = null;
+    try {
+      const latestQuery = await userSnapshotsCollectionRef
+        .where('status', '==', 'Completed') // Assuming 'Completed' is the status
         .orderBy('timestamp', 'desc')
         .limit(1)
         .get();
-      console.log('[KPIs API] Latest snapshot query completed, empty:', latestQuery.empty);
 
       if (!latestQuery.empty) {
-        const timestampData = latestQuery.docs[0]!.data().timestamp;
-        console.log('[KPIs API] Raw timestamp data:', timestampData);
-        // Firestore Timestamps might be objects { _seconds: ..., _nanoseconds: ... } or actual Timestamp instances
-        // Convert to epoch milliseconds for consistent client-side handling
-        if (timestampData && typeof timestampData.toMillis === 'function') { // Firestore Admin SDK Timestamp
+        const docData = latestQuery.docs[0]!.data();
+        const timestampData = docData.timestamp;
+        if (timestampData instanceof Timestamp) {
             latestSnapshotAt = timestampData.toMillis();
         } else if (timestampData && typeof timestampData === 'object' && timestampData._seconds !== undefined) { // Plain object from some contexts
             latestSnapshotAt = timestampData._seconds * 1000 + (timestampData._nanoseconds / 1000000);
-        } else if (typeof timestampData === 'string') { // ISO string, convert
-            latestSnapshotAt = new Date(timestampData).getTime();
+        } else if (typeof timestampData === 'string') { // ISO string
+            const date = new Date(timestampData);
+            if (!isNaN(date.getTime())) {
+                latestSnapshotAt = date.getTime();
+            }
         } else if (typeof timestampData === 'number') { // Already epoch ms
             latestSnapshotAt = timestampData;
         } 
+        console.log(`[User KPIs API] Latest snapshot for ${session.userId} at: ${latestSnapshotAt}`);
+      } else {
+        console.log(`[User KPIs API] No 'Completed' snapshots found for ${session.userId} to determine latest time.`);
       }
     } catch (queryErr: any) {
-      console.warn('[KPIs API] Latest snapshot query failed, falling back to simple query:', queryErr);
-      // Fallback: Get all completed snapshots and sort in memory
-      const allCompleted = await snapCol
-        .where('status', '==', 'Completed')
-        .get();
-      
-      if (!allCompleted.empty) {
-        const snapshots = allCompleted.docs
-          .map(doc => ({ timestamp: doc.data().timestamp }))
-          .filter(snap => snap.timestamp) // Filter out any without timestamp
-          .sort((a, b) => {
-            const timeA = a.timestamp?.toMillis?.() ?? a.timestamp?._seconds * 1000 ?? 0;
-            const timeB = b.timestamp?.toMillis?.() ?? b.timestamp?._seconds * 1000 ?? 0;
-            return timeB - timeA; // Descending order
-          });
-        
-        if (snapshots.length > 0) {
-          const latest = snapshots[0].timestamp;
-          if (latest?.toMillis) {
-            latestSnapshotAt = latest.toMillis();
-          } else if (latest?._seconds) {
-            latestSnapshotAt = latest._seconds * 1000 + (latest._nanoseconds / 1000000);
-          }
-        }
-      }
+      console.warn(`[User KPIs API] Query for latest snapshot failed for ${session.userId}:`, queryErr.message);
+      // In case of error, latestSnapshotAt remains null, which is the desired default
     }
 
     return NextResponse.json({ snapshotsTotal, latestSnapshotAt });
+
   } catch (err: any) {
-    console.error('[KPIs API] Error details:', {
+    console.error('[User KPIs API] General error:', {
       name: err.name,
       message: err.message,
-      stack: err.stack,
       code: err.code,
       details: err.details
     });
-    
-    // More specific error messages based on common issues
-    let errorMessage = 'Internal server error';
-    if (err.code === 'permission-denied') {
-      errorMessage = 'Firestore permission denied - check service account permissions';
-    } else if (err.code === 'unauthenticated') {
-      errorMessage = 'Firestore authentication failed - check service account key';
-    } else if (err.message?.includes('JSON')) {
-      errorMessage = 'Invalid service account key format';
-    }
-
     return NextResponse.json(
       { 
-        error: 'kpi_failed', 
-        message: errorMessage,
+        error: 'kpi_fetch_failed', 
+        message: 'Internal server error while fetching user KPIs',
         details: process.env.NODE_ENV === 'development' ? err.message : undefined
       },
       { status: 500 }

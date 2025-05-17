@@ -1,4 +1,4 @@
-import { app, Tray, Menu, nativeImage, NativeImage, ipcMain } from 'electron';
+import { app, Tray, Menu, nativeImage, NativeImage, ipcMain, Notification } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import * as authService from './auth';
@@ -102,21 +102,17 @@ export async function updateTrayMenu() {
     if (accessToken) {
         menuTemplate = [
             { 
-              label: 'Restore Latest Good Snapshot', 
-              click: () => {
-                console.log('[TrayManager] Restore Latest Good Snapshot clicked. Invoking IPC handler...');
-                ipcMain.emit('trigger-restore-latest-good'); // Emit an event for main to pick up, or directly invoke if a handler is exposed differently
-                // OR, if main.ts exposes a function to directly call the IPC handler logic:
-                // This assumes main.ts has a function like: export async function triggerRestoreLatestGood() { return ipcMain.handle('restore-latest-good'); }
-                // For simplicity with existing ipcHandlers, a direct invoke or an event for main.ts to call the handler is better.
-                // Let's assume ipcHandlers directly handles 'restore-latest-good' and we can invoke it.
-                // This needs main to expose its ipcMain.handle as callable, or use a new dedicated function.
-                // Simpler: main.ts will expose a function that then calls the IPC handler's logic.
-                // For now, let's assume an event that main.ts listens for, or a direct call to a main process function.
-                // The actual IPC invoke will be done by a function in main.ts that this click handler calls.
-                // So, we need to change what is passed to initTray for this item.
-                // Let's have initTray take a specific callback for this.
-                 _triggerRestoreLatestGood(); // This function will be passed in via initTray
+              label: 'Restore Latest Good Snapshot',
+              click: async () => {
+                try {
+                  console.log('[TrayManager] Restore Latest Good Snapshot clicked. Invoking IPC handler...');
+                  ipcMain.emit('trigger-restore-latest-good');
+                  await _triggerRestoreLatestGood();
+                  new Notification({ title: 'Restore Initiated', body: 'Restore of latest good snapshot started.' }).show();
+                } catch (err: any) {
+                  console.error('[TrayManager] Error restoring latest good snapshot:', err);
+                  new Notification({ title: 'Restore Failed', body: err?.message || 'Failed to start restore.' }).show();
+                }
               }
             }, 
             { label: 'Show Main Window', click: windowManager.ensureMainWindowVisibleAndFocused },

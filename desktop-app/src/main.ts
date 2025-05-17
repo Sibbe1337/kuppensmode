@@ -237,3 +237,11 @@ app.on('window-all-closed', () => {
     // app.quit(); // Keep commented to ensure tray app stays running
   }
 });
+
+// Add robust error logging for uncaught exceptions and unhandled rejections
+process.on('uncaughtException', (err) => {
+  console.error('[Main Process] Uncaught Exception:', err);
+});
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[Main Process] Unhandled Rejection at:', promise, 'reason:', reason);
+});

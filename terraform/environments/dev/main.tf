@@ -249,6 +249,13 @@ output "worker_sa_name" {
   value       = google_service_account.worker_sa.name // projects/{project}/serviceAccounts/{email}
 }
 
+# Grant the worker SA permission to access Firestore
+resource "google_project_iam_member" "worker_sa_firestore_user" {
+  project = var.gcp_project_id
+  role    = "roles/datastore.user"
+  member  = "serviceAccount:${google_service_account.worker_sa.email}"
+}
+
 // --- Secret IAM Bindings ---
 
 resource "google_secret_manager_secret_iam_member" "notion_api_key_dev_accessor" {

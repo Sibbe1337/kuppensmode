@@ -1,12 +1,20 @@
 {
   "compilerOptions": {
-    "target": "ES2020",
-    "module": "ESNext",
-    "moduleResolution": "node",
-    "esModuleInterop": true,
+    "module": "commonjs",
+    "target": "es2020",
+    "outDir": "lib",
     "strict": true,
+    "esModuleInterop": true,
     "skipLibCheck": true,
-    "outDir": "dist"
+    "forceConsistentCasingInFileNames": true,
+    "sourceMap": true,
+    "baseUrl": "."
   },
-  "include": ["index.ts"]
+  "include": [
+    "index.ts", 
+    "*.Adapter.ts",
+    "types/**/*.ts",
+    "storage/**/*.ts"
+  ],
+  "exclude": ["node_modules", "lib"]
 } 

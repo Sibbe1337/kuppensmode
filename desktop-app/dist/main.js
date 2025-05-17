@@ -14001,19 +14001,21 @@ function requireSupportsColor() {
   const tty = require$$1$3;
   const hasFlag2 = requireHasFlag();
   const { env } = process;
-  let forceColor;
+  let flagForceColor;
   if (hasFlag2("no-color") || hasFlag2("no-colors") || hasFlag2("color=false") || hasFlag2("color=never")) {
-    forceColor = 0;
+    flagForceColor = 0;
   } else if (hasFlag2("color") || hasFlag2("colors") || hasFlag2("color=true") || hasFlag2("color=always")) {
-    forceColor = 1;
+    flagForceColor = 1;
   }
-  if ("FORCE_COLOR" in env) {
-    if (env.FORCE_COLOR === "true") {
-      forceColor = 1;
-    } else if (env.FORCE_COLOR === "false") {
-      forceColor = 0;
-    } else {
-      forceColor = env.FORCE_COLOR.length === 0 ? 1 : Math.min(parseInt(env.FORCE_COLOR, 10), 3);
+  function envForceColor() {
+    if ("FORCE_COLOR" in env) {
+      if (env.FORCE_COLOR === "true") {
+        return 1;
+      }
+      if (env.FORCE_COLOR === "false") {
+        return 0;
+      }
+      return env.FORCE_COLOR.length === 0 ? 1 : Math.min(Number.parseInt(env.FORCE_COLOR, 10), 3);
     }
   }
   function translateLevel(level) {
@@ -14027,15 +14029,22 @@ function requireSupportsColor() {
       has16m: level >= 3
     };
   }
-  function supportsColor(haveStream, streamIsTTY) {
+  function supportsColor(haveStream, { streamIsTTY, sniffFlags = true } = {}) {
+    const noFlagForceColor = envForceColor();
+    if (noFlagForceColor !== void 0) {
+      flagForceColor = noFlagForceColor;
+    }
+    const forceColor = sniffFlags ? flagForceColor : noFlagForceColor;
     if (forceColor === 0) {
       return 0;
     }
-    if (hasFlag2("color=16m") || hasFlag2("color=full") || hasFlag2("color=truecolor")) {
-      return 3;
-    }
-    if (hasFlag2("color=256")) {
-      return 2;
+    if (sniffFlags) {
+      if (hasFlag2("color=16m") || hasFlag2("color=full") || hasFlag2("color=truecolor")) {
+        return 3;
+      }
+      if (hasFlag2("color=256")) {
+        return 2;
+      }
     }
     if (haveStream && !streamIsTTY && forceColor === void 0) {
       return 0;
@@ -14052,7 +14061,7 @@ function requireSupportsColor() {
       return 1;
     }
     if ("CI" in env) {
-      if (["TRAVIS", "CIRCLECI", "APPVEYOR", "GITLAB_CI", "GITHUB_ACTIONS", "BUILDKITE"].some((sign3) => sign3 in env) || env.CI_NAME === "codeship") {
+      if (["TRAVIS", "CIRCLECI", "APPVEYOR", "GITLAB_CI", "GITHUB_ACTIONS", "BUILDKITE", "DRONE"].some((sign3) => sign3 in env) || env.CI_NAME === "codeship") {
         return 1;
       }
       return min2;
@@ -14064,7 +14073,7 @@ function requireSupportsColor() {
       return 3;
     }
     if ("TERM_PROGRAM" in env) {
-      const version = parseInt((env.TERM_PROGRAM_VERSION || "").split(".")[0], 10);
+      const version = Number.parseInt((env.TERM_PROGRAM_VERSION || "").split(".")[0], 10);
       switch (env.TERM_PROGRAM) {
         case "iTerm.app":
           return version >= 3 ? 3 : 2;
@@ -14083,14 +14092,17 @@ function requireSupportsColor() {
     }
     return min2;
   }
-  function getSupportLevel(stream2) {
-    const level = supportsColor(stream2, stream2 && stream2.isTTY);
+  function getSupportLevel(stream2, options = {}) {
+    const level = supportsColor(stream2, {
+      streamIsTTY: stream2 && stream2.isTTY,
+      ...options
+    });
     return translateLevel(level);
   }
   supportsColor_1 = {
     supportsColor: getSupportLevel,
-    stdout: translateLevel(supportsColor(true, tty.isatty(1))),
-    stderr: translateLevel(supportsColor(true, tty.isatty(2)))
+    stdout: getSupportLevel({ isTTY: tty.isatty(1) }),
+    stderr: getSupportLevel({ isTTY: tty.isatty(2) })
   };
   return supportsColor_1;
 }
@@ -14270,17 +14282,22 @@ function requireNode$1() {
   })(node$1, node$1.exports);
   return node$1.exports;
 }
-if (typeof process === "undefined" || process.type === "renderer" || process.browser === true || process.__nwjs) {
-  src$2.exports = requireBrowser();
-} else {
-  src$2.exports = requireNode$1();
+var hasRequiredSrc;
+function requireSrc() {
+  if (hasRequiredSrc) return src$2.exports;
+  hasRequiredSrc = 1;
+  if (typeof process === "undefined" || process.type === "renderer" || process.browser === true || process.__nwjs) {
+    src$2.exports = requireBrowser();
+  } else {
+    src$2.exports = requireNode$1();
+  }
+  return src$2.exports;
 }
-var srcExports$1 = src$2.exports;
 var debug$5;
 var debug_1$2 = function() {
   if (!debug$5) {
     try {
-      debug$5 = srcExports$1("follow-redirects");
+      debug$5 = requireSrc()("follow-redirects");
     } catch (error2) {
     }
     if (typeof debug$5 !== "function") {
@@ -16855,6 +16872,9 @@ async function clearStoredTokens() {
     throw error2;
   }
 }
+async function _placeholderHandleSignOut() {
+  console.warn("_placeholderHandleSignOut called. Implement proper sign out from auth module or pass dependencies.");
+}
 async function attemptTokenRefresh(_handleSignOutUICallback) {
   if (isRefreshingToken) {
     console.log("[AuthService] Token refresh already in progress. Waiting...");
@@ -16909,7 +16929,10 @@ async function attemptTokenRefresh(_handleSignOutUICallback) {
     return null;
   }
 }
-async function getStoredAccessToken(_handleSignOutUICallback) {
+async function getStoredAccessToken(handleSignOut2) {
+  if (process.env.E2E_BYPASS_AUTH === "1") {
+    return "e2e-test-token";
+  }
   let tokenObject = await getStoredTokenObject();
   if (tokenObject && tokenObject.accessToken) {
     const nowInSeconds = Date.now() / 1e3;
@@ -16917,7 +16940,7 @@ async function getStoredAccessToken(_handleSignOutUICallback) {
     const bufferSeconds = 60;
     if (tokenExpiryTime - bufferSeconds < nowInSeconds) {
       console.log("[AuthService] Access token expired or nearing expiry. Attempting refresh.");
-      const newAccessToken = await attemptTokenRefresh(_handleSignOutUICallback);
+      const newAccessToken = await attemptTokenRefresh(handleSignOut2 || _placeholderHandleSignOut);
       if (newAccessToken) {
         return newAccessToken;
       } else {
@@ -17033,10 +17056,16 @@ async function updateTrayMenu() {
     menuTemplate = [
       {
         label: "Restore Latest Good Snapshot",
-        click: () => {
-          console.log("[TrayManager] Restore Latest Good Snapshot clicked. Invoking IPC handler...");
-          require$$1$5.ipcMain.emit("trigger-restore-latest-good");
-          _triggerRestoreLatestGood();
+        click: async () => {
+          try {
+            console.log("[TrayManager] Restore Latest Good Snapshot clicked. Invoking IPC handler...");
+            require$$1$5.ipcMain.emit("trigger-restore-latest-good");
+            await _triggerRestoreLatestGood();
+            new require$$1$5.Notification({ title: "Restore Initiated", body: "Restore of latest good snapshot started." }).show();
+          } catch (err) {
+            console.error("[TrayManager] Error restoring latest good snapshot:", err);
+            new require$$1$5.Notification({ title: "Restore Failed", body: (err == null ? void 0 : err.message) || "Failed to start restore." }).show();
+          }
         }
       },
       { label: "Show Main Window", click: ensureMainWindowVisibleAndFocused },
@@ -20704,7 +20733,7 @@ httpExecutor.safeGetHeader = safeGetHeader;
 httpExecutor.configureRequestOptions = configureRequestOptions;
 httpExecutor.safeStringifyJson = safeStringifyJson;
 const crypto_1$4 = require$$0$2;
-const debug_1$1 = srcExports$1;
+const debug_1$1 = requireSrc();
 const fs_1$5 = require$$1$2;
 const stream_1$2 = stream;
 const url_1$5 = require$$0$1;
@@ -33967,5 +33996,11 @@ require$$1$5.app.whenReady().then(async () => {
 });
 require$$1$5.app.on("window-all-closed", () => {
   if (process.platform !== "darwin") ;
+});
+process.on("uncaughtException", (err) => {
+  console.error("[Main Process] Uncaught Exception:", err);
+});
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("[Main Process] Unhandled Rejection at:", promise, "reason:", reason);
 });
 //# sourceMappingURL=main.js.map

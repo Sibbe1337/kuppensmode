@@ -1,0 +1,84 @@
+name: Electron Desktop App Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [macos-latest, windows-latest]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 8
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Decode macOS certificate (if macos)
+        if: matrix.os == 'macos-latest'
+        run: |
+          echo "$CSC_LINK" | base64 --decode > mac_cert.p12
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+
+      - name: Decode Windows certificate (if windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          echo $env:WINDOWS_CERTIFICATE | Out-File -FilePath win_cert.pfx -Encoding Byte
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+
+      - name: Build Electron app
+        run: pnpm run dist
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: electron-app-${{ matrix.os }}
+          path: |
+            release/build/*.dmg
+            release/build/*.exe
+            release/build/*.AppImage
+            release/build/*.zip
+            release/build/*.blockmap
+            release/build/latest*.yml
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Create GitHub Release and Upload Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: false
+          prerelease: false
+          files: |
+            artifacts/electron-app-macos-latest/*
+            artifacts/electron-app-windows-latest/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 

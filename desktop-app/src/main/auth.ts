@@ -144,29 +144,31 @@ export async function attemptTokenRefresh(
   }
 }
 
-export async function getStoredAccessToken(
-    _handleSignOutUICallback: () => Promise<void>
-    ): Promise<string | null> {
-    let tokenObject = await getStoredTokenObject();
+export async function getStoredAccessToken(handleSignOut?: () => Promise<void>): Promise<string | null> {
+  if (process.env.E2E_BYPASS_AUTH === '1') {
+    // Return a mock token for E2E tests
+    return 'e2e-test-token';
+  }
+  let tokenObject = await getStoredTokenObject();
 
-    if (tokenObject && tokenObject.accessToken) {
-        const nowInSeconds = Date.now() / 1000;
-        const tokenExpiryTime = (tokenObject.obtainedAt / 1000) + tokenObject.expiresIn;
-        const bufferSeconds = 60; 
+  if (tokenObject && tokenObject.accessToken) {
+    const nowInSeconds = Date.now() / 1000;
+    const tokenExpiryTime = (tokenObject.obtainedAt / 1000) + tokenObject.expiresIn;
+    const bufferSeconds = 60; 
 
-        if (tokenExpiryTime - bufferSeconds < nowInSeconds) {
-            console.log('[AuthService] Access token expired or nearing expiry. Attempting refresh.');
-            const newAccessToken = await attemptTokenRefresh(_handleSignOutUICallback);
-            if (newAccessToken) {
-                return newAccessToken;
-            } else {
-                console.log('[AuthService] Token refresh failed, user is effectively signed out.');
-                return null; 
-            }
-        }
-        return tokenObject.accessToken;
+    if (tokenExpiryTime - bufferSeconds < nowInSeconds) {
+      console.log('[AuthService] Access token expired or nearing expiry. Attempting refresh.');
+      const newAccessToken = await attemptTokenRefresh(handleSignOut || _placeholderHandleSignOut);
+      if (newAccessToken) {
+        return newAccessToken;
+      } else {
+        console.log('[AuthService] Token refresh failed, user is effectively signed out.');
+        return null; 
+      }
     }
-    return null;
+    return tokenObject.accessToken;
+  }
+  return null;
 }
 
 export async function exchangeCodeForTokensAndStore(
@@ -207,6 +209,14 @@ export async function exchangeCodeForTokensAndStore(
     }
     return { success: false, error: errorMessage, userId: null, newAccessToken: null };
   }
+}
+
+export async function getAuthStatus(): Promise<{ isAuthenticated: boolean; userId?: string | null }> {
+  if (process.env.E2E_BYPASS_AUTH === '1') {
+    return { isAuthenticated: true, userId: 'e2e-test-user' };
+  }
+  // ... existing code ...
+  return { isAuthenticated: false, userId: null };
 }
 
 // handleSignOut and handleOAuthCallback are more complex due to their dependencies

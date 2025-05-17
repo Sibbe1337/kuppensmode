@@ -267,7 +267,6 @@ function AppContent() {
   };
 
   const handlePanicRestore = async () => {
-    console.log('[AppContent] Panic Restore button clicked. Calling restoreLatestGood.');
     setStatus({ message: 'Initiating restore of latest good snapshot...', type: 'info' });
     setRestoreProgress(null); // Clear previous progress
     setRestoredPageUrl(null); // Clear previous URL
@@ -276,19 +275,17 @@ function AppContent() {
       const result = await window.electronAPI?.restoreLatestGood?.();
       console.log('[AppContent] restoreLatestGood call result:', result);
       if (result?.success) {
-        // Initial status update, SSE will provide more details
-        // setStatus({ message: result.message || 'Latest good restore initiated!', type: 'info' }); 
+        setStatus({ message: result.message || 'Latest good restore initiated!', type: 'success' });
         // No need to set isLoading(false) here if SSE will take over
       } else {
         setStatus({ message: result?.message || 'Failed to start latest good restore.', type: 'error' });
-        setIsLoading(false); 
+        setIsLoading(false);
       }
     } catch (error: any) {
       console.error('[AppContent] Error invoking restoreLatestGood:', error);
-      setStatus({ message: error.message || 'Error trying to restore latest good snapshot.', type: 'error' });
-      setIsLoading(false); 
+      setStatus({ message: error?.message || 'Error trying to restore latest good snapshot.', type: 'error' });
+      setIsLoading(false);
     }
-    // setIsLoading(false); // Moved into success/error blocks of the try/catch or handled by SSE completion
   };
 
   const handleDownloadUpdate = () => {

@@ -1,19 +1,27 @@
 {
   "name": "reconciler-worker",
-  "version": "0.1.0",
-  "main": "index.js",
-  "type": "module",
+  "version": "0.0.1",
+  "private": true,
+  "main": "lib/index.js",
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
-    "start": "npx ts-node index.ts"
+    "build": "tsc",
+    "start": "node lib/index.js",
+    "deploy": "gcloud functions deploy reconcilerWorker --gen2 --runtime nodejs20 --region YOUR_REGION --source . --entry-point reconcilerWorker --trigger-topic notion-lifeline-reconcile-trigger --project YOUR_PROJECT_ID"
   },
   "dependencies": {
     "@google-cloud/firestore": "^7.11.0",
+    "@google-cloud/functions-framework": "^3.3.0",
+    "@google-cloud/kms": "^5.0.1",
+    "@google-cloud/pubsub": "^4.5.0",
     "@google-cloud/storage": "^7.16.0",
     "@aws-sdk/client-s3": "^3.806.0",
-    "p-queue": "^7.3.4"
+    "@aws-sdk/lib-storage": "^3.806.0"
   },
   "devDependencies": {
     "typescript": "^5.0.0",
-    "ts-node": "^10.9.2"
+    "@types/node": "^20.0.0"
   }
 } 

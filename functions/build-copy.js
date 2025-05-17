@@ -20,7 +20,7 @@ try {
 
   const packageJsonString = JSON.stringify(packageJson, null, 2);
 
-  for (const dir of ['dist-snapshot', 'dist-restore', 'dist-stripe-webhook']) {
+  for (const dir of ['dist-snapshot', 'dist-restore', 'dist-stripe-webhook', 'dist-daily-stats', 'dist-add-test-user']) {
     const distDir = path.resolve(__dirname, dir);
     const destPackageJsonPath = path.resolve(distDir, 'package.json');
 

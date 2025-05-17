@@ -510,7 +510,7 @@ var require_lib = __commonJS({
       if (!typeOpts.unsigned) {
         --bitLength;
       }
-      const lowerBound = typeOpts.unsigned ? 0 : -Math.pow(2, bitLength);
+      const lowerBound2 = typeOpts.unsigned ? 0 : -Math.pow(2, bitLength);
       const upperBound = Math.pow(2, bitLength) - 1;
       const moduloVal = typeOpts.moduloBitLength ? Math.pow(2, typeOpts.moduloBitLength) : Math.pow(2, bitLength);
       const moduloBound = typeOpts.moduloBitLength ? Math.pow(2, typeOpts.moduloBitLength - 1) : Math.pow(2, bitLength - 1);
@@ -522,14 +522,14 @@ var require_lib = __commonJS({
             throw new TypeError("Argument is not a finite number");
           }
           x2 = sign(x2) * Math.floor(Math.abs(x2));
-          if (x2 < lowerBound || x2 > upperBound) {
+          if (x2 < lowerBound2 || x2 > upperBound) {
             throw new TypeError("Argument is not in byte range");
           }
           return x2;
         }
         if (!isNaN(x2) && opts.clamp) {
           x2 = evenRound(x2);
-          if (x2 < lowerBound) x2 = lowerBound;
+          if (x2 < lowerBound2) x2 = lowerBound2;
           if (x2 > upperBound) x2 = upperBound;
           return x2;
         }
@@ -2272,7 +2272,7 @@ var require_lib2 = __commonJS({
     var Url = _interopDefault(require("url"));
     var whatwgUrl = _interopDefault(require_public_api());
     var https = _interopDefault(require("https"));
-    var zlib2 = _interopDefault(require("zlib"));
+    var zlib = _interopDefault(require("zlib"));
     var Readable2 = Stream2.Readable;
     var BUFFER = Symbol("buffer");
     var TYPE = Symbol("type");
@@ -3232,15 +3232,15 @@ var require_lib2 = __commonJS({
         agent
       });
     }
-    function AbortError(message) {
+    function AbortError2(message) {
       Error.call(this, message);
       this.type = "aborted";
       this.message = message;
       Error.captureStackTrace(this, this.constructor);
     }
-    AbortError.prototype = Object.create(Error.prototype);
-    AbortError.prototype.constructor = AbortError;
-    AbortError.prototype.name = "AbortError";
+    AbortError2.prototype = Object.create(Error.prototype);
+    AbortError2.prototype.constructor = AbortError2;
+    AbortError2.prototype.name = "AbortError";
     var URL$1 = Url.URL || whatwgUrl.URL;
     var PassThrough$1 = Stream2.PassThrough;
     var isDomainOrSubdomain = function isDomainOrSubdomain2(destination, original) {
@@ -3265,7 +3265,7 @@ var require_lib2 = __commonJS({
         const signal = request.signal;
         let response = null;
         const abort = function abort2() {
-          let error = new AbortError("The user aborted a request.");
+          let error = new AbortError2("The user aborted a request.");
           reject(error);
           if (request.body && request.body instanceof Stream2.Readable) {
             destroyStream(request.body, error);
@@ -3416,11 +3416,11 @@ var require_lib2 = __commonJS({
             return;
           }
           const zlibOptions = {
-            flush: zlib2.Z_SYNC_FLUSH,
-            finishFlush: zlib2.Z_SYNC_FLUSH
+            flush: zlib.Z_SYNC_FLUSH,
+            finishFlush: zlib.Z_SYNC_FLUSH
           };
           if (codings == "gzip" || codings == "x-gzip") {
-            body = body.pipe(zlib2.createGunzip(zlibOptions));
+            body = body.pipe(zlib.createGunzip(zlibOptions));
             response = new Response3(body, response_options);
             resolve(response);
             return;
@@ -3429,9 +3429,9 @@ var require_lib2 = __commonJS({
             const raw = res.pipe(new PassThrough$1());
             raw.once("data", function(chunk) {
               if ((chunk[0] & 15) === 8) {
-                body = body.pipe(zlib2.createInflate());
+                body = body.pipe(zlib.createInflate());
               } else {
-                body = body.pipe(zlib2.createInflateRaw());
+                body = body.pipe(zlib.createInflateRaw());
               }
               response = new Response3(body, response_options);
               resolve(response);
@@ -3444,8 +3444,8 @@ var require_lib2 = __commonJS({
             });
             return;
           }
-          if (codings == "br" && typeof zlib2.createBrotliDecompress === "function") {
-            body = body.pipe(zlib2.createBrotliDecompress());
+          if (codings == "br" && typeof zlib.createBrotliDecompress === "function") {
+            body = body.pipe(zlib.createBrotliDecompress());
             response = new Response3(body, response_options);
             resolve(response);
             return;
@@ -3494,7 +3494,7 @@ var require_lib2 = __commonJS({
     exports2.Request = Request3;
     exports2.Response = Response3;
     exports2.FetchError = FetchError;
-    exports2.AbortError = AbortError;
+    exports2.AbortError = AbortError2;
   }
 });
 
@@ -7887,7 +7887,7 @@ var require_p_retry = __commonJS({
       "Network request failed"
       // `cross-fetch`
     ];
-    var AbortError = class extends Error {
+    var AbortError2 = class extends Error {
       constructor(message) {
         super();
         if (message instanceof Error) {
@@ -7924,7 +7924,7 @@ var require_p_retry = __commonJS({
             reject(new TypeError(`Non-error was thrown: "${error}". You should only throw errors.`));
             return;
           }
-          if (error instanceof AbortError) {
+          if (error instanceof AbortError2) {
             operation.stop();
             reject(error.originalError);
           } else if (error instanceof TypeError && !isNetworkError(error.message)) {
@@ -7947,7 +7947,7 @@ var require_p_retry = __commonJS({
     });
     module2.exports = pRetry4;
     module2.exports.default = pRetry4;
-    module2.exports.AbortError = AbortError;
+    module2.exports.AbortError = AbortError2;
   }
 });
 
@@ -7982,11 +7982,11 @@ var require_eventemitter3 = __commonJS({
       if (--emitter._eventsCount === 0) emitter._events = new Events();
       else delete emitter._events[evt];
     }
-    function EventEmitter() {
+    function EventEmitter2() {
       this._events = new Events();
       this._eventsCount = 0;
     }
-    EventEmitter.prototype.eventNames = function eventNames() {
+    EventEmitter2.prototype.eventNames = function eventNames() {
       var names = [], events, name;
       if (this._eventsCount === 0) return names;
       for (name in events = this._events) {
@@ -7997,7 +7997,7 @@ var require_eventemitter3 = __commonJS({
       }
       return names;
     };
-    EventEmitter.prototype.listeners = function listeners(event) {
+    EventEmitter2.prototype.listeners = function listeners(event) {
       var evt = prefix ? prefix + event : event, handlers = this._events[evt];
       if (!handlers) return [];
       if (handlers.fn) return [handlers.fn];
@@ -8006,13 +8006,13 @@ var require_eventemitter3 = __commonJS({
       }
       return ee2;
     };
-    EventEmitter.prototype.listenerCount = function listenerCount(event) {
+    EventEmitter2.prototype.listenerCount = function listenerCount(event) {
       var evt = prefix ? prefix + event : event, listeners = this._events[evt];
       if (!listeners) return 0;
       if (listeners.fn) return 1;
       return listeners.length;
     };
-    EventEmitter.prototype.emit = function emit(event, a1, a2, a3, a4, a5) {
+    EventEmitter2.prototype.emit = function emit(event, a1, a2, a3, a4, a5) {
       var evt = prefix ? prefix + event : event;
       if (!this._events[evt]) return false;
       var listeners = this._events[evt], len = arguments.length, args, i2;
@@ -8063,13 +8063,13 @@ var require_eventemitter3 = __commonJS({
       }
       return true;
     };
-    EventEmitter.prototype.on = function on(event, fn, context) {
+    EventEmitter2.prototype.on = function on(event, fn, context) {
       return addListener(this, event, fn, context, false);
     };
-    EventEmitter.prototype.once = function once(event, fn, context) {
+    EventEmitter2.prototype.once = function once(event, fn, context) {
       return addListener(this, event, fn, context, true);
     };
-    EventEmitter.prototype.removeListener = function removeListener(event, fn, context, once) {
+    EventEmitter2.prototype.removeListener = function removeListener(event, fn, context, once) {
       var evt = prefix ? prefix + event : event;
       if (!this._events[evt]) return this;
       if (!fn) {
@@ -8092,7 +8092,7 @@ var require_eventemitter3 = __commonJS({
       }
       return this;
     };
-    EventEmitter.prototype.removeAllListeners = function removeAllListeners(event) {
+    EventEmitter2.prototype.removeAllListeners = function removeAllListeners(event) {
       var evt;
       if (event) {
         evt = prefix ? prefix + event : event;
@@ -8103,12 +8103,12 @@ var require_eventemitter3 = __commonJS({
       }
       return this;
     };
-    EventEmitter.prototype.off = EventEmitter.prototype.removeListener;
-    EventEmitter.prototype.addListener = EventEmitter.prototype.on;
-    EventEmitter.prefixed = prefix;
-    EventEmitter.EventEmitter = EventEmitter;
+    EventEmitter2.prototype.off = EventEmitter2.prototype.removeListener;
+    EventEmitter2.prototype.addListener = EventEmitter2.prototype.on;
+    EventEmitter2.prefixed = prefix;
+    EventEmitter2.EventEmitter = EventEmitter2;
     if ("undefined" !== typeof module2) {
-      module2.exports = EventEmitter;
+      module2.exports = EventEmitter2;
     }
   }
 });
@@ -8139,13 +8139,13 @@ var require_p_timeout = __commonJS({
   "node_modules/langsmith/node_modules/p-timeout/index.js"(exports2, module2) {
     "use strict";
     var pFinally = require_p_finally();
-    var TimeoutError = class extends Error {
+    var TimeoutError2 = class extends Error {
       constructor(message) {
         super(message);
         this.name = "TimeoutError";
       }
     };
-    var pTimeout = (promise, milliseconds, fallback) => new Promise((resolve, reject) => {
+    var pTimeout2 = (promise, milliseconds, fallback) => new Promise((resolve, reject) => {
       if (typeof milliseconds !== "number" || milliseconds < 0) {
         throw new TypeError("Expected `milliseconds` to be a positive number");
       }
@@ -8163,7 +8163,7 @@ var require_p_timeout = __commonJS({
           return;
         }
         const message = typeof fallback === "string" ? fallback : `Promise timed out after ${milliseconds} milliseconds`;
-        const timeoutError = fallback instanceof Error ? fallback : new TimeoutError(message);
+        const timeoutError = fallback instanceof Error ? fallback : new TimeoutError2(message);
         if (typeof promise.cancel === "function") {
           promise.cancel();
         }
@@ -8177,9 +8177,9 @@ var require_p_timeout = __commonJS({
         }
       );
     });
-    module2.exports = pTimeout;
-    module2.exports.default = pTimeout;
-    module2.exports.TimeoutError = TimeoutError;
+    module2.exports = pTimeout2;
+    module2.exports.default = pTimeout2;
+    module2.exports.TimeoutError = TimeoutError2;
   }
 });
 
@@ -8188,7 +8188,7 @@ var require_lower_bound = __commonJS({
   "node_modules/langsmith/node_modules/p-queue/dist/lower-bound.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
-    function lowerBound(array, value, comparator) {
+    function lowerBound2(array, value, comparator) {
       let first = 0;
       let count = array.length;
       while (count > 0) {
@@ -8203,7 +8203,7 @@ var require_lower_bound = __commonJS({
       }
       return first;
     }
-    exports2.default = lowerBound;
+    exports2.default = lowerBound2;
   }
 });
 
@@ -8213,7 +8213,7 @@ var require_priority_queue = __commonJS({
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var lower_bound_1 = require_lower_bound();
-    var PriorityQueue = class {
+    var PriorityQueue2 = class {
       constructor() {
         this._queue = [];
       }
@@ -8241,7 +8241,7 @@ var require_priority_queue = __commonJS({
         return this._queue.length;
       }
     };
-    exports2.default = PriorityQueue;
+    exports2.default = PriorityQueue2;
   }
 });
 
@@ -8250,13 +8250,13 @@ var require_dist = __commonJS({
   "node_modules/langsmith/node_modules/p-queue/dist/index.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
-    var EventEmitter = require_eventemitter3();
+    var EventEmitter2 = require_eventemitter3();
     var p_timeout_1 = require_p_timeout();
     var priority_queue_1 = require_priority_queue();
     var empty = () => {
     };
     var timeoutError = new p_timeout_1.TimeoutError();
-    var PQueue = class extends EventEmitter {
+    var PQueue2 = class extends EventEmitter2 {
       constructor(options) {
         var _a2, _b, _c, _d;
         super();
@@ -8512,7 +8512,7 @@ var require_dist = __commonJS({
         this._timeout = milliseconds;
       }
     };
-    exports2.default = PQueue;
+    exports2.default = PQueue2;
   }
 });
 
@@ -10549,11 +10549,11 @@ var require_eventemitter32 = __commonJS({
       if (--emitter._eventsCount === 0) emitter._events = new Events();
       else delete emitter._events[evt];
     }
-    function EventEmitter() {
+    function EventEmitter2() {
       this._events = new Events();
       this._eventsCount = 0;
     }
-    EventEmitter.prototype.eventNames = function eventNames() {
+    EventEmitter2.prototype.eventNames = function eventNames() {
       var names = [], events, name;
       if (this._eventsCount === 0) return names;
       for (name in events = this._events) {
@@ -10564,7 +10564,7 @@ var require_eventemitter32 = __commonJS({
       }
       return names;
     };
-    EventEmitter.prototype.listeners = function listeners(event) {
+    EventEmitter2.prototype.listeners = function listeners(event) {
       var evt = prefix ? prefix + event : event, handlers = this._events[evt];
       if (!handlers) return [];
       if (handlers.fn) return [handlers.fn];
@@ -10573,13 +10573,13 @@ var require_eventemitter32 = __commonJS({
       }
       return ee2;
     };
-    EventEmitter.prototype.listenerCount = function listenerCount(event) {
+    EventEmitter2.prototype.listenerCount = function listenerCount(event) {
       var evt = prefix ? prefix + event : event, listeners = this._events[evt];
       if (!listeners) return 0;
       if (listeners.fn) return 1;
       return listeners.length;
     };
-    EventEmitter.prototype.emit = function emit(event, a1, a2, a3, a4, a5) {
+    EventEmitter2.prototype.emit = function emit(event, a1, a2, a3, a4, a5) {
       var evt = prefix ? prefix + event : event;
       if (!this._events[evt]) return false;
       var listeners = this._events[evt], len = arguments.length, args, i2;
@@ -10630,13 +10630,13 @@ var require_eventemitter32 = __commonJS({
       }
       return true;
     };
-    EventEmitter.prototype.on = function on(event, fn, context) {
+    EventEmitter2.prototype.on = function on(event, fn, context) {
       return addListener(this, event, fn, context, false);
     };
-    EventEmitter.prototype.once = function once(event, fn, context) {
+    EventEmitter2.prototype.once = function once(event, fn, context) {
       return addListener(this, event, fn, context, true);
     };
-    EventEmitter.prototype.removeListener = function removeListener(event, fn, context, once) {
+    EventEmitter2.prototype.removeListener = function removeListener(event, fn, context, once) {
       var evt = prefix ? prefix + event : event;
       if (!this._events[evt]) return this;
       if (!fn) {
@@ -10659,7 +10659,7 @@ var require_eventemitter32 = __commonJS({
       }
       return this;
     };
-    EventEmitter.prototype.removeAllListeners = function removeAllListeners(event) {
+    EventEmitter2.prototype.removeAllListeners = function removeAllListeners(event) {
       var evt;
       if (event) {
         evt = prefix ? prefix + event : event;
@@ -10670,12 +10670,12 @@ var require_eventemitter32 = __commonJS({
       }
       return this;
     };
-    EventEmitter.prototype.off = EventEmitter.prototype.removeListener;
-    EventEmitter.prototype.addListener = EventEmitter.prototype.on;
-    EventEmitter.prefixed = prefix;
-    EventEmitter.EventEmitter = EventEmitter;
+    EventEmitter2.prototype.off = EventEmitter2.prototype.removeListener;
+    EventEmitter2.prototype.addListener = EventEmitter2.prototype.on;
+    EventEmitter2.prefixed = prefix;
+    EventEmitter2.EventEmitter = EventEmitter2;
     if ("undefined" !== typeof module2) {
-      module2.exports = EventEmitter;
+      module2.exports = EventEmitter2;
     }
   }
 });
@@ -10685,13 +10685,13 @@ var require_p_timeout2 = __commonJS({
   "node_modules/@langchain/core/node_modules/p-timeout/index.js"(exports2, module2) {
     "use strict";
     var pFinally = require_p_finally();
-    var TimeoutError = class extends Error {
+    var TimeoutError2 = class extends Error {
       constructor(message) {
         super(message);
         this.name = "TimeoutError";
       }
     };
-    var pTimeout = (promise, milliseconds, fallback) => new Promise((resolve, reject) => {
+    var pTimeout2 = (promise, milliseconds, fallback) => new Promise((resolve, reject) => {
       if (typeof milliseconds !== "number" || milliseconds < 0) {
         throw new TypeError("Expected `milliseconds` to be a positive number");
       }
@@ -10709,7 +10709,7 @@ var require_p_timeout2 = __commonJS({
           return;
         }
         const message = typeof fallback === "string" ? fallback : `Promise timed out after ${milliseconds} milliseconds`;
-        const timeoutError = fallback instanceof Error ? fallback : new TimeoutError(message);
+        const timeoutError = fallback instanceof Error ? fallback : new TimeoutError2(message);
         if (typeof promise.cancel === "function") {
           promise.cancel();
         }
@@ -10723,9 +10723,9 @@ var require_p_timeout2 = __commonJS({
         }
       );
     });
-    module2.exports = pTimeout;
-    module2.exports.default = pTimeout;
-    module2.exports.TimeoutError = TimeoutError;
+    module2.exports = pTimeout2;
+    module2.exports.default = pTimeout2;
+    module2.exports.TimeoutError = TimeoutError2;
   }
 });
 
@@ -10734,7 +10734,7 @@ var require_lower_bound2 = __commonJS({
   "node_modules/@langchain/core/node_modules/p-queue/dist/lower-bound.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
-    function lowerBound(array, value, comparator) {
+    function lowerBound2(array, value, comparator) {
       let first = 0;
       let count = array.length;
       while (count > 0) {
@@ -10749,7 +10749,7 @@ var require_lower_bound2 = __commonJS({
       }
       return first;
     }
-    exports2.default = lowerBound;
+    exports2.default = lowerBound2;
   }
 });
 
@@ -10759,7 +10759,7 @@ var require_priority_queue2 = __commonJS({
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var lower_bound_1 = require_lower_bound2();
-    var PriorityQueue = class {
+    var PriorityQueue2 = class {
       constructor() {
         this._queue = [];
       }
@@ -10787,7 +10787,7 @@ var require_priority_queue2 = __commonJS({
         return this._queue.length;
       }
     };
-    exports2.default = PriorityQueue;
+    exports2.default = PriorityQueue2;
   }
 });
 
@@ -10796,13 +10796,13 @@ var require_dist2 = __commonJS({
   "node_modules/@langchain/core/node_modules/p-queue/dist/index.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
-    var EventEmitter = require_eventemitter32();
+    var EventEmitter2 = require_eventemitter32();
     var p_timeout_1 = require_p_timeout2();
     var priority_queue_1 = require_priority_queue2();
     var empty = () => {
     };
     var timeoutError = new p_timeout_1.TimeoutError();
-    var PQueue = class extends EventEmitter {
+    var PQueue2 = class extends EventEmitter2 {
       constructor(options) {
         var _a2, _b, _c, _d;
         super();
@@ -11058,7 +11058,7 @@ var require_dist2 = __commonJS({
         this._timeout = milliseconds;
       }
     };
-    exports2.default = PQueue;
+    exports2.default = PQueue2;
   }
 });
 
@@ -27254,6 +27254,168 @@ var require_dist3 = __commonJS({
   }
 });
 
+// node_modules/eventemitter3/index.js
+var require_eventemitter33 = __commonJS({
+  "node_modules/eventemitter3/index.js"(exports2, module2) {
+    "use strict";
+    var has2 = Object.prototype.hasOwnProperty;
+    var prefix = "~";
+    function Events() {
+    }
+    if (Object.create) {
+      Events.prototype = /* @__PURE__ */ Object.create(null);
+      if (!new Events().__proto__) prefix = false;
+    }
+    function EE(fn, context, once) {
+      this.fn = fn;
+      this.context = context;
+      this.once = once || false;
+    }
+    function addListener(emitter, event, fn, context, once) {
+      if (typeof fn !== "function") {
+        throw new TypeError("The listener must be a function");
+      }
+      var listener = new EE(fn, context || emitter, once), evt = prefix ? prefix + event : event;
+      if (!emitter._events[evt]) emitter._events[evt] = listener, emitter._eventsCount++;
+      else if (!emitter._events[evt].fn) emitter._events[evt].push(listener);
+      else emitter._events[evt] = [emitter._events[evt], listener];
+      return emitter;
+    }
+    function clearEvent(emitter, evt) {
+      if (--emitter._eventsCount === 0) emitter._events = new Events();
+      else delete emitter._events[evt];
+    }
+    function EventEmitter2() {
+      this._events = new Events();
+      this._eventsCount = 0;
+    }
+    EventEmitter2.prototype.eventNames = function eventNames() {
+      var names = [], events, name;
+      if (this._eventsCount === 0) return names;
+      for (name in events = this._events) {
+        if (has2.call(events, name)) names.push(prefix ? name.slice(1) : name);
+      }
+      if (Object.getOwnPropertySymbols) {
+        return names.concat(Object.getOwnPropertySymbols(events));
+      }
+      return names;
+    };
+    EventEmitter2.prototype.listeners = function listeners(event) {
+      var evt = prefix ? prefix + event : event, handlers = this._events[evt];
+      if (!handlers) return [];
+      if (handlers.fn) return [handlers.fn];
+      for (var i2 = 0, l2 = handlers.length, ee2 = new Array(l2); i2 < l2; i2++) {
+        ee2[i2] = handlers[i2].fn;
+      }
+      return ee2;
+    };
+    EventEmitter2.prototype.listenerCount = function listenerCount(event) {
+      var evt = prefix ? prefix + event : event, listeners = this._events[evt];
+      if (!listeners) return 0;
+      if (listeners.fn) return 1;
+      return listeners.length;
+    };
+    EventEmitter2.prototype.emit = function emit(event, a1, a2, a3, a4, a5) {
+      var evt = prefix ? prefix + event : event;
+      if (!this._events[evt]) return false;
+      var listeners = this._events[evt], len = arguments.length, args, i2;
+      if (listeners.fn) {
+        if (listeners.once) this.removeListener(event, listeners.fn, void 0, true);
+        switch (len) {
+          case 1:
+            return listeners.fn.call(listeners.context), true;
+          case 2:
+            return listeners.fn.call(listeners.context, a1), true;
+          case 3:
+            return listeners.fn.call(listeners.context, a1, a2), true;
+          case 4:
+            return listeners.fn.call(listeners.context, a1, a2, a3), true;
+          case 5:
+            return listeners.fn.call(listeners.context, a1, a2, a3, a4), true;
+          case 6:
+            return listeners.fn.call(listeners.context, a1, a2, a3, a4, a5), true;
+        }
+        for (i2 = 1, args = new Array(len - 1); i2 < len; i2++) {
+          args[i2 - 1] = arguments[i2];
+        }
+        listeners.fn.apply(listeners.context, args);
+      } else {
+        var length = listeners.length, j2;
+        for (i2 = 0; i2 < length; i2++) {
+          if (listeners[i2].once) this.removeListener(event, listeners[i2].fn, void 0, true);
+          switch (len) {
+            case 1:
+              listeners[i2].fn.call(listeners[i2].context);
+              break;
+            case 2:
+              listeners[i2].fn.call(listeners[i2].context, a1);
+              break;
+            case 3:
+              listeners[i2].fn.call(listeners[i2].context, a1, a2);
+              break;
+            case 4:
+              listeners[i2].fn.call(listeners[i2].context, a1, a2, a3);
+              break;
+            default:
+              if (!args) for (j2 = 1, args = new Array(len - 1); j2 < len; j2++) {
+                args[j2 - 1] = arguments[j2];
+              }
+              listeners[i2].fn.apply(listeners[i2].context, args);
+          }
+        }
+      }
+      return true;
+    };
+    EventEmitter2.prototype.on = function on(event, fn, context) {
+      return addListener(this, event, fn, context, false);
+    };
+    EventEmitter2.prototype.once = function once(event, fn, context) {
+      return addListener(this, event, fn, context, true);
+    };
+    EventEmitter2.prototype.removeListener = function removeListener(event, fn, context, once) {
+      var evt = prefix ? prefix + event : event;
+      if (!this._events[evt]) return this;
+      if (!fn) {
+        clearEvent(this, evt);
+        return this;
+      }
+      var listeners = this._events[evt];
+      if (listeners.fn) {
+        if (listeners.fn === fn && (!once || listeners.once) && (!context || listeners.context === context)) {
+          clearEvent(this, evt);
+        }
+      } else {
+        for (var i2 = 0, events = [], length = listeners.length; i2 < length; i2++) {
+          if (listeners[i2].fn !== fn || once && !listeners[i2].once || context && listeners[i2].context !== context) {
+            events.push(listeners[i2]);
+          }
+        }
+        if (events.length) this._events[evt] = events.length === 1 ? events[0] : events;
+        else clearEvent(this, evt);
+      }
+      return this;
+    };
+    EventEmitter2.prototype.removeAllListeners = function removeAllListeners(event) {
+      var evt;
+      if (event) {
+        evt = prefix ? prefix + event : event;
+        if (this._events[evt]) clearEvent(this, evt);
+      } else {
+        this._events = new Events();
+        this._eventsCount = 0;
+      }
+      return this;
+    };
+    EventEmitter2.prototype.off = EventEmitter2.prototype.removeListener;
+    EventEmitter2.prototype.addListener = EventEmitter2.prototype.on;
+    EventEmitter2.prefixed = prefix;
+    EventEmitter2.EventEmitter = EventEmitter2;
+    if ("undefined" !== typeof module2) {
+      module2.exports = EventEmitter2;
+    }
+  }
+});
+
 // src/snapshot.ts
 var snapshot_exports = {};
 __export(snapshot_exports, {
@@ -27261,6 +27423,13 @@ __export(snapshot_exports, {
 });
 module.exports = __toCommonJS(snapshot_exports);
 var import_functions_framework = require("@google-cloud/functions-framework");
+
+// src/lib/firestore.ts
+var import_firestore = require("@google-cloud/firestore");
+var db = new import_firestore.Firestore({ ignoreUndefinedProperties: true });
+
+// src/snapshot.ts
+var import_firestore3 = require("@google-cloud/firestore");
 var import_client3 = __toESM(require_src());
 
 // node_modules/openai/internal/qs/formats.mjs
@@ -44359,8 +44528,8 @@ var getGlobalAsyncLocalStorageInstance = () => {
 // node_modules/@langchain/core/dist/singletons/callbacks.js
 var queue;
 function createQueue() {
-  const PQueue = "default" in import_p_queue2.default ? import_p_queue2.default.default : import_p_queue2.default;
-  return new PQueue({
+  const PQueue2 = "default" in import_p_queue2.default ? import_p_queue2.default.default : import_p_queue2.default;
+  return new PQueue2({
     autoStart: true,
     concurrency: 1
   });
@@ -46519,8 +46688,8 @@ var AsyncCaller2 = class {
     this.maxConcurrency = params.maxConcurrency ?? Infinity;
     this.maxRetries = params.maxRetries ?? 6;
     this.onFailedAttempt = params.onFailedAttempt ?? defaultFailedAttemptHandler;
-    const PQueue = "default" in import_p_queue3.default ? import_p_queue3.default.default : import_p_queue3.default;
-    this.queue = new PQueue({ concurrency: this.maxConcurrency });
+    const PQueue2 = "default" in import_p_queue3.default ? import_p_queue3.default.default : import_p_queue3.default;
+    this.queue = new PQueue2({ concurrency: this.maxConcurrency });
   }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   call(callable, ...args) {
@@ -52315,59 +52484,640 @@ Object.defineProperty(DallEAPIWrapper, "toolName", {
 
 // src/snapshot.ts
 var import_pinecone = __toESM(require_dist3());
-var import_util3 = require("util");
-var import_node_zlib = __toESM(require("node:zlib"));
+
+// node_modules/eventemitter3/index.mjs
+var import_index2 = __toESM(require_eventemitter33(), 1);
+
+// node_modules/p-timeout/index.js
+var TimeoutError = class extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "TimeoutError";
+  }
+};
+var AbortError = class extends Error {
+  constructor(message) {
+    super();
+    this.name = "AbortError";
+    this.message = message;
+  }
+};
+var getDOMException = (errorMessage) => globalThis.DOMException === void 0 ? new AbortError(errorMessage) : new DOMException(errorMessage);
+var getAbortedReason = (signal) => {
+  const reason = signal.reason === void 0 ? getDOMException("This operation was aborted.") : signal.reason;
+  return reason instanceof Error ? reason : getDOMException(reason);
+};
+function pTimeout(promise, options) {
+  const {
+    milliseconds,
+    fallback,
+    message,
+    customTimers = { setTimeout, clearTimeout }
+  } = options;
+  let timer;
+  let abortHandler;
+  const wrappedPromise = new Promise((resolve, reject) => {
+    if (typeof milliseconds !== "number" || Math.sign(milliseconds) !== 1) {
+      throw new TypeError(`Expected \`milliseconds\` to be a positive number, got \`${milliseconds}\``);
+    }
+    if (options.signal) {
+      const { signal } = options;
+      if (signal.aborted) {
+        reject(getAbortedReason(signal));
+      }
+      abortHandler = () => {
+        reject(getAbortedReason(signal));
+      };
+      signal.addEventListener("abort", abortHandler, { once: true });
+    }
+    if (milliseconds === Number.POSITIVE_INFINITY) {
+      promise.then(resolve, reject);
+      return;
+    }
+    const timeoutError = new TimeoutError();
+    timer = customTimers.setTimeout.call(void 0, () => {
+      if (fallback) {
+        try {
+          resolve(fallback());
+        } catch (error) {
+          reject(error);
+        }
+        return;
+      }
+      if (typeof promise.cancel === "function") {
+        promise.cancel();
+      }
+      if (message === false) {
+        resolve();
+      } else if (message instanceof Error) {
+        reject(message);
+      } else {
+        timeoutError.message = message ?? `Promise timed out after ${milliseconds} milliseconds`;
+        reject(timeoutError);
+      }
+    }, milliseconds);
+    (async () => {
+      try {
+        resolve(await promise);
+      } catch (error) {
+        reject(error);
+      }
+    })();
+  });
+  const cancelablePromise = wrappedPromise.finally(() => {
+    cancelablePromise.clear();
+    if (abortHandler && options.signal) {
+      options.signal.removeEventListener("abort", abortHandler);
+    }
+  });
+  cancelablePromise.clear = () => {
+    customTimers.clearTimeout.call(void 0, timer);
+    timer = void 0;
+  };
+  return cancelablePromise;
+}
+
+// node_modules/p-queue/dist/lower-bound.js
+function lowerBound(array, value, comparator) {
+  let first = 0;
+  let count = array.length;
+  while (count > 0) {
+    const step = Math.trunc(count / 2);
+    let it2 = first + step;
+    if (comparator(array[it2], value) <= 0) {
+      first = ++it2;
+      count -= step + 1;
+    } else {
+      count = step;
+    }
+  }
+  return first;
+}
+
+// node_modules/p-queue/dist/priority-queue.js
+var PriorityQueue = class {
+  #queue = [];
+  enqueue(run, options) {
+    options = {
+      priority: 0,
+      ...options
+    };
+    const element = {
+      priority: options.priority,
+      id: options.id,
+      run
+    };
+    if (this.size === 0 || this.#queue[this.size - 1].priority >= options.priority) {
+      this.#queue.push(element);
+      return;
+    }
+    const index = lowerBound(this.#queue, element, (a2, b2) => b2.priority - a2.priority);
+    this.#queue.splice(index, 0, element);
+  }
+  setPriority(id, priority) {
+    const index = this.#queue.findIndex((element) => element.id === id);
+    if (index === -1) {
+      throw new ReferenceError(`No promise function with the id "${id}" exists in the queue.`);
+    }
+    const [item] = this.#queue.splice(index, 1);
+    this.enqueue(item.run, { priority, id });
+  }
+  dequeue() {
+    const item = this.#queue.shift();
+    return item?.run;
+  }
+  filter(options) {
+    return this.#queue.filter((element) => element.priority === options.priority).map((element) => element.run);
+  }
+  get size() {
+    return this.#queue.length;
+  }
+};
+
+// node_modules/p-queue/dist/index.js
+var PQueue = class extends import_index2.default {
+  #carryoverConcurrencyCount;
+  #isIntervalIgnored;
+  #intervalCount = 0;
+  #intervalCap;
+  #interval;
+  #intervalEnd = 0;
+  #intervalId;
+  #timeoutId;
+  #queue;
+  #queueClass;
+  #pending = 0;
+  // The `!` is needed because of https://github.com/microsoft/TypeScript/issues/32194
+  #concurrency;
+  #isPaused;
+  #throwOnTimeout;
+  // Use to assign a unique identifier to a promise function, if not explicitly specified
+  #idAssigner = 1n;
+  /**
+      Per-operation timeout in milliseconds. Operations fulfill once `timeout` elapses if they haven't already.
+  
+      Applies to each future operation.
+      */
+  timeout;
+  // TODO: The `throwOnTimeout` option should affect the return types of `add()` and `addAll()`
+  constructor(options) {
+    super();
+    options = {
+      carryoverConcurrencyCount: false,
+      intervalCap: Number.POSITIVE_INFINITY,
+      interval: 0,
+      concurrency: Number.POSITIVE_INFINITY,
+      autoStart: true,
+      queueClass: PriorityQueue,
+      ...options
+    };
+    if (!(typeof options.intervalCap === "number" && options.intervalCap >= 1)) {
+      throw new TypeError(`Expected \`intervalCap\` to be a number from 1 and up, got \`${options.intervalCap?.toString() ?? ""}\` (${typeof options.intervalCap})`);
+    }
+    if (options.interval === void 0 || !(Number.isFinite(options.interval) && options.interval >= 0)) {
+      throw new TypeError(`Expected \`interval\` to be a finite number >= 0, got \`${options.interval?.toString() ?? ""}\` (${typeof options.interval})`);
+    }
+    this.#carryoverConcurrencyCount = options.carryoverConcurrencyCount;
+    this.#isIntervalIgnored = options.intervalCap === Number.POSITIVE_INFINITY || options.interval === 0;
+    this.#intervalCap = options.intervalCap;
+    this.#interval = options.interval;
+    this.#queue = new options.queueClass();
+    this.#queueClass = options.queueClass;
+    this.concurrency = options.concurrency;
+    this.timeout = options.timeout;
+    this.#throwOnTimeout = options.throwOnTimeout === true;
+    this.#isPaused = options.autoStart === false;
+  }
+  get #doesIntervalAllowAnother() {
+    return this.#isIntervalIgnored || this.#intervalCount < this.#intervalCap;
+  }
+  get #doesConcurrentAllowAnother() {
+    return this.#pending < this.#concurrency;
+  }
+  #next() {
+    this.#pending--;
+    this.#tryToStartAnother();
+    this.emit("next");
+  }
+  #onResumeInterval() {
+    this.#onInterval();
+    this.#initializeIntervalIfNeeded();
+    this.#timeoutId = void 0;
+  }
+  get #isIntervalPaused() {
+    const now = Date.now();
+    if (this.#intervalId === void 0) {
+      const delay = this.#intervalEnd - now;
+      if (delay < 0) {
+        this.#intervalCount = this.#carryoverConcurrencyCount ? this.#pending : 0;
+      } else {
+        if (this.#timeoutId === void 0) {
+          this.#timeoutId = setTimeout(() => {
+            this.#onResumeInterval();
+          }, delay);
+        }
+        return true;
+      }
+    }
+    return false;
+  }
+  #tryToStartAnother() {
+    if (this.#queue.size === 0) {
+      if (this.#intervalId) {
+        clearInterval(this.#intervalId);
+      }
+      this.#intervalId = void 0;
+      this.emit("empty");
+      if (this.#pending === 0) {
+        this.emit("idle");
+      }
+      return false;
+    }
+    if (!this.#isPaused) {
+      const canInitializeInterval = !this.#isIntervalPaused;
+      if (this.#doesIntervalAllowAnother && this.#doesConcurrentAllowAnother) {
+        const job = this.#queue.dequeue();
+        if (!job) {
+          return false;
+        }
+        this.emit("active");
+        job();
+        if (canInitializeInterval) {
+          this.#initializeIntervalIfNeeded();
+        }
+        return true;
+      }
+    }
+    return false;
+  }
+  #initializeIntervalIfNeeded() {
+    if (this.#isIntervalIgnored || this.#intervalId !== void 0) {
+      return;
+    }
+    this.#intervalId = setInterval(() => {
+      this.#onInterval();
+    }, this.#interval);
+    this.#intervalEnd = Date.now() + this.#interval;
+  }
+  #onInterval() {
+    if (this.#intervalCount === 0 && this.#pending === 0 && this.#intervalId) {
+      clearInterval(this.#intervalId);
+      this.#intervalId = void 0;
+    }
+    this.#intervalCount = this.#carryoverConcurrencyCount ? this.#pending : 0;
+    this.#processQueue();
+  }
+  /**
+  Executes all queued functions until it reaches the limit.
+  */
+  #processQueue() {
+    while (this.#tryToStartAnother()) {
+    }
+  }
+  get concurrency() {
+    return this.#concurrency;
+  }
+  set concurrency(newConcurrency) {
+    if (!(typeof newConcurrency === "number" && newConcurrency >= 1)) {
+      throw new TypeError(`Expected \`concurrency\` to be a number from 1 and up, got \`${newConcurrency}\` (${typeof newConcurrency})`);
+    }
+    this.#concurrency = newConcurrency;
+    this.#processQueue();
+  }
+  async #throwOnAbort(signal) {
+    return new Promise((_resolve, reject) => {
+      signal.addEventListener("abort", () => {
+        reject(signal.reason);
+      }, { once: true });
+    });
+  }
+  /**
+      Updates the priority of a promise function by its id, affecting its execution order. Requires a defined concurrency limit to take effect.
+  
+      For example, this can be used to prioritize a promise function to run earlier.
+  
+      ```js
+      import PQueue from 'p-queue';
+  
+      const queue = new PQueue({concurrency: 1});
+  
+      queue.add(async () => '🦄', {priority: 1});
+      queue.add(async () => '🦀', {priority: 0, id: '🦀'});
+      queue.add(async () => '🦄', {priority: 1});
+      queue.add(async () => '🦄', {priority: 1});
+  
+      queue.setPriority('🦀', 2);
+      ```
+  
+      In this case, the promise function with `id: '🦀'` runs second.
+  
+      You can also deprioritize a promise function to delay its execution:
+  
+      ```js
+      import PQueue from 'p-queue';
+  
+      const queue = new PQueue({concurrency: 1});
+  
+      queue.add(async () => '🦄', {priority: 1});
+      queue.add(async () => '🦀', {priority: 1, id: '🦀'});
+      queue.add(async () => '🦄');
+      queue.add(async () => '🦄', {priority: 0});
+  
+      queue.setPriority('🦀', -1);
+      ```
+      Here, the promise function with `id: '🦀'` executes last.
+      */
+  setPriority(id, priority) {
+    this.#queue.setPriority(id, priority);
+  }
+  async add(function_, options = {}) {
+    options.id ??= (this.#idAssigner++).toString();
+    options = {
+      timeout: this.timeout,
+      throwOnTimeout: this.#throwOnTimeout,
+      ...options
+    };
+    return new Promise((resolve, reject) => {
+      this.#queue.enqueue(async () => {
+        this.#pending++;
+        this.#intervalCount++;
+        try {
+          options.signal?.throwIfAborted();
+          let operation = function_({ signal: options.signal });
+          if (options.timeout) {
+            operation = pTimeout(Promise.resolve(operation), { milliseconds: options.timeout });
+          }
+          if (options.signal) {
+            operation = Promise.race([operation, this.#throwOnAbort(options.signal)]);
+          }
+          const result = await operation;
+          resolve(result);
+          this.emit("completed", result);
+        } catch (error) {
+          if (error instanceof TimeoutError && !options.throwOnTimeout) {
+            resolve();
+            return;
+          }
+          reject(error);
+          this.emit("error", error);
+        } finally {
+          this.#next();
+        }
+      }, options);
+      this.emit("add");
+      this.#tryToStartAnother();
+    });
+  }
+  async addAll(functions, options) {
+    return Promise.all(functions.map(async (function_) => this.add(function_, options)));
+  }
+  /**
+  Start (or resume) executing enqueued tasks within concurrency limit. No need to call this if queue is not paused (via `options.autoStart = false` or by `.pause()` method.)
+  */
+  start() {
+    if (!this.#isPaused) {
+      return this;
+    }
+    this.#isPaused = false;
+    this.#processQueue();
+    return this;
+  }
+  /**
+  Put queue execution on hold.
+  */
+  pause() {
+    this.#isPaused = true;
+  }
+  /**
+  Clear the queue.
+  */
+  clear() {
+    this.#queue = new this.#queueClass();
+  }
+  /**
+      Can be called multiple times. Useful if you for example add additional items at a later time.
+  
+      @returns A promise that settles when the queue becomes empty.
+      */
+  async onEmpty() {
+    if (this.#queue.size === 0) {
+      return;
+    }
+    await this.#onEvent("empty");
+  }
+  /**
+      @returns A promise that settles when the queue size is less than the given limit: `queue.size < limit`.
+  
+      If you want to avoid having the queue grow beyond a certain size you can `await queue.onSizeLessThan()` before adding a new item.
+  
+      Note that this only limits the number of items waiting to start. There could still be up to `concurrency` jobs already running that this call does not include in its calculation.
+      */
+  async onSizeLessThan(limit2) {
+    if (this.#queue.size < limit2) {
+      return;
+    }
+    await this.#onEvent("next", () => this.#queue.size < limit2);
+  }
+  /**
+      The difference with `.onEmpty` is that `.onIdle` guarantees that all work from the queue has finished. `.onEmpty` merely signals that the queue is empty, but it could mean that some promises haven't completed yet.
+  
+      @returns A promise that settles when the queue becomes empty, and all promises have completed; `queue.size === 0 && queue.pending === 0`.
+      */
+  async onIdle() {
+    if (this.#pending === 0 && this.#queue.size === 0) {
+      return;
+    }
+    await this.#onEvent("idle");
+  }
+  async #onEvent(event, filter) {
+    return new Promise((resolve) => {
+      const listener = () => {
+        if (filter && !filter()) {
+          return;
+        }
+        this.off(event, listener);
+        resolve();
+      };
+      this.on(event, listener);
+    });
+  }
+  /**
+  Size of the queue, the number of queued items waiting to run.
+  */
+  get size() {
+    return this.#queue.size;
+  }
+  /**
+      Size of the queue, filtered by the given options.
+  
+      For example, this can be used to find the number of items remaining in the queue with a specific priority level.
+      */
+  sizeBy(options) {
+    return this.#queue.filter(options).length;
+  }
+  /**
+  Number of running items (no longer in the queue).
+  */
+  get pending() {
+    return this.#pending;
+  }
+  /**
+  Whether the queue is currently paused.
+  */
+  get isPaused() {
+    return this.#isPaused;
+  }
+};
+
+// src/snapshot.ts
 var import_storage = require("@google-cloud/storage");
-var gunzip = (0, import_util3.promisify)(import_node_zlib.default.gunzip);
-var gzip = (0, import_util3.promisify)(import_node_zlib.default.gzip);
-var notion;
 var storage;
+var globalNotionClient;
 var openaiEmbeddings;
 var pinecone;
+var pineconeIndexName;
 var GCS_BUCKET_NAME = process.env.GCS_BUCKET_NAME;
-var NOTION_API_KEY_SECRET_NAME = "NOTION_API_KEY";
-var OPENAI_API_KEY_SECRET_NAME = "OPENAI_API_KEY";
-var PINECONE_API_KEY_SECRET_NAME = "PINECONE_API_KEY";
-async function initializeClients(userId) {
+var NOTION_API_KEY_ENV_VAR = "NOTION_API_KEY";
+var OPENAI_API_KEY_ENV_VAR = "OPENAI_API_KEY";
+var PINECONE_API_KEY_ENV_VAR = "PINECONE_API_KEY";
+var PINECONE_INDEX_NAME_ENV_VAR = "PINECONE_INDEX_NAME";
+async function initializeGlobalClients() {
   if (!GCS_BUCKET_NAME) {
     throw new Error("GCS_BUCKET_NAME environment variable is not set.");
   }
-  storage = new import_storage.Storage();
-  const notionApiKey = process.env[NOTION_API_KEY_SECRET_NAME];
-  if (!notionApiKey) throw new Error(`${NOTION_API_KEY_SECRET_NAME} not set in environment variables.`);
-  notion = new import_client3.Client({ auth: notionApiKey });
-  const openaiApiKey = process.env[OPENAI_API_KEY_SECRET_NAME];
-  if (!openaiApiKey) throw new Error(`${OPENAI_API_KEY_SECRET_NAME} not set in environment variables.`);
-  openaiEmbeddings = new OpenAIEmbeddings({ openAIApiKey: openaiApiKey, modelName: "text-embedding-3-small" });
-  const pineconeApiKey = process.env[PINECONE_API_KEY_SECRET_NAME];
-  if (!pineconeApiKey) throw new Error(`${PINECONE_API_KEY_SECRET_NAME} not set in environment variables.`);
-  pinecone = new import_pinecone.Pinecone({ apiKey: pineconeApiKey });
-  console.log("All clients initialized successfully.");
+  if (!storage) storage = new import_storage.Storage();
+  const notionApiKey = process.env[NOTION_API_KEY_ENV_VAR];
+  if (!notionApiKey) console.warn(`${NOTION_API_KEY_ENV_VAR} not set in environment variables. Global Notion client not initialized.`);
+  else if (!globalNotionClient) globalNotionClient = new import_client3.Client({ auth: notionApiKey });
+  const openaiApiKey = process.env[OPENAI_API_KEY_ENV_VAR];
+  if (!openaiApiKey) throw new Error(`${OPENAI_API_KEY_ENV_VAR} not set in environment variables.`);
+  openaiEmbeddings ??= new OpenAIEmbeddings({ openAIApiKey: openaiApiKey, modelName: "text-embedding-3-small" });
+  const pineconeApiKey = process.env[PINECONE_API_KEY_ENV_VAR];
+  if (!pineconeApiKey) throw new Error(`${PINECONE_API_KEY_ENV_VAR} not set in environment variables.`);
+  if (!pinecone) pinecone = new import_pinecone.Pinecone({ apiKey: pineconeApiKey });
+  pineconeIndexName = process.env[PINECONE_INDEX_NAME_ENV_VAR];
+  if (!pineconeIndexName) throw new Error(`${PINECONE_INDEX_NAME_ENV_VAR} not set in environment variables.`);
+  console.log("Global clients (Storage, OpenAI, Pinecone) initialized. Global Notion client may be initialized.");
 }
 var snapshotTrigger = (0, import_functions_framework.cloudEvent)(
   "snapshotTrigger",
   async (cloudEvent2) => {
     const mainFunctionName = "snapshotTrigger";
-    console.log(`${mainFunctionName}: Received event: ${cloudEvent2.id}`);
-    if (!cloudEvent2.data?.data) {
-      console.error(`${mainFunctionName}: No data in Pub/Sub message.`);
+    const eventId = cloudEvent2.id;
+    console.log(`${mainFunctionName}: Received event: ${eventId}`);
+    console.log(`${mainFunctionName}: cloudEvent.data (raw):`, JSON.stringify(cloudEvent2.data));
+    let base64EncodedData = void 0;
+    if (cloudEvent2.data && typeof cloudEvent2.data === "object" && "message" in cloudEvent2.data) {
+      const pubSubMessageObject = cloudEvent2.data.message;
+      base64EncodedData = pubSubMessageObject?.data;
+    }
+    console.log(`${mainFunctionName}: Extracted base64EncodedData:`, base64EncodedData);
+    console.log(`${mainFunctionName}: Type of base64EncodedData:`, typeof base64EncodedData);
+    if (typeof base64EncodedData !== "string" || base64EncodedData.length === 0) {
+      console.error(`${mainFunctionName}: No valid base64 string data in Pub/Sub message for event ${eventId}. Found:`, base64EncodedData);
       return;
     }
     let messagePayload;
     try {
-      const jsonString = cloudEvent2.data.data.toString("utf8");
+      const jsonString = Buffer.from(base64EncodedData, "base64").toString("utf8");
       messagePayload = JSON.parse(jsonString);
-      console.log(`${mainFunctionName}: Decoded message payload:`, messagePayload);
+      console.log(`${mainFunctionName}: Decoded message payload for event ${eventId}:`, messagePayload);
     } catch (e2) {
-      console.error(`${mainFunctionName}: Failed to decode/parse Pub/Sub message data:`, e2);
+      console.error(`${mainFunctionName}: Failed to decode/parse Pub/Sub message data for event ${eventId}:`, e2);
       return;
     }
     try {
-      await initializeClients(messagePayload.userId);
-      console.log(`${mainFunctionName}: Placeholder - Snapshot logic would run here with payload:`, messagePayload);
-      console.log(`${mainFunctionName}: Placeholder - Main logic executed successfully for event ${cloudEvent2.id}.`);
+      await initializeGlobalClients();
+      const { userId, pageId, task } = messagePayload;
+      if (!userId && task !== "trigger-all-snapshots-dev") {
+        console.error(`${mainFunctionName}: userId is required in message payload for most tasks. Event ${eventId}. Payload:`, messagePayload);
+        return;
+      }
+      let userNotionClient;
+      if (userId) {
+        const userDocRef = db.collection("users").doc(userId);
+        const userDocSnap = await userDocRef.get();
+        if (!userDocSnap.exists) {
+          console.error(`${mainFunctionName}: User document not found for userId: ${userId}. Event ${eventId}.`);
+          return;
+        }
+        const userData = userDocSnap.data();
+        const userNotionToken = userData?.notionAccessToken || userData?.accessToken;
+        if (!userNotionToken) {
+          console.error(`${mainFunctionName}: Notion access token not found for userId: ${userId}. Event ${eventId}.`);
+          await db.collection("users").doc(userId).collection("audit").add({
+            timestamp: import_firestore3.Timestamp.now(),
+            event_type: "snapshot_failed",
+            details: {
+              reason: "Notion access token missing.",
+              messagePayload,
+              eventId
+            }
+          });
+          return;
+        }
+        userNotionClient = new import_client3.Client({ auth: userNotionToken });
+        console.log(`${mainFunctionName}: Initialized Notion client for user ${userId}. Event ${eventId}.`);
+      } else if (task === "trigger-all-snapshots-dev" && globalNotionClient) {
+        console.warn(`${mainFunctionName}: Handling 'trigger-all-snapshots-dev' with global Notion client. This needs refinement for multi-user. Event ${eventId}.`);
+        userNotionClient = globalNotionClient;
+      } else {
+        console.error(`${mainFunctionName}: Cannot proceed without a userId or a valid global task handler. Event ${eventId}.`);
+        return;
+      }
+      console.log(`${mainFunctionName}: Searching Notion content for user ${userId || "global (dev task)"}... Event ${eventId}.`);
+      const notionSearchQueue = new PQueue({ concurrency: 1 });
+      let notionSearchResults = [];
+      let nextCursor = void 0;
+      let searchIterations = 0;
+      const MAX_SEARCH_ITERATIONS = 5;
+      do {
+        if (searchIterations >= MAX_SEARCH_ITERATIONS) {
+          console.warn(`${mainFunctionName}: Reached max search iterations (${MAX_SEARCH_ITERATIONS}) for user ${userId || "global (dev task)"}. Event ${eventId}.`);
+          break;
+        }
+        const searchParams = {
+          query: pageId ?? "",
+          // If pageId is provided, search for that. Otherwise, it's an empty query (list all accessible).
+          sort: {
+            direction: "ascending",
+            timestamp: "last_edited_time"
+          },
+          start_cursor: nextCursor,
+          page_size: 20
+          // Max 100, keep small for now
+        };
+        console.log(`${mainFunctionName}: Querying Notion with params:`, searchParams);
+        const response = await notionSearchQueue.add(async () => {
+          return userNotionClient.search(searchParams);
+        });
+        if (!response) {
+          throw new Error("Notion search operation did not return a response from the queue.");
+        }
+        notionSearchResults = notionSearchResults.concat(response.results);
+        nextCursor = response.next_cursor ?? void 0;
+        searchIterations++;
+        console.log(`${mainFunctionName}: Found ${response.results.length} items. Has more: ${response.has_more}. Iteration: ${searchIterations}. Event ${eventId}.`);
+      } while (nextCursor);
+      console.log(`${mainFunctionName}: Total Notion items found for user ${userId || "global (dev task)"}: ${notionSearchResults.length}. Event ${eventId}.`);
+      for (const item of notionSearchResults) {
+        if (item.object === "page") {
+          const page = item;
+          const titlePropRaw = Object.values(page.properties).find(
+            (prop) => prop.type === "title" && "title" in prop && Array.isArray(prop.title)
+          );
+          const titleProp = titlePropRaw;
+          const title = titleProp && titleProp.title[0]?.plain_text ? titleProp.title[0].plain_text : "N/A";
+          console.log(`  - Page: ${page.id} (Title: ${title})`);
+        } else if (item.object === "database") {
+          const database = item;
+          const title = Array.isArray(database.title) && database.title[0]?.plain_text ? database.title[0].plain_text : "N/A";
+          console.log(`  - Database: ${database.id} (Title: ${title})`);
+        }
+      }
+      console.log(`${mainFunctionName}: Placeholder - Main logic executed successfully for event ${eventId}.`);
     } catch (e2) {
-      console.error(`${mainFunctionName} failed for event ${cloudEvent2.id}:`, e2);
+      console.error(`${mainFunctionName}: Processing failed for event ${eventId}:`, e2);
     }
   }
 );

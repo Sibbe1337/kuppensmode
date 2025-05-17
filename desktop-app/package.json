@@ -10,7 +10,9 @@
     "start": "electron-forge start",
     "package": "electron-forge package",
     "make": "electron-forge make",
-    "lint": "eslint \"src/**/*.{ts,tsx}\" --report-unused-disable-directives --max-warnings 0"
+    "lint": "eslint \"src/**/*.{ts,tsx}\" --report-unused-disable-directives --max-warnings 0",
+    "test:e2e": "mocha src/__tests__/*.e2e.js --timeout 60000",
+    "test:e2e:pw": "npx playwright test"
   },
   "dependencies": {
     "axios": "^1.7.2",
@@ -42,8 +44,10 @@
     "eslint": "^8.57.0",
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-react-refresh": "^0.4.6",
+    "mocha": "^10.0.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "spectron": "^15.0.0",
     "typescript": "~5.4.0",
     "vite": "^5.2.0",
     "vite-tsconfig-paths": "^4.3.2"
@@ -65,22 +69,37 @@
       "package.json"
     ],
     "mac": {
-      "target": "dmg",
-      "icon": "assets/icon.icns"
+      "category": "public.app-category.productivity",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "hardenedRuntime": true,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "gatekeeperAssess": false,
+      "identity": null
     },
     "win": {
-      "target": "nsis",
-      "icon": "assets/icon.ico"
+      "target": [
+        "nsis",
+        "zip"
+      ],
+      "signAndEditExecutable": true,
+      "certificateFile": null,
+      "certificatePassword": null
     },
     "linux": {
       "target": "AppImage",
       "icon": "assets"
     },
-    "publish": {
-      "provider": "github",
-      "owner": "YOUR_GITHUB_USERNAME_OR_ORG",
-      "repo": "YOUR_GITHUB_REPO_NAME"
-    }
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "YOUR_GITHUB_USERNAME_OR_ORG",
+        "repo": "YOUR_GITHUB_REPO_NAME"
+      }
+    ]
   },
   "pnpm": {
     "onlyBuiltDependencies": [

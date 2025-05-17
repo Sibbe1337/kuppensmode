@@ -61,17 +61,62 @@ const SnapshotSelect: React.FC<{
 };
 
 const ComparisonEngineBar: React.FC<ComparisonEngineBarProps> = ({ snapshots, initialCompareData }) => {
-  const [fromSnapshot, setFromSnapshot] = useState<string | undefined>(snapshots[1]?.id);
-  const [toSnapshot, setToSnapshot] = useState<string | undefined>(snapshots[0]?.id);
+  const [fromSnapshot, setFromSnapshot] = useState<string | undefined>(undefined);
+  const [toSnapshot, setToSnapshot] = useState<string | undefined>(undefined);
+  const [completedSnapshots, setCompletedSnapshots] = useState<Snapshot[]>([]);
   const [jobState, setJobState] = useState<CurrentJobState>({ status: 'idle' });
   const { toast } = useToast();
 
   useEffect(() => {
-    if (snapshots && snapshots.length >= 2) {
-      if (!fromSnapshot) setFromSnapshot(snapshots[1].id);
-      if (!toSnapshot) setToSnapshot(snapshots[0].id);
+    const filtered = snapshots
+      .filter(snap => snap.status === 'Completed')
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    setCompletedSnapshots(filtered);
+  }, [snapshots]);
+
+  useEffect(() => {
+    if (completedSnapshots.length >= 2) {
+      // Only set defaults if current selections are not among the completed snapshots or are not set
+      const currentFromSnapshotIsValid = fromSnapshot && completedSnapshots.some(s => s.id === fromSnapshot);
+      const currentToSnapshotIsValid = toSnapshot && completedSnapshots.some(s => s.id === toSnapshot);
+
+      if (!currentToSnapshotIsValid) {
+        setToSnapshot(completedSnapshots[0].id);
+      }
+      if (!currentFromSnapshotIsValid) {
+        // If 'toSnapshot' is or was just set to the newest, 'fromSnapshot' should be the second newest.
+        // Otherwise, if 'toSnapshot' is valid and not the newest, 'fromSnapshot' can be the newest.
+        if (toSnapshot === completedSnapshots[0].id || (!currentToSnapshotIsValid && completedSnapshots[0].id)) {
+             setFromSnapshot(completedSnapshots[1].id);
+        } else {
+            // toSnapshot is valid and *not* the newest, or toSnapshot will become the newest
+            // fromSnapshot can be the newest (completedSnapshots[0]) if it's different from toSnapshot
+            if (completedSnapshots[0].id !== toSnapshot) {
+                setFromSnapshot(completedSnapshots[0].id);
+            } else {
+                 setFromSnapshot(completedSnapshots[1].id); // Fallback if toSnapshot is somehow already the newest and from isn't set
+            }
+        }
+      } else if (fromSnapshot === toSnapshot && completedSnapshots.length > 1) {
+        // Handle case where selections might become identical after filtering/prop updates
+        if (toSnapshot === completedSnapshots[0].id) {
+            setFromSnapshot(completedSnapshots[1].id);
+        } else {
+            setFromSnapshot(completedSnapshots[0].id);
+        }
+      }
+
+    } else if (completedSnapshots.length === 1) {
+      const currentToSnapshotIsValid = toSnapshot && completedSnapshots.some(s => s.id === toSnapshot);
+      if (!currentToSnapshotIsValid) {
+        setToSnapshot(completedSnapshots[0].id);
+      }
+      setFromSnapshot(undefined);
+    } else {
+      setFromSnapshot(undefined);
+      setToSnapshot(undefined);
     }
-  }, [snapshots, fromSnapshot, toSnapshot]);
+  }, [completedSnapshots]); // Removed fromSnapshot, toSnapshot to simplify default setting logic
 
   const handleRunComparison = async () => {
     if (!fromSnapshot || !toSnapshot) {
@@ -187,14 +232,14 @@ const ComparisonEngineBar: React.FC<ComparisonEngineBarProps> = ({ snapshots, in
         <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] gap-3 md:gap-4 items-end">
           <div>
             <label htmlFor="from-snapshot" className="text-xs font-medium text-slate-400 mb-1 block">From snapshot</label>
-            <SnapshotSelect snapshots={snapshots} value={fromSnapshot} onValueChange={setFromSnapshot} placeholder="Select source" disabled={jobState.status === 'pending' || jobState.status === 'processing'}/>
+            <SnapshotSelect snapshots={completedSnapshots} value={fromSnapshot} onValueChange={setFromSnapshot} placeholder="Select source" disabled={jobState.status === 'pending' || jobState.status === 'processing'}/>
           </div>
           <div className="text-center hidden md:block pb-2">
             <ArrowRight className="h-5 w-5 text-slate-500" />
           </div>
           <div>
             <label htmlFor="to-snapshot" className="text-xs font-medium text-slate-400 mb-1 block">To snapshot</label>
-            <SnapshotSelect snapshots={snapshots} value={toSnapshot} onValueChange={setToSnapshot} placeholder="Select target" disabled={jobState.status === 'pending' || jobState.status === 'processing'}/>
+            <SnapshotSelect snapshots={completedSnapshots} value={toSnapshot} onValueChange={setToSnapshot} placeholder="Select target" disabled={jobState.status === 'pending' || jobState.status === 'processing'}/>
           </div>
         </div>
 

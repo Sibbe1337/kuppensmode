@@ -1,0 +1,26 @@
+{
+  "name": "notion-lifeline-functions",
+  "version": "1.0.0",
+  "description": "Cloud Functions for Notion Lifeline",
+  "main": "index.js",
+  "private": true,
+  "dependencies": {
+    "@clerk/backend": "^1.31.2",
+    "@google-cloud/firestore": "^7.11.0",
+    "@google-cloud/functions-framework": "^4.0.0",
+    "@google-cloud/pubsub": "^5.0.0",
+    "@google-cloud/secret-manager": "^6.0.1",
+    "@google-cloud/storage": "^7.16.0",
+    "@langchain/openai": "^0.5.10",
+    "@notionhq/client": "^2.3.0",
+    "@pinecone-database/pinecone": "^6.0.0",
+    "p-queue": "^8.1.0",
+    "posthog-node": "^4.0.0",
+    "resend": "^3.5.0",
+    "stripe": "^16.12.0"
+  },
+  "engines": {
+    "node": "20"
+  },
+  "type": "commonjs"
+}
