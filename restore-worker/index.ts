@@ -1,5 +1,5 @@
-import { Storage } from '@google-cloud/storage';
-import { Firestore, FieldValue } from '@google-cloud/firestore';
+import { createStorage } from '../packages/shared/storage';
+import { createFirestore, FieldValue } from '../packages/shared/firestore';
 import * as functions from '@google-cloud/functions-framework';
 import * as path from 'path';
 import * as os from 'os';
@@ -8,8 +8,8 @@ import * as zlib from 'zlib'; // For gzip decompression
 import { Client } from '@notionhq/client'; // Notion Client
 import { SecretManagerServiceClient } from '@google-cloud/secret-manager'; // Added
 
-const storage = new Storage();
-const db = new Firestore();
+const storage = createStorage();
+const db = createFirestore();
 const secretManagerClient = new SecretManagerServiceClient(); // Added
 const BUCKET = process.env.GCS_BUCKET_NAME;
 const GCP_PROJECT_ID = process.env.GOOGLE_CLOUD_PROJECT;

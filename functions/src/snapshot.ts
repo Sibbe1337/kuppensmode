@@ -2,7 +2,7 @@ import { cloudEvent, CloudEvent } from '@google-cloud/functions-framework';
 import { Message } from '@google-cloud/pubsub';
 import { db } from './lib/firestore'; // Corrected path
 import { getSecret } from './lib/secrets'; // Corrected path
-import { Timestamp } from '@google-cloud/firestore';
+import { Timestamp } from '../../packages/shared/firestore';
 import { Client } from '@notionhq/client';
 import { 
   SearchParameters, 
@@ -12,7 +12,7 @@ import {
 import PQueue from 'p-queue';
 import { promisify } from 'util';
 import zlib from 'node:zlib';
-import { Storage } from '@google-cloud/storage';
+import { createStorage, type Storage } from '../../packages/shared/storage';
 import type { UserData } from './lib/types';
 // import { Resend } from 'resend'; // Commented out
 

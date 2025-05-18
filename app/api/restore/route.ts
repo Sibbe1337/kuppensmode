@@ -3,7 +3,7 @@ import { getAuth } from '@clerk/nextjs/server';
 import { PubSub } from '@google-cloud/pubsub';
 import { v4 as uuid } from 'uuid';
 import { getDb } from "@/lib/firestore";
-import { FieldValue } from '@google-cloud/firestore';
+import { FieldValue } from '@shared/firestore';
 
 const projectId = process.env.GOOGLE_CLOUD_PROJECT;
 const keyJsonString = process.env.GCP_SERVICE_ACCOUNT_KEY_JSON;

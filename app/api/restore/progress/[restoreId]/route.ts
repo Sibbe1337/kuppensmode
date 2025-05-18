@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { getDb } from '@/lib/firestore';
-import { DocumentData } from '@google-cloud/firestore';
+import { DocumentData } from '@shared/firestore';
 
 // Define the structure for progress updates read from Firestore
 interface RestoreProgress {

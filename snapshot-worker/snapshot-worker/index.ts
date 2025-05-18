@@ -1,6 +1,6 @@
 import * as functions from '@google-cloud/functions-framework';
-import { Storage } from '@google-cloud/storage';
-import { Firestore } from '@google-cloud/firestore';
+import { createStorage } from '../../packages/shared/storage';
+import { createFirestore } from '../../packages/shared/firestore';
 import { Client as NotionClient } from '@notionhq/client';
 import { SecretManagerServiceClient } from '@google-cloud/secret-manager';
 import JSZip from 'jszip';
@@ -11,8 +11,8 @@ import { promisify } from 'util';
 const gzipAsync = promisify(gzip);
 
 // GCP Clients (initialized outside handler)
-const storage = new Storage();
-const db = new Firestore();
+const storage = createStorage();
+const db = createFirestore();
 const secretManagerClient = new SecretManagerServiceClient();
 
 // Environment Variables

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getAuth } from '@clerk/nextjs/server';
 import { getDb } from "@/lib/firestore"; // Changed to getDb
 import type { SemanticDiffResult } from '@/types/diff'; // Import shared SemanticDiffResult
-import { Timestamp } from '@google-cloud/firestore';
+import { Timestamp } from '@shared/firestore';
 // Remove fs and path, as we'll fetch from Firestore now
 
 export const runtime = 'nodejs';

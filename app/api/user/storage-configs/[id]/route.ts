@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { getDb } from '../../../../../src/lib/firestore'; // Corrected path and import
-import { decryptString } from '../../../../../src/lib/kms'; // Corrected path, assuming encryptString is not needed here
+import { decryptString } from '@shared/kms';
 import type { UserStorageProvider } from '../../../../../src/types/storageProvider'; // Corrected path
-import { FieldValue } from '@google-cloud/firestore';
+import { FieldValue } from '@shared/firestore';
 
 const db = getDb(); // Initialize db instance
 

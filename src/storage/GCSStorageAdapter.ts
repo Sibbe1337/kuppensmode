@@ -1,4 +1,5 @@
-import { Storage, GetFilesOptions } from '@google-cloud/storage';
+import { createStorage, type Storage } from '@shared/storage';
+import type { GetFilesOptions } from '@google-cloud/storage';
 import { StorageAdapter } from './StorageAdapter.js';
 
 export interface GCSStorageAdapterOptions {
@@ -12,7 +13,7 @@ export class GCSStorageAdapter implements StorageAdapter {
 
   constructor(options: GCSStorageAdapterOptions) {
     this.bucketName = options.bucket;
-    this.client = options.client || new Storage();
+    this.client = options.client || createStorage();
   }
 
   async write(

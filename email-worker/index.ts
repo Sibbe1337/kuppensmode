@@ -1,5 +1,5 @@
 import * as functions from '@google-cloud/functions-framework';
-import { Firestore, Timestamp } from '@google-cloud/firestore';
+import { createFirestore, Timestamp } from '../packages/shared/firestore';
 import { Resend } from 'resend';
 // Correct import and initialization method
 import { createClerkClient } from '@clerk/backend';
@@ -8,7 +8,7 @@ import type { EmailAddress, User } from '@clerk/backend'; // Types likely come f
 import type { CloudEvent } from '@google-cloud/functions-framework'; // For Pub/Sub trigger
 
 // Initialize Firestore
-const db = new Firestore();
+const db = createFirestore();
 
 // Initialize Resend
 const resendApiKey = process.env.RESEND_API_KEY;

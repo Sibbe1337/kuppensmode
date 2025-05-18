@@ -1,13 +1,13 @@
-import { Firestore } from '@google-cloud/firestore';
-import { Storage } from '@google-cloud/storage';
+import { createFirestore } from '../packages/shared/firestore';
+import { createStorage } from '../packages/shared/storage';
 import { S3Client, HeadObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import PQueue from 'p-queue';
 import zlib from 'zlib';
 import { promisify } from 'util';
 const gunzipAsync = promisify(zlib.gunzip);
 
-const db = new Firestore();
-const gcs = new Storage();
+const db = createFirestore();
+const gcs = createStorage();
 
 async function downloadAndParseManifestGCS(bucket: string, userId: string, snapshotId: string) {
   const [compressed] = await gcs.bucket(bucket).file(`${userId}/${snapshotId}.manifest.json.gz`).download();

@@ -4,7 +4,7 @@ import { getAuth, clerkClient } from "@clerk/nextjs/server"; // ✅ Corrected im
 import { getDb } from "@/lib/firestore";
 import type { UserSettings } from "@/types/user";
 import { DEFAULT_USER_SETTINGS } from "@/config/defaults";
-import { FieldValue } from '@google-cloud/firestore';
+import { FieldValue } from '@shared/firestore';
 
 
 

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { getDb } from '@/lib/firestore'; // Changed from db to getDb
-import { FieldValue } from '@google-cloud/firestore'; // For serverTimestamp
+import { FieldValue } from '@shared/firestore'; // For serverTimestamp
 
 // Environment variables for Notion OAuth
 const NOTION_CLIENT_ID = process.env.NOTION_CLIENT_ID;

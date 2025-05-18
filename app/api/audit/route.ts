@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { getDb, FieldValue } from '@/lib/firestore';
-import { Timestamp } from '@google-cloud/firestore'; // For type checking if needed
+import { Timestamp } from '@shared/firestore'; // For type checking if needed
 
 const DEFAULT_PAGE_LIMIT = 25;
 const MAX_PAGE_LIMIT = 100;

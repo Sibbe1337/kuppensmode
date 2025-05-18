@@ -1,6 +1,6 @@
 import * as functions from '@google-cloud/functions-framework';
-import { Storage } from '@google-cloud/storage';
-import { Firestore, FieldValue } from '@google-cloud/firestore';
+import { createStorage } from '../packages/shared/storage';
+import { createFirestore, FieldValue } from '../packages/shared/firestore';
 import { Client as NotionClient } from '@notionhq/client';
 import { SecretManagerServiceClient } from '@google-cloud/secret-manager';
 import JSZip from 'jszip';
@@ -22,13 +22,13 @@ import { Pinecone } from '@pinecone-database/pinecone';
 import OpenAI from 'openai';
 import type { PineconeRecord } from '@pinecone-database/pinecone'; // For typing records
 import { get_encoding, Tiktoken } from 'tiktoken'; // Import Tiktoken class for the instance type
-import { decryptString } from '../src/lib/kms';
+import { decryptString } from '../packages/shared/kms';
 
 const gzipAsync = promisify(gzip);
 
 // GCP Clients (initialized outside handler)
-const storage = new Storage();
-const db = new Firestore();
+const storage = createStorage();
+const db = createFirestore();
 const secretManagerClient = new SecretManagerServiceClient();
 let pubsubForEmail: PubSub | null = null; // For sending email trigger messages
 

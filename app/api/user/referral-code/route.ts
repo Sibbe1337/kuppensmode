@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getAuth } from '@clerk/nextjs/server';
 import { getDb } from "@/lib/firestore";
 import { customAlphabet } from 'nanoid';
-import { FieldValue } from '@google-cloud/firestore';
+import { FieldValue } from '@shared/firestore';
 
 // Generate a somewhat human-readable, unique-enough code
 // Example: PGLF-A1B2C3
