@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getAuth } from '@clerk/nextjs/server';
 import { getDb } from "@/lib/firestore"; // Changed to getDb
-import { FieldValue } from '@google-cloud/firestore';
+import { FieldValue } from '@shared/firestore';
 import { v4 as uuidv4 } from 'uuid';
 // For a real implementation, you'd use a crypto library for hashing
 // import crypto from 'crypto'; 

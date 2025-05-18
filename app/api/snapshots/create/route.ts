@@ -2,10 +2,10 @@ import { NextResponse } from 'next/server';
 import { getAuth } from '@clerk/nextjs/server';
 import { PubSub } from '@google-cloud/pubsub';
 import { getDb } from "@/lib/firestore";
-import { FieldValue } from '@google-cloud/firestore';
+import { FieldValue } from '@shared/firestore';
 import { DEFAULT_USER_QUOTA } from '@/config/defaults';
 import type { UserQuota } from '@/types/user'; // Corrected import for UserQuota type
-import { Storage } from '@google-cloud/storage';
+import { createStorage } from '../../../packages/shared/storage';
 
 const projectId = process.env.GOOGLE_CLOUD_PROJECT;
 const keyJsonString = process.env.GCP_SERVICE_ACCOUNT_KEY_JSON;
@@ -51,7 +51,7 @@ export async function POST(request: Request) {
   const { userId } = getAuth(request as any);
   if (!userId) return new NextResponse("Unauthorized", { status: 401 });
 
-  const storage = new Storage();
+  const storage = createStorage();
   const now = new Date();
   const snapshotId = `test-snapshot-${now.getTime()}`;
   const filePath = `${userId}/${snapshotId}.json.gz`;

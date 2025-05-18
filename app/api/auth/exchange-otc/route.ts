@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/firestore'; // Assuming you have a Firestore init helper
-import { FieldValue } from '@google-cloud/firestore';
+import { FieldValue } from '@shared/firestore';
 
 const db = getDb();
 const OTC_COLLECTION = 'nativeAuthOneTimeCodes';

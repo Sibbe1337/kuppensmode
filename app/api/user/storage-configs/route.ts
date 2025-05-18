@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { getDb } from '../../../../src/lib/firestore'; // Import the getter
-import { encryptString } from '../../../../src/lib/kms';
+import { encryptString } from '@shared/kms';
 import type { UserStorageProvider, StorageProviderType } from '../../../../src/types/storageProvider';
 import { nanoid } from 'nanoid';
 // Import types from @google-cloud/firestore since firebase-admin is not a direct dependency
-import { Timestamp, FieldValue, QueryDocumentSnapshot } from '@google-cloud/firestore';
+import { Timestamp, FieldValue, type QueryDocumentSnapshot } from '@shared/firestore';
 
 const db = getDb(); // Initialize db instance
 

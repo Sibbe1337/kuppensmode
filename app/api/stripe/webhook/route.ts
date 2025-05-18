@@ -2,7 +2,7 @@ import Stripe from 'stripe';
 import { headers } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { getDb } from "@/lib/firestore";
-import { FieldValue } from '@google-cloud/firestore';
+import { FieldValue } from '@shared/firestore';
 import { clerkClient } from '@clerk/nextjs/server';
 import { DEFAULT_USER_QUOTA, DEFAULT_USER_SETTINGS } from '@/config/defaults';
 import type { UserSettings, UserQuota } from '@/types/user';

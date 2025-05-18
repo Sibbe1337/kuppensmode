@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getAuth } from '@clerk/nextjs/server';
 import { getDb } from "@/lib/firestore"; // Changed to getDb
-import type { DocumentData } from '@google-cloud/firestore';
+import type { DocumentData } from '@shared/firestore';
 
 // This forces the route to be dynamic
 export const dynamic = 'force-dynamic';

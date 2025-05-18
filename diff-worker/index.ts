@@ -1,7 +1,7 @@
 import * as functions from '@google-cloud/functions-framework';
 import type { CloudEvent } from '@google-cloud/functions-framework'; // Base CloudEvent type
-import { Firestore, Timestamp } from '@google-cloud/firestore'; // Import Timestamp
-import { Storage } from '@google-cloud/storage';
+import { createFirestore, Timestamp } from '../packages/shared/firestore';
+import { createStorage } from '../packages/shared/storage';
 import { Pinecone, type PineconeRecord, type RecordMetadata } from '@pinecone-database/pinecone';
 import OpenAI from 'openai';
 import { gunzipSync } from 'zlib';
@@ -12,9 +12,9 @@ import { generateDiffSummary, initOpenAIUtils } from './src/openaiUtils'; // Imp
 console.log("[DiffWorker] Cold start.");
 
 // --- CONFIGURATION & CLIENTS ---
-const db = new Firestore(); // Initialize Firestore directly
+const db = createFirestore();
 const BUCKET_NAME = process.env.GCS_BUCKET_NAME;
-const storage = new Storage();
+const storage = createStorage();
 
 let openaiClient: OpenAI | null = null;
 if (process.env.OPENAI_API_KEY) {

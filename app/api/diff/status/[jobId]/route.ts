@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getAuth } from '@clerk/nextjs/server';
 import { getDb } from '@/lib/firestore'; // Changed to getDb
-import { Timestamp } from '@google-cloud/firestore';
+import { Timestamp } from '@shared/firestore';
 
 export const runtime = 'nodejs';
 

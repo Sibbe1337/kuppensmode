@@ -2,9 +2,9 @@ import { http, Request, Response } from '@google-cloud/functions-framework'; // 
 import { db } from './lib/firestore'; // Corrected path
 import { getSecret } from './lib/secrets'; // Corrected path
 import { verifyToken } from '@clerk/backend';
-import { Timestamp } from '@google-cloud/firestore';
+import { Timestamp } from '../../packages/shared/firestore';
 // import type { UserData } from './lib/types'; // Removed problematic import
-import { Storage } from '@google-cloud/storage';
+import { createStorage, type Storage } from '../../packages/shared/storage';
 import zlib from 'node:zlib';
 import { promisify } from 'node:util';
 import { Client as NotionClient, isFullBlock } from '@notionhq/client';
@@ -16,7 +16,7 @@ const gunzip = promisify(zlib.gunzip);
 // Initialize GCS Client (outside the handler for potential reuse)
 let storage: Storage;
 try {
-  storage = new Storage();
+  storage = createStorage();
   console.log('GCS client initialized successfully for restore function.');
 } catch (error) {
   console.error("Failed to initialize GCS client:", error);

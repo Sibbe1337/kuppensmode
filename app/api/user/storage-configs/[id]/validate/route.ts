@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { getDb } from '../../../../../../src/lib/firestore'; // Corrected path
-import { decryptString } from '../../../../../../src/lib/kms'; // Corrected path
+import { decryptString } from '@shared/kms';
 import type { UserStorageProvider } from '../../../../../../src/types/storageProvider'; // Corrected path
 import { S3StorageAdapter } from '../../../../../../src/storage/S3StorageAdapter'; // Corrected path
 import { R2StorageAdapter } from '../../../../../../src/storage/R2StorageAdapter'; // Corrected path
-import { FieldValue } from '@google-cloud/firestore';
+import { FieldValue } from '@shared/firestore';
 import { randomUUID } from 'crypto'; // Using crypto.randomUUID for modern Node.js
 
 const db = getDb(); // Initialize db instance

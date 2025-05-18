@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
 import { auth, getAuth } from '@clerk/nextjs/server';
-import { Storage } from '@google-cloud/storage';
+import { createStorage } from '../../packages/shared/storage';
 import type { Snapshot } from '@/types';
 import { getDb } from "@/lib/firestore";
-import { FieldValue } from '@google-cloud/firestore';
+import { FieldValue } from '@shared/firestore';
 
 const projectId = process.env.GOOGLE_CLOUD_PROJECT;
 const keyJsonString = process.env.GCP_SERVICE_ACCOUNT_KEY_JSON;
@@ -34,7 +34,7 @@ function getStorageInstance(): Storage {
       console.warn('[Storage Lib - Snapshots Route] GCP_SERVICE_ACCOUNT_KEY_JSON not set in dev. Attempting Application Default Credentials.');
     }
   }
-  storageInstance = new Storage(storageClientConfig);
+  storageInstance = createStorage(storageClientConfig);
   console.log('[Storage Lib - Snapshots Route] Storage instance configured.');
   return storageInstance;
 }

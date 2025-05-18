@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getAuth } from '@clerk/nextjs/server';
 import { getDb } from "@/lib/firestore";
-import { FieldValue } from '@google-cloud/firestore';
+import { FieldValue } from '@shared/firestore';
 
 interface ClearFlagRequestBody {
   flagName: string;

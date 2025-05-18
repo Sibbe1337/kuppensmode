@@ -1,7 +1,7 @@
 import { NextResponse, NextRequest } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { getDb } from '@/lib/firestore'; // Changed to getDb
-import { FieldValue } from '@google-cloud/firestore'; // Corrected import for FieldValue
+import { FieldValue } from '@shared/firestore'; // Corrected import for FieldValue
 
 export async function DELETE(request: NextRequest) {
   const db = getDb(); // Get instance here

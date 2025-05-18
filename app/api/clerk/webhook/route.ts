@@ -5,7 +5,7 @@ import { getDb } from '@/lib/firestore';
 import { NextResponse } from 'next/server'; // NextRequest might not be needed if req is just 'Request'
 import type { UserSettings, UserQuota } from '@/types/user';
 import { DEFAULT_USER_SETTINGS, DEFAULT_USER_QUOTA } from '@/config/defaults';
-import { FieldValue } from '@google-cloud/firestore';
+import { FieldValue } from '@shared/firestore';
 
 const WEBHOOK_SECRET = process.env.CLERK_WEBHOOK_SECRET;
 

@@ -2,7 +2,7 @@ import { NextResponse, NextRequest } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import Stripe from 'stripe';
 import { getDb } from "@/lib/firestore";
-import { FieldValue } from '@google-cloud/firestore';
+import { FieldValue } from '@shared/firestore';
 import { DEFAULT_USER_QUOTA } from '@/config/defaults'; // For plan details
 
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
