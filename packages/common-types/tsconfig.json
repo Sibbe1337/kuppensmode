@@ -3,11 +3,11 @@
   "compilerOptions": {
     "outDir": "dist",
     "baseUrl": ".",
-    "paths": {
-      "@/*": ["../storage-adapters/src/*"]
-    },
-    "noEmit": true
+    "composite": true,
+    "declaration": true,
+    "declarationMap": true,
+    "noEmit": false
   },
-  "include": ["../storage-adapters/src/**/*.ts", "../storage-adapters/src/storageProvider.ts"],
+  "include": ["src"],
   "exclude": ["node_modules", "dist"]
 } 

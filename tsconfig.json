@@ -24,7 +24,11 @@
     ],
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@notion-lifeline/common-types": ["./packages/common-types/src/index"],
+      "@notion-lifeline/common-types/*": ["./packages/common-types/src/*"],
+      "@notion-lifeline/storage-adapters": ["./packages/storage-adapters/src/index"],
+      "@notion-lifeline/storage-adapters/*": ["./packages/storage-adapters/src/*"]
     },
     "types": ["node", "jest"]
   },
@@ -38,7 +42,7 @@
     "middleware.ts",
     "instrumentation.ts",
     "instrumentation-client.ts"
-, "packages/storage-adapters/src/storageProvider.ts"  ],
+  ],
   "exclude": [
     "node_modules",
     ".next",
@@ -47,5 +51,9 @@
     "restore-worker/**",
     "email-worker/**",
     "demo-data/**"
+  ],
+  "references": [
+    { "path": "./packages/common-types" },
+    { "path": "./packages/storage-adapters" }
   ]
 }
