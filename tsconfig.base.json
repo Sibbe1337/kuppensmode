@@ -1,18 +1,44 @@
 {
+  // ────────────────────────────────────────────────────────────────
+  //  Shared TypeScript config – covers every package / app
+  // ────────────────────────────────────────────────────────────────
   "compilerOptions": {
-    "target": "ES2020",
-    "lib": ["es2020", "dom", "dom.iterable"],
-    "allowJs": true,
-    "skipLibCheck": true,
-    "strict": true,
-    "esModuleInterop": true,
-    "forceConsistentCasingInFileNames": true,
-    "moduleResolution": "bundler", // or "node" or "NodeNext", bundler is modern
+    /* General ----------------------------------------------------*/
+    "target": "ES2019",
+    "lib": ["DOM", "DOM.Iterable", "ESNext"],
+    "jsx": "react-jsx",                   // enable JSX without eslint yelling
+    "module": "ESNext",
+    "moduleResolution": "Node",
     "resolveJsonModule": true,
+    "allowJs": true,                      // Next.js sometimes allows .js in /pages
+    "noEmit": true,                       // let Next/Webpack emit instead
+
+    /* Strictness -------------------------------------------------*/
+    "strict": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
     "isolatedModules": true,
     "incremental": true,
-    "noEmit": true, // Often true for base, overridden by packages that need to emit .d.ts
-    "jsx": "preserve"
+
+    /* Interop quirks --------------------------------------------*/
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+
+    /* Path aliases (fixes all the "Cannot find module '@/…' " errors) */
+    "baseUrl": ".",                       // repo root
+    "paths": {
+      "@/*": ["apps/web/src/*"],
+
+      "@/components/*": ["apps/web/src/components/*"],
+      "@/hooks/*":       ["apps/web/src/hooks/*"],
+      "@/lib/*":         ["apps/web/src/lib/*"],
+      "@/types/*":       ["apps/web/src/types/*"]
+
+      /*  add more aliases here if you introduce new top-level folders   */
+    }
   },
-  "exclude": ["node_modules", ".next", "dist"]
+
+  /* Make TS look everywhere it needs to */
+  "include": ["apps/**/*", "packages/**/*", "next-env.d.ts"],
+  "exclude": ["node_modules"]
 } 
