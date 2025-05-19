@@ -276,6 +276,9 @@ importers:
       '@aws-sdk/lib-storage':
         specifier: ^3.806.0
         version: 3.812.0(@aws-sdk/client-s3@3.812.0)
+      '@google-cloud/firestore':
+        specifier: ^7.11.1
+        version: 7.11.1
       '@google-cloud/storage':
         specifier: ^7.16.0
         version: 7.16.0
