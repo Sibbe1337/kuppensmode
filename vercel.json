@@ -1,9 +1,3 @@
 {
-  "version": 2,
-  "builds": [
-    {
-      "src": "apps/web/next.config.js",
-      "use": "@vercel/next"
-    }
-  ]
+  "version": 2
 } 
