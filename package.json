@@ -12,5 +12,5 @@
     "eslint": "^8", 
     "@types/node": "^20"
   },
-  "packageManager": "pnpm@8.6.0" 
+  "packageManager": "pnpm@9.4.0" 
 }
