@@ -4,7 +4,7 @@ import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/toaster";
 import { ClerkProvider } from '@clerk/nextjs';
-import ErrorBoundary from "@/components/ErrorBoundary";
+import ActualErrorBoundary from "@/components/ActualErrorBoundary";
 import { PostHogProvider } from "@/components/PostHogProvider";
 import SiteBanner from "@/components/SiteBanner";
 
@@ -34,11 +34,11 @@ export default function RootLayout({
               enableSystem
               disableTransitionOnChange
             >
-              <ErrorBoundary>
+              <ActualErrorBoundary>
                 <SiteBanner />
                 {children} 
                 <Toaster />
-              </ErrorBoundary>
+              </ActualErrorBoundary>
             </ThemeProvider>
           </PostHogProvider>
         </body>

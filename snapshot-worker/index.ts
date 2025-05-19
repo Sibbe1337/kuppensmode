@@ -1,35 +1,53 @@
 import * as functions from '@google-cloud/functions-framework';
 import * as GCloudFirestore from '@google-cloud/firestore';
 import { Client as NotionClient } from '@notionhq/client';
-// SecretManagerServiceClient might be needed by a more generic getSecret helper if you abstract it
-// For now, kms.ts directly uses KMS client, and Notion token is fetched directly.
-// import { SecretManagerServiceClient } from '@google-cloud/secret-manager'; 
+// SecretManagerServiceClient not directly used in this version of the logic
 import { gzip } from 'zlib';
 import { promisify } from 'util';
-import { KeyManagementServiceClient } from '@google-cloud/kms'; // Imported in kms.ts, not strictly needed here if decryptString is self-contained
+import { KeyManagementServiceClient } from '@google-cloud/kms'; // For decryptString
 import { createHash } from 'crypto';
 import PQueue from 'p-queue';
 
-// Localized shared code
-import { decryptString } from './lib/kms'; 
-import { StorageAdapter } from './storage/StorageAdapter';
-import { GCSStorageAdapter } from './storage/GCSStorageAdapter';
-import { S3StorageAdapter } from './storage/S3StorageAdapter';
-import { R2StorageAdapter } from './storage/R2StorageAdapter';
-import { RedundantStorageAdapter } from './storage/RedundantStorageAdapter';
-import type { UserStorageProvider } from './types/storageProvider';
+// Monorepo Package Imports
+import type { UserStorageProvider } from '@notion-lifeline/common-types';
+import { 
+  StorageAdapter, 
+  GCSStorageAdapter, 
+  S3StorageAdapter, 
+  R2StorageAdapter, 
+  RedundantStorageAdapter 
+} from '@notion-lifeline/storage-adapters';
 
 const gzipAsync = promisify(gzip);
 const db = new GCloudFirestore.Firestore();
-// kmsClient is initialized and used within decryptString in ./lib/kms.ts
-// const kmsClient = new KeyManagementServiceClient(); 
+const kmsClient = new KeyManagementServiceClient(); // For decryptString
 
 // Environment Variables
 const BUCKET_NAME = process.env.GCS_BUCKET_NAME;
-const GCP_PROJECT_ID = process.env.GOOGLE_CLOUD_PROJECT; // For KMS in decryptString
-// KMS_LOCATION_ID, KMS_KEY_RING_ID, KMS_KEY_ID are used by decryptString via process.env
+const GCP_PROJECT_ID = process.env.GOOGLE_CLOUD_PROJECT;
+const KMS_LOCATION_ID = process.env.KMS_LOCATION_ID;
+const KMS_KEY_RING_ID = process.env.KMS_KEY_RING_ID;
+const KMS_KEY_ID = process.env.KMS_KEY_ID;
 
 let notionQueue: PQueue;
+
+// decryptString function (kept local to worker for now)
+async function decryptString(ciphertextBase64: string): Promise<string> {
+  if (!GCP_PROJECT_ID || !KMS_LOCATION_ID || !KMS_KEY_RING_ID || !KMS_KEY_ID) {
+    console.error("KMS environment variables for decryption not fully set in worker.");
+    throw new Error("KMS configuration incomplete.");
+  }
+  if (!ciphertextBase64) return '';
+  const keyName = kmsClient.cryptoKeyPath(GCP_PROJECT_ID, KMS_LOCATION_ID, KMS_KEY_RING_ID, KMS_KEY_ID);
+  try {
+    const [result] = await kmsClient.decrypt({ name: keyName, ciphertext: Buffer.from(ciphertextBase64, 'base64') });
+    if (!result.plaintext) throw new Error('KMS decryption result is null.');
+    return result.plaintext.toString();
+  } catch (error) {
+    console.error(`KMS Decryption failed in worker for key ${keyName}:`, error);
+    throw new Error(`Failed to decrypt string: ${(error as Error).message}`);
+  }
+}
 
 interface SnapshotJob { userId: string; requestedAt: number; snapshotIdActual?: string; }
 interface PubSubMessage { data: string; }
@@ -46,14 +64,14 @@ async function getUserNotionAccessToken(userId: string): Promise<string | null> 
 
 // Simplified stubs for brevity, assume full implementation exists
 async function fetchAllBlocks(notionClient: NotionClient, queue: PQueue, blockId: string): Promise<any[]> { 
-  console.log(`[${userId}] Stub: Would fetch blocks for ${blockId}`);
+  console.log(`[${userIdForHelpers}] Stub: Would fetch blocks for ${blockId}`);
   return []; 
 }
 async function fetchAllDatabaseRows(notionClient: NotionClient, queue: PQueue, databaseId: string): Promise<any[]> { 
-  console.log(`[${userId}] Stub: Would fetch rows for DB ${databaseId}`);
+  console.log(`[${userIdForHelpers}] Stub: Would fetch rows for DB ${databaseId}`);
   return []; 
 }
-let userId = 'temp-worker-userid'; // Temporary placeholder for logging in helper stubs
+let userIdForHelpers = 'temp-worker-userid'; // Temporary placeholder for logging in helper stubs
 
 
 functions.cloudEvent('snapshotWorker', async (cloudEvent: functions.CloudEvent<PubSubCloudEventData>) => {
@@ -73,12 +91,12 @@ functions.cloudEvent('snapshotWorker', async (cloudEvent: functions.CloudEvent<P
     job = JSON.parse(messageData) as SnapshotJob;
   } catch (err) { console.error('Failed to parse Pub/Sub message data:', err); return; }
 
-  userId = job.userId; // Set actual userId for logging context
-  const userDocRef = db.collection('users').doc(userId);
+  userIdForHelpers = job.userId; // Set actual userId for logging context
+  const userDocRef = db.collection('users').doc(job.userId);
   const auditLogCol = userDocRef.collection('audit');
   const requestedAtOriginal = new Date(job.requestedAt);
 
-  console.log(`[${userId}] Snapshot job started. Requested at: ${requestedAtOriginal.toISOString()}`);
+  console.log(`[${job.userId}] Snapshot job started. Requested at: ${requestedAtOriginal.toISOString()}`);
 
   try {
     if (!notionQueue) {
@@ -86,14 +104,14 @@ functions.cloudEvent('snapshotWorker', async (cloudEvent: functions.CloudEvent<P
         console.log('P-Queue initialized for Notion API rate limiting.');
     }
     
-    const notionToken = await getUserNotionAccessToken(userId);
-    if (!notionToken) { throw new Error(`Could not retrieve Notion token for user ${userId}.`); }
+    const notionToken = await getUserNotionAccessToken(job.userId);
+    if (!notionToken) { throw new Error(`Could not retrieve Notion token for user ${job.userId}.`); }
     const notion = new NotionClient({ auth: notionToken });
 
-    console.log(`[${userId}] Configuring storage adapters...`);
+    console.log(`[${job.userId}] Configuring storage adapters...`);
     const gcsAdapter = new GCSStorageAdapter({ bucket: BUCKET_NAME });
     const mirrorAdapters: StorageAdapter[] = [];
-    const providersSnap = await db.collection('userStorageConfigs').doc(userId).collection('providers').where('isEnabled', '==', true).get();
+    const providersSnap = await db.collection('userStorageConfigs').doc(job.userId).collection('providers').where('isEnabled', '==', true).get();
     
     if (!providersSnap.empty) {
       for (const providerDoc of providersSnap.docs) {
@@ -110,51 +128,51 @@ functions.cloudEvent('snapshotWorker', async (cloudEvent: functions.CloudEvent<P
                 mirrorAdapters.push(new R2StorageAdapter({ bucket: config.bucket, endpoint: config.endpoint, accessKeyId, secretAccessKey, forcePathStyle: config.forcePathStyle, region: config.region || 'auto' }));
             }
         } catch (e: any) {
-            console.error(`[${userId}] Failed to init mirror adapter for ${config.type} ${config.bucket}: ${e.message}`);
+            console.error(`[${job.userId}] Failed to init mirror adapter for ${config.type} ${config.bucket}: ${e.message}`);
             await auditLogCol.add({ type: 'snapshot_mirror_config_error', message: `Failed to use mirror ${config.type} ${config.bucket|| 'unknown'}: ${e.message}`, providerId: providerDoc.id, timestamp: GCloudFirestore.FieldValue.serverTimestamp()});
         }
       }
     }
     const redundantAdapter = new RedundantStorageAdapter(gcsAdapter, mirrorAdapters); // Correct instantiation
-    console.log(`[${userId}] Storage configured. Primary: GCS. Mirrors active: ${mirrorAdapters.length}`);
+    console.log(`[${job.userId}] Storage configured. Primary: GCS. Mirrors active: ${mirrorAdapters.length}`);
     
-    console.log(`[${userId}] Starting Notion data fetch...`);
+    console.log(`[${job.userId}] Starting Notion data fetch...`);
     let allFetchedItems: any[] = [];
     // Simplified Notion fetch for baseline - replace with your full recursive fetch logic
     const searchResponse = await notionQueue.add(() => notion.search({ page_size: 10 })); 
     allFetchedItems.push(...searchResponse.results);
-    console.log(`[${userId}] Fetched ${allFetchedItems.length} top-level items (simplified fetch).`);
+    console.log(`[${job.userId}] Fetched ${allFetchedItems.length} top-level items (simplified fetch).`);
     const detailedItems = allFetchedItems; // Using top-level items directly for simplified baseline
 
     const snapshotTimestampISO = new Date().toISOString();
-    const finalSnapshotData = { metadata: { userId, snapshotTimestamp: snapshotTimestampISO, source: "snapshotWorker", itemCount: detailedItems.length }, items: detailedItems };
+    const finalSnapshotData = { metadata: { userId: job.userId, snapshotTimestamp: snapshotTimestampISO, source: "snapshotWorker", itemCount: detailedItems.length }, items: detailedItems };
     const jsonData = JSON.stringify(finalSnapshotData, null, 2); 
     const compressedData = await gzipAsync(Buffer.from(jsonData, 'utf-8'));
     const sha256Hash = createHash('sha256').update(compressedData).digest('hex');
     const actualSnapshotId = job.snapshotIdActual || `snap_${snapshotTimestampISO.replace(/[:.]/g, '-')}`;
-    const fileName = `${userId}/${actualSnapshotId}.json.gz`;
+    const fileName = `${job.userId}/${actualSnapshotId}.json.gz`;
     
     const objectMetadata = {
         contentType: 'application/gzip',
-        userId: userId,
+        userId: job.userId,
         snapshotTimestamp: snapshotTimestampISO,
         requestedAt: requestedAtOriginal.toISOString(), 
         snapshotId: actualSnapshotId,
         contentSha256: sha256Hash 
     };
 
-    console.log(`[${userId}] Writing snapshot file: ${fileName}`);
+    console.log(`[${job.userId}] Writing snapshot file: ${fileName}`);
     await redundantAdapter.write(fileName, compressedData, objectMetadata);
-    console.log(`[${userId}] Snapshot file written via RedundantStorageAdapter.`);
+    console.log(`[${job.userId}] Snapshot file written via RedundantStorageAdapter.`);
 
     // Write manifest file (GCS only for now)
     const hashManifest = {}; // Placeholder: Populate this if your full fetch logic creates it
     const manifestJsonData = JSON.stringify(hashManifest, null, 2);
     const compressedManifestData = await gzipAsync(Buffer.from(manifestJsonData, 'utf-8'));
-    const manifestFileName = `${userId}/${actualSnapshotId}.manifest.json.gz`;
-    console.log(`[${userId}] Writing manifest file: ${manifestFileName} to GCS (using gcsAdapter).`);
-    await gcsAdapter.write(manifestFileName, compressedManifestData, { contentType: 'application/gzip', userId });
-    console.log(`[${userId}] Manifest file written to GCS.`);
+    const manifestFileName = `${job.userId}/${actualSnapshotId}.manifest.json.gz`;
+    console.log(`[${job.userId}] Writing manifest file: ${manifestFileName} to GCS (using gcsAdapter).`);
+    await gcsAdapter.write(manifestFileName, compressedManifestData, { contentType: 'application/gzip', userId: job.userId });
+    console.log(`[${job.userId}] Manifest file written to GCS.`);
 
     await auditLogCol.add({
         type: 'snapshot_created',
@@ -168,7 +186,7 @@ functions.cloudEvent('snapshotWorker', async (cloudEvent: functions.CloudEvent<P
     
     const userSnapshotDocRef = userDocRef.collection('snapshots').doc(actualSnapshotId);
     await userSnapshotDocRef.set({
-        id: fileName, snapshotIdActual: actualSnapshotId, userId: userId,
+        id: fileName, snapshotIdActual: actualSnapshotId, userId: job.userId,
         timestamp: snapshotTimestampISO, status: 'Completed',
         sizeKB: Math.round(compressedData.length / 1024),
         contentSha256: sha256Hash, itemCount: detailedItems.length,
@@ -184,10 +202,10 @@ functions.cloudEvent('snapshotWorker', async (cloudEvent: functions.CloudEvent<P
         createdAt: GCloudFirestore.FieldValue.serverTimestamp(),
         updatedAt: GCloudFirestore.FieldValue.serverTimestamp(),
     }, { merge: true });
-    console.log(`[${userId}] Firestore snapshot doc created: users/${userId}/snapshots/${actualSnapshotId}`);
+    console.log(`[${job.userId}] Firestore snapshot doc created: users/${job.userId}/snapshots/${actualSnapshotId}`);
 
   } catch (error: any) {
-    console.error(`[${userId}] Snapshot worker failed for job from ${requestedAtOriginal.toISOString()}:`, error);
+    console.error(`[${job.userId}] Snapshot worker failed for job from ${requestedAtOriginal.toISOString()}:`, error);
     await auditLogCol.add({
         type: 'snapshot_failed', message: `Worker failed: ${error.message}`,
         errorName: error.name, errorStack: error.stack, jobDetails: job,

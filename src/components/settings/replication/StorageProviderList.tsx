@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import type { UserStorageProvider } from '../../../types/storageProvider';
+import type { UserStorageProvider } from '../../../../packages/storage-adapters/src/storageProvider';
 import { Button } from '../../ui/button';
 import { Badge } from '../../ui/badge';
 // import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../ui/table"; // Corrected path if used

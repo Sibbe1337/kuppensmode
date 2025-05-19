@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import type { UserStorageProvider, StorageProviderType } from '../../../types/storageProvider';
+import type { UserStorageProvider, StorageProviderType } from '../../../../packages/storage-adapters/src/storageProvider';
 import { Button } from '../../ui/button';
 import { Input } from "../../ui/input";
 import { Label } from "../../ui/label";

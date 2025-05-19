@@ -2,19 +2,17 @@
   "compilerOptions": {
     "module": "commonjs",
     "target": "es2020",
-    "outDir": "lib",
+    "outDir": "lib", 
     "strict": true,
     "esModuleInterop": true,
-    "skipLibCheck": true,
+    "skipLibCheck": true, 
     "forceConsistentCasingInFileNames": true,
     "sourceMap": true,
-    "baseUrl": "."
+    "baseUrl": ".", 
+    "resolveJsonModule": true 
   },
   "include": [
-    "index.ts",
-    "lib/**/*.ts",
-    "storage/**/*.ts",
-    "types/**/*.ts"
+    "index.ts"
   ],
   "exclude": ["node_modules", "lib"]
-} 
+}

@@ -1,0 +1,27 @@
+{
+  "name": "@notion-lifeline/common-types",
+  "version": "1.0.0",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "pnpm run clean && tsc -p tsconfig.build.json",
+    "clean": "rm -rf dist",
+    "dev": "tsc -w -p tsconfig.build.json",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "@google-cloud/firestore": "^7.11.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "@notion-lifeline/config": "workspace:*"
+  }
+} 

@@ -3,10 +3,9 @@ import { auth } from '@clerk/nextjs/server';
 import { getDb } from '@/lib/firestore'; // Adjusted path assuming it's in src/lib
 import { FieldValue } from '@google-cloud/firestore'; // Needed for serverTimestamp
 import { encryptString } from '@/lib/kms'; // Assuming path to kms utility
-import type { UserStorageProvider, StorageProviderType } from '@/types/storageProvider'; // For typing
+import type { UserStorageProvider, StorageProviderType } from '@notion-lifeline/common-types'; // For typing
 import { decryptString } from '@/lib/kms'; // Ensure this path is correct
-import { S3StorageAdapter } from '@/src/storage/S3StorageAdapter'; // Ensure this path is correct
-import { R2StorageAdapter } from '@/src/storage/R2StorageAdapter'; // Ensure this path is correct
+import { S3StorageAdapter, R2StorageAdapter } from '@notion-lifeline/storage-adapters'; // Ensure this path is correct
 
 export async function DELETE(
   request: Request,

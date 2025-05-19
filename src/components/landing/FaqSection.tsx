@@ -33,31 +33,31 @@ const faqItemsData = [
 
 const FaqSection: React.FC = () => {
   return (
-    <section className="py-16 sm:py-24 bg-slate-900">
+    <section className="py-16 sm:py-24 bg-slate-900 border-y border-slate-800/70">
       <div className="container mx-auto px-4">
         <div className="max-w-3xl mx-auto text-center mb-12 sm:mb-16">
-          <span className="inline-block px-3 py-1 text-xs font-semibold text-indigo-300 bg-indigo-900/70 rounded-full mb-3">
+          <span className="inline-block px-3.5 py-1.5 text-xs font-semibold text-sky-300 bg-sky-800/50 rounded-full mb-4 shadow-sm">
             FAQ
           </span>
-          <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-4 text-slate-50 tracking-tight">
+          <h2 className="text-3xl md:text-4xl lg:text-5xl font-semibold mb-4 text-slate-50 tracking-tight">
             Common Questions
           </h2>
-          <p className="text-lg text-slate-400">
+          <p className="text-lg text-slate-300 leading-relaxed">
             Everything you need to know about PageLifeline.
           </p>
         </div>
-        <div className="max-w-2xl mx-auto">
-          <Accordion type="single" collapsible className="w-full space-y-3">
+        <div className="max-w-3xl mx-auto">
+          <Accordion type="single" collapsible className="w-full space-y-4">
             {faqItemsData.map((item, index) => (
               <AccordionItem 
                 key={index} 
                 value={`item-${index + 1}`} 
-                className="bg-slate-800 rounded-lg px-6 border border-slate-700 hover:border-indigo-500/50 transition-colors focus-within:border-indigo-500/50 focus-within:ring-2 focus-within:ring-indigo-500/30"
+                className="bg-slate-800/70 backdrop-blur-lg rounded-xl px-0 border border-slate-700/50 hover:border-sky-500/60 focus-within:border-sky-500/60 focus-within:ring-1 focus-within:ring-sky-500/40 transition-colors duration-200 ease-in-out shadow-md"
               >
-                <AccordionTrigger className="text-left text-lg font-medium text-slate-100 hover:text-indigo-400 hover:no-underline py-5">
+                <AccordionTrigger className="text-left text-md font-medium text-slate-100 hover:text-sky-400 hover:no-underline py-5 px-6 w-full">
                   {item.q}
                 </AccordionTrigger>
-                <AccordionContent className="text-slate-300 pt-0 pb-5 text-sm leading-relaxed">
+                <AccordionContent className="text-slate-300 pt-0 pb-5 px-6 text-sm leading-relaxed">
                   {item.a}
                 </AccordionContent>
               </AccordionItem>

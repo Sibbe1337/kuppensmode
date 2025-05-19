@@ -5,7 +5,7 @@ import { useStorageConfigs } from '../../../../src/hooks/useStorageConfigs';
 import StorageProviderList from '../../../../src/components/settings/replication/StorageProviderList';
 import StorageProviderModal from '../../../../src/components/settings/replication/StorageProviderModal';
 import { Button } from '../../../../src/components/ui/button';
-import type { UserStorageProvider } from '../../../../src/types/storageProvider'; // For typing editingConfig
+import type { UserStorageProvider } from '../../../../packages/storage-adapters/src/storageProvider'; // For typing editingConfig
 
 export default function ReplicationSettingsPage() {
   const { configs, isLoading, isError, errorDetails, mutateConfigs } = useStorageConfigs();

@@ -1,5 +1,5 @@
 import useSWR from 'swr';
-import type { UserStorageProvider } from '../types/storageProvider';
+import type { UserStorageProvider } from '../../packages/storage-adapters/src/storageProvider';
 
 const fetcher = async (url: string) => {
   const res = await fetch(url);

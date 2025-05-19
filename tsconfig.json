@@ -38,7 +38,7 @@
     "middleware.ts",
     "instrumentation.ts",
     "instrumentation-client.ts"
-  ],
+, "packages/storage-adapters/src/storageProvider.ts"  ],
   "exclude": [
     "node_modules",
     ".next",

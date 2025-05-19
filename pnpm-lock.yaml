@@ -35,6 +35,12 @@ importers:
       '@google-cloud/storage':
         specifier: ^7.16.0
         version: 7.16.0
+      '@notion-lifeline/common-types':
+        specifier: workspace:*
+        version: link:packages/common-types
+      '@notion-lifeline/storage-adapters':
+        specifier: workspace:*
+        version: link:packages/storage-adapters
       '@notionhq/client':
         specifier: ^2.3.0
         version: 2.3.0
@@ -233,6 +239,43 @@ importers:
         version: 10.9.2(@types/node@20.17.47)(typescript@5.8.3)
       typescript:
         specifier: ^5
+        version: 5.8.3
+
+  packages/common-types:
+    dependencies:
+      '@google-cloud/firestore':
+        specifier: ^7.11.0
+        version: 7.11.1
+    devDependencies:
+      '@notion-lifeline/config':
+        specifier: workspace:*
+        version: link:../config
+      typescript:
+        specifier: ^5.0.0
+        version: 5.8.3
+
+  packages/config: {}
+
+  packages/storage-adapters:
+    dependencies:
+      '@aws-sdk/client-s3':
+        specifier: ^3.806.0
+        version: 3.810.0
+      '@aws-sdk/lib-storage':
+        specifier: ^3.806.0
+        version: 3.810.0(@aws-sdk/client-s3@3.810.0)
+      '@google-cloud/storage':
+        specifier: ^7.16.0
+        version: 7.16.0
+      '@notion-lifeline/common-types':
+        specifier: workspace:*
+        version: link:../common-types
+    devDependencies:
+      '@notion-lifeline/config':
+        specifier: workspace:*
+        version: link:../config
+      typescript:
+        specifier: ^5.0.0
         version: 5.8.3
 
 packages:

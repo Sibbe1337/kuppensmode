@@ -2,44 +2,44 @@
 
 import React from 'react';
 import { Button } from '@/components/ui/button';
-import Link from 'next/link';
+// Link component is not used in the provided snippet, but keeping it if needed elsewhere or for future.
+// import Link from 'next/link'; 
 import { ArrowRight, PlayCircle } from 'lucide-react';
 
 interface HeroProps {
-  onPrimaryCtaClick: () => void; // Re-enable this prop
+  onPrimaryCtaClick: () => void;
 }
 
 const Hero: React.FC<HeroProps> = ({ onPrimaryCtaClick }) => {
-  // TODO: Replace with actual screenshot paths or more sophisticated mockups
-  const mainMockupSrc = "/assets/screenshots/dashboard-overview-mock.png"; // Placeholder
+  const mainMockupSrc = "/assets/screenshots/dashboard-overview-mock.png"; // Placeholder for actual image
   const subMockup1Src = "/assets/screenshots/snapshot-comparison-mock.png"; // Placeholder
-  const subMockup2Src = "/assets/screenshots/code-tracking-mock.png"; // Placeholder
-  const subMockup3Src = "/assets/screenshots/version-history-mock.png"; // Placeholder
-  const subMockup4Src = "/assets/screenshots/user-dashboard-mock.png"; // Placeholder
+  const subMockup2Src = "/assets/screenshots/code-tracking-mock.png";       // Placeholder
+  const subMockup3Src = "/assets/screenshots/version-history-mock.png";     // Placeholder
+  const subMockup4Src = "/assets/screenshots/user-dashboard-mock.png";      // Placeholder
 
   return (
-    <section className="relative bg-slate-900 text-white overflow-hidden">
-      <div className="container mx-auto px-4 py-20 md:py-32 lg:py-40 relative z-10">
-        <div className="grid lg:grid-cols-2 gap-12 items-center">
+    <section className="relative bg-gradient-to-br from-slate-900 to-slate-950 text-slate-100 overflow-hidden">
+      <div className="container mx-auto px-4 py-24 md:py-36 lg:py-48 relative z-10">
+        <div className="grid lg:grid-cols-2 gap-16 items-center">
           {/* Left Column: Headline, Sub-copy, CTAs */}
           <div className="text-center lg:text-left">
-            <div className="inline-block px-3 py-1 text-xs font-medium text-indigo-300 bg-indigo-900/70 rounded-full mb-4">
+            <div className="inline-block px-3.5 py-1.5 text-xs font-medium text-sky-300 bg-sky-800/50 rounded-full mb-5 shadow-sm">
               Introducing PageLifeline
             </div>
             <h1 
-              className="text-4xl sm:text-5xl md:text-6xl font-bold tracking-tight mb-6"
+              className="text-4xl sm:text-5xl md:text-6xl font-semibold tracking-tight mb-6 text-slate-50"
             >
-              Never Lose Your <span className="text-indigo-400">Notion</span> Work Again
+              Never Lose Your <span className="text-sky-400">Notion</span> Work Again
             </h1>
             <p 
-              className="text-lg md:text-xl text-slate-300 max-w-xl mx-auto lg:mx-0 mb-10"
+              className="text-lg md:text-xl text-slate-300 max-w-xl mx-auto lg:mx-0 mb-10 leading-relaxed"
             >
               Capture snapshots of your Notion workspace and track changes over time. Restore previous versions, compare documents, and keep your knowledge safe.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
               <Button 
                 size="lg" 
-                className="text-base px-8 py-6 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg shadow-lg hover:shadow-indigo-500/50 transition-all duration-300 transform hover:scale-105"
+                className="text-base font-semibold px-8 py-4 bg-sky-500 hover:bg-sky-400 text-white rounded-xl shadow-md hover:shadow-lg hover:shadow-sky-500/30 transition-all duration-200 ease-in-out transform hover:scale-105"
                 onClick={onPrimaryCtaClick}
               >
                 Get Started Free <ArrowRight className="ml-2 h-5 w-5" />
@@ -47,43 +47,47 @@ const Hero: React.FC<HeroProps> = ({ onPrimaryCtaClick }) => {
               <Button 
                 variant="outline"
                 size="lg" 
-                className="text-base px-8 py-6 text-slate-200 border-slate-700 hover:bg-slate-800 hover:text-white rounded-lg transition-colors duration-300"
+                className="text-base font-medium px-8 py-4 text-slate-100 bg-slate-700/30 hover:bg-slate-700/50 backdrop-blur-md border-slate-600/70 hover:border-slate-500/70 rounded-xl shadow-sm hover:shadow-md transition-all duration-200 ease-in-out"
                 // onClick={() => {/* TODO: Open Demo Modal */}}
               >
                 <PlayCircle className="mr-2 h-5 w-5" /> Watch Demo
               </Button>
             </div>
-            <p className="text-xs text-slate-400 mt-4 text-center lg:text-left">No credit card required.</p>
+            <p className="text-xs font-medium text-slate-400 mt-5 text-center lg:text-left">No credit card required.</p>
           </div>
 
           {/* Right Column: Composite Mockup Images */}
           <div className="hidden lg:block relative mt-12 lg:mt-0">
             <div className="relative w-full max-w-2xl mx-auto">
               {/* Main Dashboard Mockup */}
-              <div className="relative z-10 bg-slate-800 border-2 border-slate-700 rounded-lg shadow-2xl overflow-hidden aspect-[16/10]">
-                {/* <Image src={mainMockupSrc} alt="PageLifeline Dashboard Preview" layout="fill" objectFit="cover" /> */}
-                <div className="w-full h-full bg-slate-700 flex items-center justify-center"><p className="text-slate-500">PageLifeline Dashboard</p></div>
+              <div className="relative z-10 bg-slate-800/70 backdrop-blur-lg border border-slate-700/50 rounded-2xl shadow-2xl shadow-black/50 overflow-hidden aspect-[16/10]">
+                {/* Replace div with actual <Image /> component when ready */}
+                <div className="w-full h-full bg-slate-700/30 flex items-center justify-center">
+                  <p className="text-slate-400 text-lg">PageLifeline Dashboard Mockup</p>
+                </div>
               </div>
-              {/* Smaller floating mockups - requires careful positioning */}
+              {/* Smaller floating mockups - requires careful positioning and actual images */}
               {[subMockup1Src, subMockup2Src, subMockup3Src, subMockup4Src].map((src, index) => (
                 <div 
                   key={index} 
-                  className={`absolute bg-slate-700 border border-slate-600 rounded-md shadow-xl overflow-hidden aspect-video w-40 h-auto 
-                    ${index === 0 ? '-bottom-8 -left-16 z-20' : ''}
-                    ${index === 1 ? '-top-10 -right-12 z-0 transform rotate-6' : ''}
-                    ${index === 2 ? 'bottom-16 -right-20 z-20 transform -rotate-8' : ''}
-                    ${index === 3 ? 'top-1/4 -left-24 z-0 transform rotate-3' : ''}
+                  className={`absolute bg-slate-700/50 backdrop-blur-md border border-slate-600/50 rounded-lg shadow-xl overflow-hidden aspect-video w-44 h-auto 
+                    ${index === 0 ? '-bottom-10 -left-20 z-20 transform -rotate-3' : ''}
+                    ${index === 1 ? '-top-12 -right-16 z-0 transform rotate-6' : ''}
+                    ${index === 2 ? 'bottom-20 -right-24 z-20 transform -rotate-8' : ''}
+                    ${index === 3 ? 'top-1/4 -left-28 z-0 transform rotate-4' : ''}
                   `}
+                  style={{ width: '180px'}} // Example fixed width for better control of aspect ratio for sub-mockups
                 >
-                  {/* <Image src={src} alt={`Feature mockup ${index + 1}`} layout="fill" objectFit="contain" /> */}
-                  <div className="w-full h-full bg-slate-600 flex items-center justify-center text-xs p-1"><p className="text-slate-400 text-center">Feature {index+1}</p></div>
+                  {/* Replace div with actual <Image /> component when ready */}
+                  <div className="w-full h-full bg-slate-600/30 flex items-center justify-center text-xs p-2">
+                    <p className="text-slate-300 text-center">Feature Mockup {index+1}</p>
+                  </div>
                 </div>
               ))}
             </div>
           </div>
         </div>
       </div>
-      {/* Optional: Add a subtle background pattern or elements if seen in design */}
     </section>
   );
 };
