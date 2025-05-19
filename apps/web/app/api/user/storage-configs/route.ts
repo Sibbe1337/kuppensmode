@@ -110,4 +110,6 @@ export async function GET(request: Request) {
     console.error("Error fetching storage provider configs:", error);
     return new NextResponse("Internal Server Error", { status: 500 });
   }
-} 
+}
+
+export const runtime = 'nodejs'; 

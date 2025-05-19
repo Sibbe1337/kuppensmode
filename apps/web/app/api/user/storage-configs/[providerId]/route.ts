@@ -7,6 +7,8 @@ import type { UserStorageProvider, StorageProviderType } from '@notion-lifeline/
 import { decryptString } from '@/lib/kms'; // Ensure this path is correct
 import { S3StorageAdapter, R2StorageAdapter } from '@notion-lifeline/storage-adapters'; // Ensure this path is correct
 
+export const runtime = 'nodejs';
+
 export async function DELETE(
   request: Request,
   { params }: { params: { providerId: string } }
