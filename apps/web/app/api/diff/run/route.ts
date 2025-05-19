@@ -3,6 +3,7 @@ import { auth } from '@clerk/nextjs/server';
 import { PubSub } from '@google-cloud/pubsub';
 import { v4 as uuidv4 } from 'uuid'; // Ensure uuid is imported
 import { getDb } from "@/lib/firestore"; // Import getDb
+import { env } from '@notion-lifeline/config';
 
 export const runtime = 'nodejs';
 
@@ -12,8 +13,8 @@ interface DiffRunRequest {
   // Potentially other options like specific items to compare, priority, etc.
 }
 
-const projectId = process.env.GOOGLE_CLOUD_PROJECT;
-const keyJsonString = process.env.GCP_SERVICE_ACCOUNT_KEY_JSON;
+const projectId = env.GCP_PROJECT_ID;
+const keyJsonString = env.GCP_SERVICE_ACCOUNT_KEY_JSON;
 const TOPIC_NAME_DIFF_RUN = process.env.PUBSUB_DIFF_TOPIC || 'notion-lifeline-diff-requests';
 
 let diffRunPubSubInstance: PubSub | null = null;

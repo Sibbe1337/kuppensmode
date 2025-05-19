@@ -10,7 +10,8 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 import { ExternalLink, KeyRound, Bell, LogOut, HelpCircle, ShieldCheck, Loader2, AlertTriangle, Info, Zap, CreditCard, Gift, Copy } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast"; // Import useToast
 import { useUserSettings } from '@/hooks/useUserSettings'; // Corrected hook import
-import type { UserSettings } from '@/types/user'; // Corrected type import
+import type { UserSettings as CommonUserSettings } from '@notion-lifeline/common-types';
+import type { UserSettings as AppUserSettings } from '@/types/user'; // Local type for component state if different
 import { useSearchParams } from 'next/navigation'; // Import useSearchParams
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"; // For frequency selection
 import LoadingFallback from '@/components/ui/LoadingFallback'; // Import LoadingFallback
@@ -21,36 +22,73 @@ const SettingsPageContent = () => {
   const { toast } = useToast();
   const searchParams = useSearchParams();
 
-  // Derived state for notionConnected status
   const [isNotionCurrentlyConnected, setIsNotionCurrentlyConnected] = useState(settings?.notionConnected ?? false);
 
   console.log("SettingsPage: Top level render. Initial settings?.notionConnected:", settings?.notionConnected, "isNotionCurrentlyConnected:", isNotionCurrentlyConnected);
 
   const [isDisconnectingNotion, setIsDisconnectingNotion] = React.useState(false);
   const [isRegeneratingKey, setIsRegeneratingKey] = React.useState(false);
-  const [editedNotifications, setEditedNotifications] = React.useState(settings?.notifications || {
-    emailOnSnapshotSuccess: true,
-    emailOnSnapshotFailure: true,
-    webhookUrl: "",
+  
+  const [editedNotifications, setEditedNotifications] = React.useState<AppUserSettings['notifications']>(() => {
+    const commonNotifications = settings?.notifications;
+    return {
+      emailOnSnapshotSuccess: commonNotifications?.emailOnSnapshotSuccess ?? true,
+      emailOnSnapshotFailure: commonNotifications?.emailOnSnapshotFailure ?? true,
+      webhookUrl: commonNotifications?.webhookUrl ?? "",
+    };
   });
+
   const [isSavingNotifications, setIsSavingNotifications] = React.useState(false);
-  const [editedAutoSnapshot, setEditedAutoSnapshot] = React.useState(
-    settings?.autoSnapshot || { 
-      enabled: false, 
-      frequency: 'daily', 
+
+  const [editedAutoSnapshot, setEditedAutoSnapshot] = React.useState<AppUserSettings['autoSnapshot']>(() => {
+    const commonAutoSnapshot = settings?.autoSnapshot;
+    let initialFrequency: AppUserSettings['autoSnapshot']['frequency'] = 'daily';
+
+    if (commonAutoSnapshot?.frequency) {
+      if (commonAutoSnapshot.frequency === 'daily') {
+        initialFrequency = 'daily';
+      } else if (commonAutoSnapshot.frequency === 'hourly') {
+        initialFrequency = 'daily';
+        console.warn("Auto-snapshot frequency 'hourly' from backend is not supported by UI, defaulting to 'daily'.");
+      }
     }
-  );
+
+    return {
+      enabled: commonAutoSnapshot?.enabled ?? false,
+      frequency: initialFrequency,
+    };
+  });
+
   const [isSavingAutoSnapshot, setIsSavingAutoSnapshot] = React.useState(false);
 
-  // Effect to update local isNotionCurrentlyConnected when settings change from SWR
   useEffect(() => {
     console.log("SettingsPage: useEffect for settings update. New settings?.notionConnected:", settings?.notionConnected);
     if (settings) {
       setIsNotionCurrentlyConnected(settings.notionConnected);
-    }
-  }, [settings]); // Depend on the settings object from SWR
+      setEditedNotifications({
+        emailOnSnapshotSuccess: settings.notifications?.emailOnSnapshotSuccess ?? true,
+        emailOnSnapshotFailure: settings.notifications?.emailOnSnapshotFailure ?? true,
+        webhookUrl: settings.notifications?.webhookUrl ?? "",
+      });
 
-  // Effect to check for post-Notion-connection redirect
+      let updatedFrequency: AppUserSettings['autoSnapshot']['frequency'] = 'daily';
+      if (settings.autoSnapshot?.frequency) {
+        if (settings.autoSnapshot.frequency === 'daily') {
+          updatedFrequency = 'daily';
+        } else if (settings.autoSnapshot.frequency === 'hourly') {
+          updatedFrequency = 'daily';
+        }
+      }
+      setEditedAutoSnapshot({
+        enabled: settings.autoSnapshot?.enabled ?? false,
+        frequency: updatedFrequency,
+      });
+      if (settings.apiKey) {
+        setApiKey(settings.apiKey ?? "");
+      }
+    }
+  }, [settings]);
+
   React.useEffect(() => {
     const notionQueryParam = searchParams.get('notion');
     const errorQueryParam = searchParams.get('error');
@@ -75,20 +113,6 @@ const SettingsPageContent = () => {
       window.history.replaceState(null, '', '/dashboard/settings');
     }
   }, [searchParams, mutateSettings, toast]);
-
-  React.useEffect(() => {
-    if (settings?.notifications) {
-      setEditedNotifications(settings.notifications);
-    }
-  }, [settings?.notifications]);
-
-  React.useEffect(() => {
-    if (settings?.autoSnapshot) {
-      setEditedAutoSnapshot(settings.autoSnapshot);
-    } else if (settings && !settings.autoSnapshot) {
-      setEditedAutoSnapshot({ enabled: false, frequency: 'daily' });
-    }
-  }, [settings?.autoSnapshot, settings]);
 
   const handleNotionConnect = () => {
     console.log("Redirecting to Notion OAuth initiation endpoint...");
@@ -133,10 +157,10 @@ const SettingsPageContent = () => {
   };
 
   const handleNotificationChange = (
-    key: keyof UserSettings['notifications'],
+    key: keyof AppUserSettings['notifications'],
     value: boolean | string | null
   ) => {
-    setEditedNotifications((prev) => ({
+    setEditedNotifications((prev: AppUserSettings['notifications']) => ({
       ...prev,
       [key]: value,
     }));
@@ -170,10 +194,10 @@ const SettingsPageContent = () => {
   }, [settings?.notifications, editedNotifications]);
 
   const handleAutoSnapshotSettingChange = (
-    key: keyof typeof editedAutoSnapshot,
-    value: boolean | string
+    key: keyof AppUserSettings['autoSnapshot'],
+    value: boolean | AppUserSettings['autoSnapshot']['frequency']
   ) => {
-    setEditedAutoSnapshot((prev) => ({
+    setEditedAutoSnapshot((prev: AppUserSettings['autoSnapshot']) => ({
       ...prev,
       [key]: value,
     }));
@@ -226,12 +250,7 @@ const SettingsPageContent = () => {
     return JSON.stringify(currentAutoSnapshot) !== JSON.stringify(editedAutoSnapshot);
   }, [settings, editedAutoSnapshot]);
   
-  const [apiKey, setApiKey] = useState(settings?.apiKey || "");
-  useEffect(() => {
-    if (settings?.apiKey) {
-      setApiKey(settings.apiKey);
-    }
-  }, [settings?.apiKey]);
+  const [apiKey, setApiKey] = useState(settings?.apiKey ?? "");
 
   const handleManageSubscription = async () => {
     try {
@@ -382,7 +401,7 @@ const SettingsPageContent = () => {
             <Switch 
               id="autoSnapshotEnabled" 
               checked={editedAutoSnapshot.enabled} 
-              onCheckedChange={(value) => handleAutoSnapshotSettingChange('enabled', value)} 
+              onCheckedChange={(value: boolean) => handleAutoSnapshotSettingChange('enabled', value)} 
             />
           </div>
           {editedAutoSnapshot.enabled && (
@@ -391,7 +410,7 @@ const SettingsPageContent = () => {
               <RadioGroup 
                 id="snapshotFrequency"
                 defaultValue={editedAutoSnapshot.frequency}
-                onValueChange={(value) => handleAutoSnapshotSettingChange('frequency', value)}
+                onValueChange={(value: AppUserSettings['autoSnapshot']['frequency']) => handleAutoSnapshotSettingChange('frequency', value)}
                 className="flex flex-col space-y-1"
               >
                 <div className="flex items-center space-x-2">
@@ -443,7 +462,7 @@ const SettingsPageContent = () => {
                   <Switch 
                     id="emailOnSuccess" 
                     checked={editedNotifications.emailOnSnapshotSuccess} 
-                    onCheckedChange={(value) => handleNotificationChange('emailOnSnapshotSuccess', value)} 
+                    onCheckedChange={(value: boolean) => handleNotificationChange('emailOnSnapshotSuccess', value)} 
                   />
                 </div>
                 <div className="flex items-center justify-between space-x-2">
@@ -456,7 +475,7 @@ const SettingsPageContent = () => {
                   <Switch 
                     id="emailOnFailure" 
                     checked={editedNotifications.emailOnSnapshotFailure} 
-                    onCheckedChange={(value) => handleNotificationChange('emailOnSnapshotFailure', value)}
+                    onCheckedChange={(value: boolean) => handleNotificationChange('emailOnSnapshotFailure', value)}
                   />
                 </div>
                 {/* Webhook URL - Future Feature - Uncomment when ready 

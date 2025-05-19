@@ -8,6 +8,7 @@ import { gunzipSync } from 'zlib';
 import { get_encoding, Tiktoken } from 'tiktoken';
 import { v4 as uuidv4 } from 'uuid'; // Though diffJobId comes from payload
 import { generateDiffSummary, initOpenAIUtils } from './src/openaiUtils'; // Import new util
+import { env } from '@notion-lifeline/config';
 
 console.log("[DiffWorker] Cold start.");
 
@@ -17,8 +18,8 @@ const BUCKET_NAME = process.env.GCS_BUCKET_NAME;
 const storage = new Storage();
 
 let openaiClient: OpenAI | null = null;
-if (process.env.OPENAI_API_KEY) {
-  openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+if (env.OPENAI_API_KEY) {
+  openaiClient = new OpenAI({ apiKey: env.OPENAI_API_KEY });
   console.log("[DiffWorker] OpenAI client initialized.");
   initOpenAIUtils(openaiClient); // Initialize the util with the client
 } else {
@@ -26,8 +27,8 @@ if (process.env.OPENAI_API_KEY) {
 }
 
 let pineconeClient: Pinecone | null = null;
-const pineconeApiKey = process.env.PINECONE_API_KEY;
-const pineconeIndexName = process.env.PINECONE_INDEX_NAME;
+const pineconeApiKey = env.PINECONE_API_KEY;
+const pineconeIndexName = env.PINECONE_INDEX_NAME;
 if (pineconeApiKey && pineconeIndexName) {
   pineconeClient = new Pinecone({ apiKey: pineconeApiKey });
   console.log("[DiffWorker] Pinecone client initialized for index:", pineconeIndexName);
@@ -326,11 +327,11 @@ functions.cloudEvent('diffWorker', async (cloudEvent: CloudEvent<MessagePublishe
     };
 
     // Initialize OpenAI Client (if not already initialized globally/lazily)
-    if (!openaiClient && process.env.OPENAI_API_KEY) {
-      openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    if (!openaiClient && env.OPENAI_API_KEY) {
+      openaiClient = new OpenAI({ apiKey: env.OPENAI_API_KEY });
       console.log("[DiffWorker] OpenAI client initialized.");
       initOpenAIUtils(openaiClient); // Initialize the util with the client
-    } else if (!process.env.OPENAI_API_KEY) {
+    } else if (!env.OPENAI_API_KEY) {
       console.warn("[DiffWorker] OPENAI_API_KEY not set. LLM summary will be skipped.");
     } else if (openaiClient) {
       initOpenAIUtils(openaiClient); // Ensure util is init'd if client already exists

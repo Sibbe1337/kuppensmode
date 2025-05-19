@@ -1,5 +1,5 @@
-import Stripe from 'stripe';
-import { getSecret } from './secrets'; // Assuming secrets.ts is in the same lib dir
+import { Stripe } from 'stripe';
+import { getSecret } from './lib/secret'; // Assuming secret.ts is in the lib dir
 
 let stripe: Stripe | null = null;
 

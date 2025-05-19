@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from 'react';
 import React, { useState, useMemo } from 'react';
 import useSWR from 'swr';
 import { fetcher } from '@/lib/fetcher';
@@ -48,7 +49,7 @@ const AUDIT_LOG_TYPES = [
     { value: "billing_subscription_canceled", label: "Subscription Canceled" },
 ];
 
-const AuditLogPage = () => {
+function ActualAuditLogPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [filterType, setFilterType] = useState<string>("");
   // const [startDate, setStartDate] = useState<Date | undefined>();
@@ -195,6 +196,12 @@ const AuditLogPage = () => {
       )}
     </div>
   );
-};
+}
 
-export default AuditLogPage; 
+export default function AuditLogPage() {
+  return (
+    <Suspense fallback={null}>
+      <ActualAuditLogPage />
+    </Suspense>
+  );
+} 

@@ -4,11 +4,14 @@
   "private": true,
   "main": "lib/index.js",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc -p tsconfig.json",
     "gcp-build": "npm run build",
     "start": "functions-framework --target=diffWorker --port=8082"
   },
   "dependencies": {
+    "@notion-lifeline/config": "workspace:*",
+    "@notion-lifeline/common-types": "workspace:*",
+    "@notion-lifeline/storage-adapters": "workspace:*",
     "@google-cloud/firestore": "^7.0.0",
     "@google-cloud/functions-framework": "^3.0.0",
     "@google-cloud/storage": "^7.0.0",

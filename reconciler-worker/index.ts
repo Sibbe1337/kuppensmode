@@ -4,10 +4,10 @@ import { KeyManagementServiceClient } from '@google-cloud/kms';
 import type { UserStorageProvider } from './types/storageProvider';
 
 // Adapters are in the same directory as index.ts
-import { StorageAdapter } from './StorageAdapter';
-import { GCSStorageAdapter } from './GCSStorageAdapter';
-import { S3StorageAdapter } from './S3StorageAdapter';
-import { R2StorageAdapter } from './R2StorageAdapter';
+import { StorageAdapter } from './StorageAdapter.js';
+import { GCSStorageAdapter } from './GCSStorageAdapter.js';
+import { S3StorageAdapter } from './S3StorageAdapter.js';
+import { R2StorageAdapter } from './R2StorageAdapter.js';
 // RedundantStorageAdapter might not be directly used here, but individual adapters will be.
 
 const db = new GCloudFirestore.Firestore();

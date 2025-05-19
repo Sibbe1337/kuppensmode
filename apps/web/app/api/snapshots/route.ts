@@ -4,9 +4,10 @@ import { Storage } from '@google-cloud/storage';
 import type { Snapshot } from '@/types';
 import { getDb } from "@/lib/firestore";
 import { FieldValue } from '@google-cloud/firestore';
+import { env } from '@notion-lifeline/config';
 
-const projectId = process.env.GOOGLE_CLOUD_PROJECT;
-const keyJsonString = process.env.GCP_SERVICE_ACCOUNT_KEY_JSON;
+const projectId = env.GCP_PROJECT_ID;
+const keyJsonString = env.GCP_SERVICE_ACCOUNT_KEY_JSON;
 const bucketName = process.env.GCS_BUCKET_NAME;
 
 let storageInstance: Storage | null = null;

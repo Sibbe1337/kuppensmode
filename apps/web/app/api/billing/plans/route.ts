@@ -2,10 +2,11 @@ import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 // Ensure you have stripe installed: pnpm add stripe
 import Stripe from 'stripe';
+import { env } from '@notion-lifeline/config';
 
 let stripe: Stripe | null = null;
 
-const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+const stripeSecretKey = env.STRIPE_SECRET_KEY;
 if (stripeSecretKey) {
   stripe = new Stripe(stripeSecretKey, {
     apiVersion: '2024-06-20',

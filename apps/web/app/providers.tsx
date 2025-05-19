@@ -1,8 +1,8 @@
 'use client';
 
 import { ClerkProvider } from '@clerk/nextjs';
-import React from 'react'; // Import React
+import { ReactNode } from 'react';
 
-export default function Providers({ children }: { children: React.ReactNode }) {
+export default function Providers({ children }: { children: ReactNode }) {
   return <ClerkProvider>{children}</ClerkProvider>;
 } 

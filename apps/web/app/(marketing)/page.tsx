@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from 'react';
 import React, { useState } from 'react';
 import { useAuth } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
@@ -20,7 +21,8 @@ import FinalCta from '@/components/landing/FinalCta';
 import MarketingFooter from '@/components/landing/MarketingFooter';
 //Removed imports like Button, Badge, Switch, loadStripe, useToast as they are now encapsulated in child components or not directly used here.
 
-export default function MarketingPage() {
+// Define ActualPage component
+function ActualMarketingPage() {
   const { isSignedIn } = useAuth(); 
   const router = useRouter();
 
@@ -49,5 +51,13 @@ export default function MarketingPage() {
       <FinalCta />
       <MarketingFooter />
     </div>
+  );
+}
+
+export default function MarketingPage() {
+  return (
+    <Suspense fallback={null}>
+      <ActualMarketingPage />
+    </Suspense>
   );
 } 

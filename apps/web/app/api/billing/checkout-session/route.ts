@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
-import { auth, clerkClient } from '@clerk/nextjs/server';
+import { auth, clerkClient, currentUser } from '@clerk/nextjs/server';
 import Stripe from 'stripe';
-// import { getSecret } from '@/lib/secrets'; // Commenting out if unused
+import { env } from '@notion-lifeline/config';
 import { getDb } from "@/lib/firestore";
 
-const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+const stripeSecretKey = env.STRIPE_SECRET_KEY;
 if (!stripeSecretKey) {
   console.error("[Checkout API] STRIPE_SECRET_KEY environment variable not set.");
   // Potentially throw error or handle differently if critical for module initialization

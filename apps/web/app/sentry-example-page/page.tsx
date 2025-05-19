@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from 'react';
 import Head from "next/head";
 import * as Sentry from "@sentry/nextjs";
 import { useState, useEffect } from "react";
@@ -11,7 +12,8 @@ class SentryExampleFrontendError extends Error {
   }
 }
 
-export default function Page() {
+// Define ActualPage component
+function ActualSentryExamplePage() {
   const [hasSentError, setHasSentError] = useState(false);
   const [isConnected, setIsConnected] = useState(true);
   
@@ -196,5 +198,13 @@ export default function Page() {
         }
       `}</style>
     </div>
+  );
+}
+
+export default function Page() {
+  return (
+    <Suspense fallback={null}>
+      <ActualSentryExamplePage />
+    </Suspense>
   );
 }

@@ -7,11 +7,14 @@
     "node": ">=18"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc -p tsconfig.json",
     "start": "node lib/index.js",
     "deploy": "gcloud functions deploy reconcilerWorker --gen2 --runtime nodejs20 --region YOUR_REGION --source . --entry-point reconcilerWorker --trigger-topic notion-lifeline-reconcile-trigger --project YOUR_PROJECT_ID"
   },
   "dependencies": {
+    "@notion-lifeline/config": "workspace:*",
+    "@notion-lifeline/common-types": "workspace:*",
+    "@notion-lifeline/storage-adapters": "workspace:*",
     "@google-cloud/firestore": "^7.11.0",
     "@google-cloud/functions-framework": "^3.3.0",
     "@google-cloud/kms": "^5.0.1",

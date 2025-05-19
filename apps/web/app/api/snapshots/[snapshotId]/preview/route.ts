@@ -2,10 +2,11 @@ import { NextResponse, NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { Storage } from "@google-cloud/storage"; // Import Storage
 import zlib from "zlib";
+import { env } from '@notion-lifeline/config';
 
 // Initialize GCS Storage client (similar to other routes)
-const projectId = process.env.GOOGLE_CLOUD_PROJECT;
-const keyJsonString = process.env.GCP_SERVICE_ACCOUNT_KEY_JSON;
+const projectId = env.GCP_PROJECT_ID;
+const keyJsonString = env.GCP_SERVICE_ACCOUNT_KEY_JSON;
 const bucketName = process.env.GCS_BUCKET_NAME;
 
 let storageClientConfig: any = { ...(projectId && { projectId }) };

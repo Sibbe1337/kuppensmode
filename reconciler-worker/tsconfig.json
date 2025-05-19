@@ -1,20 +1,20 @@
 {
+  "extends": "../tsconfig.base.json",
   "compilerOptions": {
-    "module": "commonjs",
-    "target": "es2020",
-    "outDir": "lib",
-    "strict": true,
-    "esModuleInterop": true,
+    "composite": true,
+    "outDir": "dist",
+    "rootDir": ".",
+    "module": "NodeNext",
+    "emitDeclarationOnly": false,
+    "noEmit": false,
     "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "sourceMap": true,
-    "baseUrl": "."
+    "types": ["node"]
   },
-  "include": [
-    "index.ts", 
-    "*.Adapter.ts",
-    "types/**/*.ts",
-    "storage/**/*.ts"
+  "include": ["index.ts", "src/**/*.ts", "StorageAdapter.ts", "GCSStorageAdapter.ts", "S3StorageAdapter.ts", "R2StorageAdapter.ts", "RedundantStorageAdapter.ts", "types/**/*.ts", "storage/**/*.ts"],
+  "references": [
+    { "path": "../packages/common-types" },
+    { "path": "../packages/storage-adapters" },
+    { "path": "../packages/config" }
   ],
-  "exclude": ["node_modules", "lib"]
+  "exclude": ["node_modules", "dist"]
 } 

@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import OpenAI from 'openai';
 import { Pinecone } from '@pinecone-database/pinecone';
+import { OpenAI } from 'openai';
 import { getDb } from '@/lib/firestore'; // For any potential metadata fetching if needed
+import { env } from '@notion-lifeline/config';
 
 export const runtime = 'nodejs';
 
@@ -16,8 +17,8 @@ interface AskDiffRequestBody {
 // === Initialize Clients (Lazy Load or Module Scope with Checks) ===
 // OpenAI
 let openaiClient: OpenAI | null = null;
-if (process.env.OPENAI_API_KEY) {
-  openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+if (env.OPENAI_API_KEY) {
+  openaiClient = new OpenAI({ apiKey: env.OPENAI_API_KEY });
   console.log("[API AskDiff] OpenAI client initialized.");
 } else {
   console.warn("[API AskDiff] OPENAI_API_KEY not set. This API will not function.");
@@ -26,9 +27,9 @@ if (process.env.OPENAI_API_KEY) {
 // Pinecone
 let pineconeClient: Pinecone | null = null;
 let pineconeIndexName: string | null = null;
-if (process.env.PINECONE_API_KEY && process.env.PINECONE_INDEX_NAME) {
-  pineconeClient = new Pinecone({ apiKey: process.env.PINECONE_API_KEY });
-  pineconeIndexName = process.env.PINECONE_INDEX_NAME;
+if (env.PINECONE_API_KEY && env.PINECONE_INDEX_NAME) {
+  pineconeClient = new Pinecone({ apiKey: env.PINECONE_API_KEY });
+  pineconeIndexName = env.PINECONE_INDEX_NAME;
   console.log(`[API AskDiff] Pinecone client initialized for index: ${pineconeIndexName}`);
 } else {
   console.warn("[API AskDiff] Pinecone API Key or Index Name not set. This API will not function.");

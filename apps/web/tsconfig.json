@@ -6,7 +6,8 @@
     "declaration": true,
     "emitDeclarationOnly": true,
     "plugins": [{ "name": "next" }],
-    "types": ["node", "jest"]
+    "types": ["node", "jest"],
+    "jsx": "react-jsx"
   },
   "include": [
     "next-env.d.ts",

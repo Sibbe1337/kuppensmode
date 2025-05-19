@@ -6,8 +6,9 @@ import { FieldValue } from '@google-cloud/firestore';
 import { clerkClient } from '@clerk/nextjs/server';
 import { DEFAULT_USER_QUOTA, DEFAULT_USER_SETTINGS } from '@/config/defaults';
 import type { UserSettings, UserQuota } from '@/types/user';
+import { env } from '@notion-lifeline/config';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+const stripe = new Stripe(env.STRIPE_SECRET_KEY!, {
   apiVersion: '2024-06-20',
   typescript: true,
 });

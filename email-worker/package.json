@@ -4,11 +4,15 @@
   "private": true,
   "main": "lib/index.js",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc -p tsconfig.json",
     "gcp-build": "npm run build",
     "start": "functions-framework --target=weeklyHealthEmailTrigger --port=8080"
   },
   "dependencies": {
+    "scheduler": "^0.23.0",
+    "@notion-lifeline/config": "workspace:*",
+    "@notion-lifeline/common-types": "workspace:*",
+    "@notion-lifeline/storage-adapters": "workspace:*",
     "@clerk/backend": "^1.31.4",
     "@google-cloud/firestore": "^7.11.0",
     "@google-cloud/functions-framework": "^3.4.0",

@@ -1,5 +1,28 @@
 import OpenAI from 'openai';
-import type { SemanticDiffResult, ChangedItemDetail } from '@/types/diff'; // Adjust path if needed based on final location
+// import type { SemanticDiffResult, ChangedItemDetail } from '@/types/diff'; // Adjust path if needed based on final location
+
+// Define types locally if import is removed
+interface ChangedItemDetail {
+  id: string;
+  name?: string;
+  itemType?: string;
+  blockType?: string;
+  changeType: string; // Simplified for now
+  similarityScore?: number;
+}
+
+interface SemanticDiffResult {
+  summary: {
+    added: number;
+    deleted: number;
+    contentHashChanged: number;
+    semanticallySimilar: number;
+    semanticallyChanged: number;
+  };
+  details?: {
+    changedItems?: ChangedItemDetail[];
+  };
+}
 
 // This function expects an initialized OpenAI client to be available.
 // It could be passed as an argument, or this module could initialize its own.

@@ -9,7 +9,7 @@ import { createHash } from 'crypto';
 import PQueue from 'p-queue';
 
 // Monorepo Package Imports
-import type { UserStorageProvider } from '@notion-lifeline/common-types';
+import type { UserStorageProvider } from '@notion-lifeline/storage-adapters';
 import { 
   StorageAdapter, 
   GCSStorageAdapter, 

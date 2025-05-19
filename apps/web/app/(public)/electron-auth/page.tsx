@@ -1,4 +1,6 @@
 "use client";
+
+import { Suspense } from 'react';
 import dynamic from "next/dynamic";
 
 // Only import the Electron view in the browser
@@ -8,5 +10,9 @@ const ElectronAuthView = dynamic(
 );
 
 export default function Page() {
-  return <ElectronAuthView />;
+  return (
+    <Suspense fallback={null}>
+      <ElectronAuthView />
+    </Suspense>
+  );
 } 

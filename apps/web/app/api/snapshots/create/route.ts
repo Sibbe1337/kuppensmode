@@ -6,9 +6,11 @@ import { FieldValue } from '@google-cloud/firestore';
 import { DEFAULT_USER_QUOTA } from '@/config/defaults';
 import type { UserQuota } from '@/types/user'; // Corrected import for UserQuota type
 import { Storage } from '@google-cloud/storage';
+import { auth } from '@clerk/nextjs/server';
+import { env } from '@notion-lifeline/config';
 
-const projectId = process.env.GOOGLE_CLOUD_PROJECT;
-const keyJsonString = process.env.GCP_SERVICE_ACCOUNT_KEY_JSON;
+const projectId = env.GCP_PROJECT_ID;
+const keyJsonString = env.GCP_SERVICE_ACCOUNT_KEY_JSON;
 const TOPIC_NAME_SNAPSHOT_CREATE = process.env.PUBSUB_SNAPSHOT_TOPIC || 'notion-lifeline-snapshot-requests'; // Specific topic name
 const bucketName = process.env.GCS_BUCKET_NAME;
 

@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { PubSub } from '@google-cloud/pubsub';
+import { env } from '@notion-lifeline/config';
 
-const projectId = process.env.GOOGLE_CLOUD_PROJECT;
-const keyJsonString = process.env.GCP_SERVICE_ACCOUNT_KEY_JSON;
+const projectId = env.GCP_PROJECT_ID;
+const keyJsonString = env.GCP_SERVICE_ACCOUNT_KEY_JSON;
 const TOPIC_NAME = process.env.PUBSUB_SCHEDULE_SNAPSHOT_TOPIC || 'scheduleSnapshot';
 
 let pubSubInstance: PubSub | null = null;

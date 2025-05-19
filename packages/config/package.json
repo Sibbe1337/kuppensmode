@@ -1,9 +1,13 @@
 {
   "name": "@notion-lifeline/config",
   "version": "1.0.0",
-  "private": true,
-  "files": [
-    "tsconfig.base.json",
-    "eslint.config.js" 
-  ]
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p ./tsconfig.json"
+  },
+  "dependencies": {
+    "zod": "^3.0.0"
+  }
 } 

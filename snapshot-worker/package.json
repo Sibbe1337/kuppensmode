@@ -2,13 +2,14 @@
   "name": "snapshot-worker",
   "version": "0.0.1",
   "private": true,
-  "main": "lib/index.js",
+  "main": "dist/index.js",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc -p tsconfig.json",
     "gcp-build": "npm run build",
     "start": "functions-framework --target=snapshotWorker --port=8080"
   },
   "dependencies": {
+    "@notion-lifeline/config": "workspace:*",
     "@google-cloud/firestore": "^7.11.0",
     "@google-cloud/functions-framework": "^3.4.0",
     "@google-cloud/secret-manager": "^5.5.0",

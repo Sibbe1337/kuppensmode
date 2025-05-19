@@ -1,17 +1,18 @@
 console.log("--- [Scheduler API] Execution STARTED ---");
-console.log("[Scheduler API] RAW GCP_SERVICE_ACCOUNT_KEY_JSON type:", typeof process.env.GCP_SERVICE_ACCOUNT_KEY_JSON);
-console.log("[Scheduler API] RAW GCP_SERVICE_ACCOUNT_KEY_JSON is set:", !!process.env.GCP_SERVICE_ACCOUNT_KEY_JSON);
-console.log("[Scheduler API] RAW GCP_PROJECT_ID:", process.env.GOOGLE_CLOUD_PROJECT);
+console.log("[Scheduler API] RAW GCP_SERVICE_ACCOUNT_KEY_JSON type:", typeof env.GCP_SERVICE_ACCOUNT_KEY_JSON);
+console.log("[Scheduler API] RAW GCP_SERVICE_ACCOUNT_KEY_JSON is set:", !!env.GCP_SERVICE_ACCOUNT_KEY_JSON);
+console.log("[Scheduler API] RAW GCP_PROJECT_ID:", env.GCP_PROJECT_ID);
 
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { CloudSchedulerClient } from '@google-cloud/scheduler';
 // import { db } from '@/lib/firestore'; // Removed as it was unused
+import { env } from '@notion-lifeline/config';
 
 // Simplified Initialization & Logging
 let schedulerClient: CloudSchedulerClient;
-const keyJsonString = process.env.GCP_SERVICE_ACCOUNT_KEY_JSON;
-const projectId = process.env.GOOGLE_CLOUD_PROJECT;
+const keyJsonString = env.GCP_SERVICE_ACCOUNT_KEY_JSON;
+const projectId = env.GCP_PROJECT_ID;
 
 console.log("[Scheduler API] Initializing. GCP_PROJECT_ID:", projectId);
 if (keyJsonString && keyJsonString.length > 100) { // Basic check if string seems like a key

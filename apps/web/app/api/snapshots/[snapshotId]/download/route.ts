@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
 import { getAuth } from '@clerk/nextjs/server';
 import { Storage } from '@google-cloud/storage';
+import { env } from '@notion-lifeline/config';
 
 const bucketName = process.env.GCS_BUCKET_NAME;
-const keyJsonString = process.env.GCP_SERVICE_ACCOUNT_KEY_JSON;
-const projectId = process.env.GOOGLE_CLOUD_PROJECT;
+const keyJsonString = env.GCP_SERVICE_ACCOUNT_KEY_JSON;
+const projectId = env.GCP_PROJECT_ID;
 
 export async function GET(request: Request, { params }: { params: { snapshotId: string } }) {
   console.log("[Download API] GCP_SERVICE_ACCOUNT_KEY_JSON (first 70 chars):", keyJsonString?.substring(0, 70));

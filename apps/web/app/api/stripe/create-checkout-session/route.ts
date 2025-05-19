@@ -2,8 +2,9 @@ import { NextResponse } from 'next/server';
 import { auth, clerkClient } from '@clerk/nextjs/server';
 import Stripe from 'stripe';
 import { getDb } from "@/lib/firestore";
+import { env } from '@notion-lifeline/config';
 
-const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+const stripeSecretKey = env.STRIPE_SECRET_KEY;
 if (!stripeSecretKey) {
   console.error("[Stripe Checkout API] STRIPE_SECRET_KEY environment variable not set.");
 }

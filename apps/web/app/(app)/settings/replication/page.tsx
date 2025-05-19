@@ -1,5 +1,6 @@
 'use client';
 
+import { Suspense } from 'react';
 import React, { useState } from 'react';
 import { useStorageConfigs } from '../../../../src/hooks/useStorageConfigs';
 import StorageProviderList from '../../../../src/components/settings/replication/StorageProviderList';
@@ -7,7 +8,8 @@ import StorageProviderModal from '../../../../src/components/settings/replicatio
 import { Button } from '../../../../src/components/ui/button';
 import type { UserStorageProvider } from '@notion-lifeline/storage-adapters'; // Changed from relative path
 
-export default function ReplicationSettingsPage() {
+// Define ActualPage component
+function ActualReplicationSettingsPage() {
   const { configs, isLoading, isError, errorDetails, mutateConfigs } = useStorageConfigs();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingConfig, setEditingConfig] = useState<Partial<UserStorageProvider> | null>(null);
@@ -132,5 +134,13 @@ export default function ReplicationSettingsPage() {
         initialData={editingConfig}
       />
     </div>
+  );
+}
+
+export default function ReplicationSettingsPage() {
+  return (
+    <Suspense fallback={null}>
+      <ActualReplicationSettingsPage />
+    </Suspense>
   );
 } 

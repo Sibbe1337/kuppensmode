@@ -1,14 +1,17 @@
 import { http, Request, Response } from '@google-cloud/functions-framework'; // Use named http export
 import { db } from './lib/firestore'; // Corrected path
-import { getSecret } from './lib/secrets'; // Corrected path
+import { getSecret } from './lib/secret'; // Corrected path
 import { verifyToken } from '@clerk/backend';
+// import type { SessionClaims } from '@clerk/types'; // Removed as it caused error
 import { Timestamp } from '@google-cloud/firestore';
 // import type { UserData } from './lib/types'; // Removed problematic import
 import { Storage } from '@google-cloud/storage';
 import zlib from 'node:zlib';
 import { promisify } from 'node:util';
-import { Client as NotionClient, isFullBlock } from '@notionhq/client';
-import type { BlockObjectRequest } from '@notionhq/client/build/src/api-endpoints';
+import { Client as NotionClient } from '@notionhq/client';
+import type { BlockObjectRequest, BlockObjectResponse, PartialBlockObjectResponse } from '@notionhq/client/build/src/api-endpoints';
+// import { PubSub } from '@google-cloud/pubsub'; // Removed unused PubSub
+// import { logger } from 'firebase-functions/v1'; // Removed unused logger
 
 // Promisify zlib.gunzip for async usage
 const gunzip = promisify(zlib.gunzip);
@@ -54,7 +57,7 @@ export const restoreTrigger = http('restoreTrigger', async (req: Request, res: R
     }
     const token = authHeader.split(' ')[1];
 
-    let authResult: any;
+    let authResult: { sub: string; [key: string]: unknown }; // More generic type for verifyToken result
     let userId: string | null = null;
     try {
       const clerkSecretKey = process.env.CLERK_SECRET_KEY || await getSecret('CLERK_SECRET_KEY');
@@ -67,9 +70,13 @@ export const restoreTrigger = http('restoreTrigger', async (req: Request, res: R
       if (!userId) {
           throw new Error('Invalid token payload: Missing sub (userId)');
       }
-    } catch (error: any) {
-      console.warn('Token verification failed:', error.message);
-      res.status(401).send(`Unauthorized: ${error.message}`);
+    } catch (error: unknown) { // Changed to unknown
+      let message = 'Unknown token verification error';
+      if (typeof error === 'object' && error !== null && 'message' in error) {
+        message = (error as {message: string}).message;
+      }
+      console.warn('Token verification failed:', message);
+      res.status(401).send(`Unauthorized: ${message}`);
       return;
     }
     console.log(`Request authorized for user: ${userId}`);
@@ -158,7 +165,7 @@ export const restoreTrigger = http('restoreTrigger', async (req: Request, res: R
 
         // 7.1 Fetch existing blocks (paginated)
         console.log(`Fetching existing blocks for page ${pageId}...`);
-        let existingBlocks = [];
+        const existingBlocks: (BlockObjectResponse | PartialBlockObjectResponse)[] = []; 
         let nextCursor: string | undefined | null = undefined;
         do {
           const response = await notion.blocks.children.list({ block_id: pageId, start_cursor: nextCursor ?? undefined });
@@ -184,7 +191,8 @@ export const restoreTrigger = http('restoreTrigger', async (req: Request, res: R
                 console.warn('Skipping invalid item in snapshot data:', block);
                 return null;
             }
-            const { id, created_time, created_by, last_edited_time, last_edited_by, parent, has_children, archived, ...writableBlock } = block;
+            // Prefix unused variables with _
+            const { id: _id, created_time: _created_time, created_by: _created_by, last_edited_time: _last_edited_time, last_edited_by: _last_edited_by, parent: _parent, has_children: _has_children, archived: _archived, ...writableBlock } = block;
             return writableBlock as BlockObjectRequest;
         }).filter((block): block is BlockObjectRequest => block !== null);
 
@@ -202,19 +210,27 @@ export const restoreTrigger = http('restoreTrigger', async (req: Request, res: R
         console.log(`Restore job ${restoreJobId} completed successfully.`);
         res.status(200).send({ message: 'Restore completed successfully', jobId: restoreJobId });
 
-    } catch (restoreError: any) {
+    } catch (restoreError: unknown) { // Changed to unknown
+        let message = 'Unknown restore error';
+        if (typeof restoreError === 'object' && restoreError !== null && 'message' in restoreError) {
+            message = (restoreError as {message: string}).message;
+        }
         console.error(`Restore process failed for job ${restoreJobId}:`, restoreError);
         await restoreJobRef.update({ 
             status: 'FAILED', 
-            error: restoreError.message || 'Unknown restore error', 
+            error: message, 
             updatedAt: Timestamp.now() 
         });
-        res.status(500).send({ error: 'Restore process failed', details: restoreError.message });
+        res.status(500).send({ error: 'Restore process failed', details: message });
         return;
     }
 
-  } catch (error: any) {
+  } catch (error: unknown) { // Changed to unknown
+    let message = 'Internal Server Error';
+    if (typeof error === 'object' && error !== null && 'message' in error) {
+        message = (error as {message: string}).message;
+    }
     console.error('Error in restoreTrigger function:', error);
-    res.status(500).send(`Internal Server Error: ${error.message}`);
+    res.status(500).send(`Internal Server Error: ${message}`);
   }
 }); 

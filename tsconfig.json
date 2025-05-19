@@ -1,8 +1,6 @@
 {
-  "files": [],
-  "references": [
-    { "path": "./packages/common-types" },
-    { "path": "./packages/storage-adapters" },
-    { "path": "./apps/web" }
-  ]
+  "compilerOptions": {
+    "composite": true,
+    "types": ["node"]
+  }
 }

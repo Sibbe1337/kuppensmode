@@ -4,6 +4,7 @@ import { getDb } from '@/lib/firestore'; // Changed to getDb
 import { Storage } from '@google-cloud/storage'; // GCS client
 import { gunzipSync } from 'zlib'; // Node.js built-in zlib for decompression
 import { Pinecone, type RecordMetadata, type PineconeRecord } from '@pinecone-database/pinecone';
+import { env } from '@notion-lifeline/config';
 
 export const runtime = 'nodejs';
 
@@ -59,8 +60,8 @@ const BUCKET_NAME = process.env.GCS_BUCKET_NAME;
 
 // Pinecone Client Initialization
 let pinecone: Pinecone | null = null;
-const pineconeApiKey = process.env.PINECONE_API_KEY;
-const pineconeIndexName = process.env.PINECONE_INDEX_NAME;
+const pineconeApiKey = env.PINECONE_API_KEY;
+const pineconeIndexName = env.PINECONE_INDEX_NAME;
 
 if (pineconeApiKey && pineconeIndexName) {
   pinecone = new Pinecone({ apiKey: pineconeApiKey });

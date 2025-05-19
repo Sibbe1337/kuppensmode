@@ -1,9 +1,9 @@
 import { http, Request, Response } from '@google-cloud/functions-framework';
-import Stripe from 'stripe';
-import { getSecret } from './lib/secrets';
+import { Stripe } from 'stripe';
+import { getSecret } from './lib/secret';
 import { db } from './lib/firestore';
 import { Timestamp } from '@google-cloud/firestore';
-const PostHog = require('posthog-node');
+import * as PostHog from 'posthog-node';
 
 // Define DEFAULT_USER_QUOTA locally for robustness in Cloud Function environment
 // Matches structure from notion-lifeline/src/config/defaults.ts
@@ -39,7 +39,7 @@ interface BillingInfo {
 
 let stripeClient: Stripe | null = null;
 let webhookSecret: string | null = null;
-let posthogClient: InstanceType<typeof PostHog> | null = null; // Correctly type PostHog client instance
+let posthogClient: PostHog.PostHog | null = null;
 
 /**
  * Initializes Stripe client, webhook secret, and PostHog client.
@@ -64,9 +64,11 @@ async function initializeClients(): Promise<void> {
     webhookSecret = whSecret;
     console.log('Stripe client and webhook secret initialized.');
 
-    if (phApiKey && PostHog) { // Check if PostHog was successfully required
-      posthogClient = new PostHog(phApiKey, { host: phHost });
+    if (phApiKey && PostHog && PostHog.PostHog) { // Check for PostHog.PostHog constructor
+      posthogClient = new PostHog.PostHog(phApiKey, { host: phHost });
       console.log('PostHog client initialized.');
+    } else {
+      console.warn('PostHog SDK constructor PostHog.PostHog not found or PostHog namespace not available.');
     }
 
   } catch (error) {
@@ -76,26 +78,6 @@ async function initializeClients(): Promise<void> {
     posthogClient = null; // Ensure it's null on error
     throw error; 
   }
-}
-
-// Helper function to get plan name from Stripe Product ID (conceptual)
-// This might involve fetching Product details from Stripe or having a mapping
-async function getPlanNameFromProductId(productId: string | null): Promise<string> {
-    if (!productId) return "Unknown Plan";
-    // Example: Fetch product from Stripe
-    // if (stripeClient && productId) {
-    //   try {
-    //     const product = await stripeClient.products.retrieve(productId);
-    //     return product.name || "Unnamed Plan";
-    //   } catch (e) {
-    //     console.error(`Failed to retrieve product ${productId}`, e);
-    //     return "Unknown Plan";
-    //   }
-    // }
-    // For now, using a simple mapping or returning the ID
-    if (productId === process.env.STRIPE_PRO_PLAN_PRODUCT_ID) return "Pro Plan";
-    if (productId === process.env.STRIPE_TEAMS_PLAN_PRODUCT_ID) return "Teams Plan";
-    return productId; // Fallback to product ID
 }
 
 /**
@@ -133,9 +115,13 @@ export const stripeWebhook = http('stripeWebhook', async (req: Request, res: Res
       }
       event = stripeClient.webhooks.constructEvent(rawBody, sig, webhookSecret);
       console.log(`Webhook event constructed: ${event.id}, type: ${event.type}`);
-    } catch (err: any) {
-      console.warn(`Webhook signature verification failed: ${err.message}`);
-      res.status(400).send(`Webhook Error: ${err.message}`);
+    } catch (err: unknown) {
+      let message = 'Unknown webhook signature verification error';
+      if (typeof err === 'object' && err !== null && 'message' in err) {
+        message = (err as {message: string}).message;
+      }
+      console.warn(`Webhook signature verification failed: ${message}`);
+      res.status(400).send(`Webhook Error: ${message}`);
       return;
     }
 
@@ -205,12 +191,20 @@ export const stripeWebhook = http('stripeWebhook', async (req: Request, res: Res
                 }
             };
             await db.collection('users').doc(userId).collection('audit').add(auditLog);
-        } catch (auditError) {
-            console.error(`[Stripe Webhook] Audit log failed for new subscription ${subscription.id}:`, auditError);
+        } catch (auditError: unknown) {
+            let message = 'Unknown audit log error during new subscription processing';
+            if (typeof auditError === 'object' && auditError !== null && 'message' in auditError) {
+                message = (auditError as {message: string}).message;
+            }
+            console.error(`[Stripe Webhook] Audit log failed for new subscription ${subscription.id}: ${message}`, auditError);
         }
 
-      } catch (dbOrStripeError) {
-        console.error(`Error processing checkout for user ${userId}:`, dbOrStripeError);
+      } catch (dbOrStripeError: unknown) { // Typed dbOrStripeError
+        let message = 'Unknown error processing checkout';
+        if (typeof dbOrStripeError === 'object' && dbOrStripeError !== null && 'message' in dbOrStripeError) {
+            message = (dbOrStripeError as {message: string}).message;
+        }
+        console.error(`Error processing checkout for user ${userId}: ${message}`, dbOrStripeError);
         return res.status(500).send('Error processing checkout completion.'); 
       }
     } 
@@ -253,7 +247,7 @@ export const stripeWebhook = http('stripeWebhook', async (req: Request, res: Res
         
         const userRef = db.collection('users').doc(userId);
         const planName = product?.name || (typeof product === 'string' ? product : 'Unknown Plan');
-        const updatePayload: any = {
+        const updatePayload: Record<string, any> = {
             billing: billingData,
             plan: planName,
             planId: billingData.planId,
@@ -297,8 +291,12 @@ export const stripeWebhook = http('stripeWebhook', async (req: Request, res: Res
                     }
                 };
                 await db.collection('users').doc(userId).collection('audit').add(auditLog);
-            } catch (auditError) {
-                console.error(`[Stripe Webhook] Audit log failed for plan downgrade ${fullSubscription.id}:`, auditError);
+            } catch (auditError: unknown) {
+                let message = 'Unknown audit log error during plan downgrade';
+                if (typeof auditError === 'object' && auditError !== null && 'message' in auditError) {
+                    message = (auditError as {message: string}).message;
+                }
+                console.error(`[Stripe Webhook] Audit log failed for plan downgrade ${fullSubscription.id}: ${message}`, auditError);
             }
         } else {
            // TODO: If plan changed, update quota based on the new planId
@@ -319,16 +317,24 @@ export const stripeWebhook = http('stripeWebhook', async (req: Request, res: Res
                     }
                 };
                 await db.collection('users').doc(userId).collection('audit').add(auditLog);
-            } catch (auditError) {
-                console.error(`[Stripe Webhook] Audit log failed for subscription update ${fullSubscription.id}:`, auditError);
+            } catch (auditError: unknown) {
+                let message = 'Unknown audit log error during subscription update';
+                if (typeof auditError === 'object' && auditError !== null && 'message' in auditError) {
+                    message = (auditError as {message: string}).message;
+                }
+                console.error(`[Stripe Webhook] Audit log failed for subscription update ${fullSubscription.id}: ${message}`, auditError);
             }
         }
         
         await userRef.set(updatePayload, { merge: true });
         console.log(`User ${userId} billing info updated. Status: ${fullSubscription.status}`);
 
-      } catch (dbOrStripeError) {
-        console.error(`Error processing subscription update for user ${userId}:`, dbOrStripeError);
+      } catch (dbOrStripeError: unknown) { // Typed dbOrStripeError
+        let message = 'Unknown error processing subscription update';
+        if (typeof dbOrStripeError === 'object' && dbOrStripeError !== null && 'message' in dbOrStripeError) {
+            message = (dbOrStripeError as {message: string}).message;
+        }
+        console.error(`Error processing subscription update for user ${userId}: ${message}`, dbOrStripeError);
         return res.status(500).send('Error processing subscription update.');
       }
     }
@@ -369,7 +375,7 @@ export const stripeWebhook = http('stripeWebhook', async (req: Request, res: Res
                     reason: 'subscription_deleted'
                 }
             });
-            await posthogClient.shutdownAsync(); // Ensure event is sent before function terminates
+            // await posthogClient.shutdownAsync(); // Ensure event is sent before function terminates // Temporarily commented out
         }
         console.log(`User ${userId} downgraded due to subscription deletion.`);
 
@@ -385,12 +391,20 @@ export const stripeWebhook = http('stripeWebhook', async (req: Request, res: Res
                 }
             };
             await db.collection('users').doc(userId).collection('audit').add(auditLog);
-        } catch (auditError) {
-            console.error(`[Stripe Webhook] Audit log failed for subscription deletion ${subscription.id}:`, auditError);
+        } catch (auditError: unknown) {
+            let message = 'Unknown audit log error during subscription deletion';
+            if (typeof auditError === 'object' && auditError !== null && 'message' in auditError) {
+                message = (auditError as {message: string}).message;
+            }
+            console.error(`[Stripe Webhook] Audit log failed for subscription deletion ${subscription.id}: ${message}`, auditError);
         }
 
-      } catch (dbError) {
-        console.error(`Error processing subscription deletion for user ${userId}:`, dbError);
+      } catch (dbError: unknown) {
+        let message = 'Unknown error processing subscription deletion';
+        if (typeof dbError === 'object' && dbError !== null && 'message' in dbError) {
+            message = (dbError as {message: string}).message;
+        }
+        console.error(`Error processing subscription deletion for user ${userId}: ${message}`, dbError);
         return res.status(500).send('Error processing subscription deletion.');
       }
     }
@@ -401,8 +415,12 @@ export const stripeWebhook = http('stripeWebhook', async (req: Request, res: Res
     // Return a 200 OK response to acknowledge receipt of the event
     res.status(200).json({ received: true });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
+    let message = 'Webhook Handler Error';
+    if (typeof error === 'object' && error !== null && 'message' in error) {
+        message = (error as {message: string}).message;
+    }
     console.error('Webhook handler error:', error);
-    res.status(500).send(`Webhook Handler Error: ${error.message}`);
+    res.status(500).send(`Webhook Handler Error: ${message}`);
   }
 }); 

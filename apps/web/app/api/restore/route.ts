@@ -4,9 +4,11 @@ import { PubSub } from '@google-cloud/pubsub';
 import { v4 as uuid } from 'uuid';
 import { getDb } from "@/lib/firestore";
 import { FieldValue } from '@google-cloud/firestore';
+import { auth } from '@clerk/nextjs/server';
+import { env } from '@notion-lifeline/config';
 
-const projectId = process.env.GOOGLE_CLOUD_PROJECT;
-const keyJsonString = process.env.GCP_SERVICE_ACCOUNT_KEY_JSON;
+const projectId = env.GCP_PROJECT_ID;
+const keyJsonString = env.GCP_SERVICE_ACCOUNT_KEY_JSON;
 const TOPIC_NAME_RESTORE = process.env.PUBSUB_RESTORE_TOPIC ?? 'notion-lifeline-restore'; // Renamed TOPIC to avoid conflict if other PubSub topics are used
 
 let restorePubSubInstance: PubSub | null = null;

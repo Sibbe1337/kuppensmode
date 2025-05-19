@@ -6,9 +6,9 @@ const isProtectedRoute = createRouteMatcher([
   '/api(.*)',       // Protect all API routes by default (except specific public ones if needed)
 ]);
 
-export default clerkMiddleware((auth, req) => {
+export default clerkMiddleware(async (auth, req) => {
   if (isProtectedRoute(req)) {
-    auth().protect(); // If the route is protected, enforce authentication
+    await auth.protect(); // Corrected: use auth object directly and await
   }
 });
 

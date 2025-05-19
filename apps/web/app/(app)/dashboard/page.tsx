@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from 'react';
 import React from 'react';
 import useSWR from 'swr';
 import apiClient from '@/lib/apiClient';
@@ -68,7 +69,8 @@ const MonthlyUsageGauge: React.FC<{ value: number; limit: number; warning?: bool
   );
 };
 
-export default function DashboardPage() {
+// Define ActualPage component
+function ActualDashboardPage() {
   // const { data: kpis, error: kpisError, isLoading: kpisLoading } = useSWR<KpiData[]>('/api/analytics/kpis', apiClient); // Old KPI fetching
   const { data: kpisData, error: kpisError, isLoading: kpisLoading } = useKpis(); // New KPI fetching
   const { data: compareData, error: compareError, isLoading: compareLoading } = useSWR<ComparisonData>('/api/analytics/compare', apiClient);
@@ -175,5 +177,13 @@ export default function DashboardPage() {
         </div>
       </footer>
     </main>
+  );
+}
+
+export default function DashboardPage() {
+  return (
+    <Suspense fallback={null}>
+      <ActualDashboardPage />
+    </Suspense>
   );
 } 
