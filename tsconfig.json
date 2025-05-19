@@ -1,59 +1,8 @@
 {
-  "compilerOptions": {
-    "target": "ES2017",
-    "lib": [
-      "dom",
-      "dom.iterable",
-      "esnext"
-    ],
-    "allowJs": true,
-    "skipLibCheck": true,
-    "strict": true,
-    "noEmit": true,
-    "incremental": true,
-    "module": "esnext",
-    "esModuleInterop": true,
-    "moduleResolution": "bundler",
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "jsx": "preserve",
-    "plugins": [
-      {
-        "name": "next"
-      }
-    ],
-    "baseUrl": ".",
-    "paths": {
-      "@/*": ["./src/*"],
-      "@notion-lifeline/common-types": ["./packages/common-types/src/index"],
-      "@notion-lifeline/common-types/*": ["./packages/common-types/src/*"],
-      "@notion-lifeline/storage-adapters": ["./packages/storage-adapters/src/index"],
-      "@notion-lifeline/storage-adapters/*": ["./packages/storage-adapters/src/*"]
-    },
-    "types": ["node", "jest"]
-  },
-  "include": [
-    "next-env.d.ts",
-    ".next/types/**/*.ts",
-    "src/**/*.ts",
-    "src/**/*.tsx",
-    "app/**/*.ts",
-    "app/**/*.tsx",
-    "middleware.ts",
-    "instrumentation.ts",
-    "instrumentation-client.ts"
-  ],
-  "exclude": [
-    "node_modules",
-    ".next",
-    "functions",
-    "snapshot-worker/**",
-    "restore-worker/**",
-    "email-worker/**",
-    "demo-data/**"
-  ],
+  "files": [],
   "references": [
     { "path": "./packages/common-types" },
-    { "path": "./packages/storage-adapters" }
+    { "path": "./packages/storage-adapters" },
+    { "path": "./apps/web" }
   ]
 }

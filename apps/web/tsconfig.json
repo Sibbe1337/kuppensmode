@@ -1,0 +1,35 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "esnext",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"],
+      "@notion-lifeline/common-types": ["../../packages/common-types/src/index"],
+      "@notion-lifeline/common-types/*": ["../../packages/common-types/src/*"],
+      "@notion-lifeline/storage-adapters": ["../../packages/storage-adapters/src/index"],
+      "@notion-lifeline/storage-adapters/*": ["../../packages/storage-adapters/src/*"]
+    },
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "types": ["node", "jest"] // Retaining types from original, review if jest is app-specific
+  },
+  "include": [
+    "next-env.d.ts",
+    ".next/types/**/*.ts", // Added by Next.js usually
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "app/**/*.ts",
+    "app/**/*.tsx",
+    "lib/**/*.ts", // If lib directory is used for TS/TSX files
+    "./*.ts", // For files like middleware.ts, sentry configs at app root
+    "./*.js", // For next.config.js, postcss.config.js if needed by TS
+    "components.json" // For shadcn
+  ],
+  "exclude": [
+    "node_modules" // App-specific node_modules if any, though root one is primary
+  ]
+} 
